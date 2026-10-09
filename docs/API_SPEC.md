@@ -3,7 +3,7 @@
 ## Infinity Blog - REST JSON Contract
 
 **Version:** `/api/v1`  
-**Status:** Authentication, category management, author post lifecycle, and public post read routes are implemented. Admin post/user management, audit queries, and summary generation remain planned and are not exposed by the current router.
+**Status:** Authentication, category management, author post lifecycle, public post reads, admin post management, and admin author-account management are implemented. Audit-log query and summary generation remain planned and are not exposed by the current router.
 
 ---
 
@@ -138,7 +138,7 @@ The server validates title/content and category assignment. Drafts may be uncate
 
 ### `GET /author/posts/{id}`
 
-Returns a post only if the requester owns it or is an authorized admin.
+Implemented. Returns a post only if the requester owns it or is an authorized admin. Other authors receive a concealed `404`.
 
 ### `PATCH /author/posts/{id}`
 
@@ -164,12 +164,12 @@ Generates or regenerates a summary for a post that the requester may manage. Req
 
 All require an active admin role.
 
-- `GET /admin/posts` - system-wide list, filterable and paginated; includes system-wide `dashboard_counts` in response metadata.
-- `GET /admin/posts/{id}` - view a post for moderation/management.
-- `PATCH /admin/posts/{id}` - perform explicitly permitted administrative edits.
-- `POST /admin/posts/{id}/publish` - publish after validation.
-- `POST /admin/posts/{id}/unpublish` - remove from public visibility.
-- `DELETE /admin/posts/{id}` - delete with audit event and CSRF protection.
+- `GET /admin/posts` - **Implemented.** System-wide list, filterable and paginated; includes database-derived system-wide `dashboard_counts` in response metadata.
+- `GET /admin/posts/{id}` - **Implemented.** View a post for moderation/management.
+- `PATCH /admin/posts/{id}` - **Implemented.** Edit title, body, or category; ownership cannot be changed through this route.
+- `POST /admin/posts/{id}/publish` - **Implemented.** Publish only after validating title, body, and active category.
+- `POST /admin/posts/{id}/unpublish` - **Implemented.** Remove from public visibility.
+- `DELETE /admin/posts/{id}` - **Implemented.** Requires explicit `{"confirm":true}`, admin authorization, CSRF, and an audit event.
 
 The implementation may reuse application services with explicit permission policy instead of duplicating post logic.
 
@@ -192,12 +192,14 @@ Category mutation endpoints require an active admin session and a valid CSRF tok
 
 ## 7. Admin user endpoints
 
-- `GET /admin/users` - paginated user list without password hashes; includes a database-derived `meta.total` for the optional admin user count.
-- `POST /admin/users` - provision an author account with a securely established password or setup flow.
-- `PATCH /admin/users/{id}` - update permitted profile/account fields.
-- `POST /admin/users/{id}/deactivate` - deactivate an account.
-- `POST /admin/users/{id}/activate` - reactivate an account.
+- `GET /admin/users` - **Implemented.** Paginated author-account list without password hashes; `meta.total` is the database-derived author count.
+- `POST /admin/users` - **Implemented.** Create an author with username, display name, and a 12-to-72-byte password; only `password_hash()` output is stored.
+- `PATCH /admin/users/{id}` - **Implemented.** Update display name or set a replacement password. Password changes increment `auth_version` and revoke existing sessions.
+- `POST /admin/users/{id}/deactivate` - **Implemented.** Deactivate an author; status and `auth_version` change atomically.
+- `POST /admin/users/{id}/activate` - **Implemented.** Reactivate an author and increment `auth_version`.
 - Role changes must be separately authorized and audited. Do not permit a user to promote themselves.
+
+All user-management routes require an active admin session; state changes require CSRF. These routes manage author accounts only and reject role, username-update, and status-update fields. Initial administrator provisioning remains a separate trusted CLI operation. No public registration or HTTP admin-creation endpoint exists.
 
 Bootstrap the two requested admin accounts through a trusted CLI/setup command, not public registration or a committed default password.
 
@@ -228,6 +230,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [x] Implemented identity/role derives from the MySQL user record; author post queries enforce owner scope.
 - [x] CSRF is checked for implemented login/logout, category mutations, and author post mutations.
 - [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
+- [x] Admin post and author-account operations require the admin role; state changes require CSRF.
 - [ ] CORS is restricted to known origins if required.
 - [x] Implemented login request size and field lengths are bounded.
 - [x] IDs and status values are validated for implemented category/post routes.
@@ -235,6 +238,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [x] Authentication responses omit secrets and password hashes.
 - [x] Public post endpoints return published content only; draft/unpublished IDs are concealed.
 - [ ] Summary requests are rate-limited and never run on public views.
-- [x] Author post lists and dashboard counts are scoped to that author's records; admin post endpoints and counts remain planned.
+- [x] Author post lists/counts are owner-scoped; admin post lists/counts span database records.
+- [x] Admin author management never returns password hashes, only creates `author` roles, and increments `auth_version` on password/status changes.
 - [x] Category slugs are generated server-side and protected by the database unique constraint.
 - [ ] The provider adapter has no database credentials or application tools/privileges.

@@ -51,7 +51,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership-scoped reads/summary invalidation, MySQL-backed administrator provisioning and credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership-scoped reads/summary invalidation, MySQL author-account creation/password changes/status revocation, administrator provisioning/credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
 5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
 
 ## 3. Functional tests
@@ -106,6 +106,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | F-027 | Admin category state/delete | Deactivation preserves post references, hides the category from public/author selection, and deletion is blocked while posts reference it |
 | F-028 | Author post list and counts | Filters affect list `meta.total`; `dashboard_counts` still cover all of the authenticated author's posts only |
 | F-029 | Public summary display | Only a stored summary with a matching current source hash is returned; public reads do not call the provider |
+| F-030 | Admin creates/manages author accounts | Only author roles can be created; hashes are stored, secret fields are never returned or audited, and credential/status changes revoke sessions |
+| F-031 | Admin manages all posts | Admin list and counts span all records; moderation actions require admin role and CSRF and write audit events |
 
 ## 4. Authorization tests
 
@@ -121,6 +123,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | A-008 | Inactive account uses existing session | Protected actions denied according to active-account policy |
 | A-009 | Unauthenticated user or author calls admin category routes | 401 or 403; no category mutation; state changes without valid CSRF are rejected |
 | A-010 | Author A requests, edits, publishes, or deletes Author B's post ID | 404; no private data or mutation; B's post remains unchanged |
+| A-011 | Author or anonymous visitor calls admin post/user routes | 403 or 401; no data or account/post mutation |
+| A-012 | Request supplies `role=admin` to author-account creation or update | 422; no role change or administrator account is created |
 
 ## 5. Injection and request-security tests
 

@@ -19,12 +19,15 @@ use InfinityBlog\Database\MigrationRunner;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
+use InfinityBlog\Http\AdminUserController;
+use InfinityBlog\Http\AdminPostController;
 use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Posts\PostNotFoundException;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Posts\PostValidationException;
+use InfinityBlog\Users\AdminUserRepository;
 
 require dirname(__DIR__) . '/autoload.php';
 ob_start();
@@ -686,6 +689,193 @@ $run('public post API returns published records only with safe filters and curre
     $expect($invalidQuery['status'] === 422);
 });
 
+$run('admin author management is role-bound, hashes passwords, and revokes sessions on password/status changes', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $pdo = $createPostDatabase();
+        $accountRepo = new UserRepository($pdo);
+        $admin = $accountRepo->findByIdentifier('admin one');
+        $author = $accountRepo->findByIdentifier('author one');
+        if ($admin === null || $author === null) {
+            throw new RuntimeException('Admin author-management fixtures were not created.');
+        }
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $controller = new AdminUserController(new AdminUserRepository($pdo), new AuthGuard($sessions, $accountRepo), $sessions);
+        $unauthenticated = $controller->handle(Request::fromValues('GET', '/admin/users', '192.0.2.53'));
+        $expect($unauthenticated['status'] === 401);
+
+        $sessions->establish($author);
+        $authorList = $controller->handle(Request::fromValues('GET', '/admin/users', '192.0.2.53'));
+        $expect($authorList['status'] === 403);
+        $authorCreate = $controller->handle(Request::fromValues(
+            'POST', '/admin/users', '192.0.2.53', ['X-CSRF-Token' => $sessions->csrfToken()],
+            ['username' => 'attacker-admin', 'display_name' => 'Attacker', 'password' => 'attacker-password-123', 'role' => 'admin']
+        ));
+        $expect($authorCreate['status'] === 403);
+
+        $sessions->establish($admin);
+        $adminToken = $sessions->csrfToken();
+        $list = $controller->handle(Request::fromValues(
+            'GET', '/admin/users', '192.0.2.53', [], [], ['page' => '1', 'per_page' => '2']
+        ));
+        $expect($list['status'] === 200 && $list['body']['meta']['total'] === 3);
+        $expect(count($list['body']['data']['users']) === 2);
+        $expect($list['body']['data']['users'][0]['role'] === 'author');
+        $expect(!array_key_exists('password_hash', $list['body']['data']['users'][0]));
+
+        $roleEscalation = $controller->handle(Request::fromValues(
+            'POST', '/admin/users', '192.0.2.53', ['X-CSRF-Token' => $adminToken],
+            ['username' => 'cannot-admin', 'display_name' => 'No Admin', 'password' => 'distinct-password-123', 'role' => 'admin']
+        ));
+        $expect($roleEscalation['status'] === 422);
+        $created = $controller->handle(Request::fromValues(
+            'POST', '/admin/users', '192.0.2.53', ['X-CSRF-Token' => $adminToken],
+            ['username' => '  New   Author ', 'display_name' => 'New Author', 'password' => 'first-password-123']
+        ));
+        $expect($created['status'] === 201);
+        $createdUser = $created['body']['data']['user'];
+        $expect($createdUser['username'] === 'new author' && $createdUser['role'] === 'author');
+        $expect(!array_key_exists('password_hash', $createdUser) && !str_contains(json_encode($created), 'first-password-123'));
+        $duplicate = $controller->handle(Request::fromValues(
+            'POST', '/admin/users', '192.0.2.53', ['X-CSRF-Token' => $adminToken],
+            ['username' => 'NEW AUTHOR', 'display_name' => 'Duplicate', 'password' => 'another-password-123']
+        ));
+        $expect($duplicate['status'] === 409);
+        $createdId = (int) $createdUser['id'];
+
+        $adminSessionId = session_id();
+        session_write_close();
+        session_id('author-account-session-' . bin2hex(random_bytes(8)));
+        $sessions->start();
+        $createdAccount = $accountRepo->findById($createdId);
+        if ($createdAccount === null) {
+            throw new RuntimeException('The provisioned author account could not be loaded.');
+        }
+        $sessions->establish($createdAccount);
+        $authorSessionId = session_id();
+        session_write_close();
+
+        session_id($adminSessionId);
+        $sessions->start();
+        $reset = $controller->handle(Request::fromValues(
+            'PATCH', '/admin/users/' . $createdId, '192.0.2.53', ['X-CSRF-Token' => $adminToken],
+            ['password' => 'rotated-author-password-456']
+        ));
+        $expect($reset['status'] === 200);
+        $stored = $pdo->prepare('SELECT password_hash, auth_version FROM users WHERE id = :id');
+        $stored->execute(['id' => $createdId]);
+        $credential = $stored->fetch(PDO::FETCH_ASSOC);
+        $expect(password_verify('rotated-author-password-456', $credential['password_hash']));
+        $expect((int) $credential['auth_version'] === 2);
+        $expect(!password_verify('first-password-123', $credential['password_hash']));
+        session_write_close();
+
+        session_id($authorSessionId);
+        $sessions->start();
+        $expect((new AuthGuard($sessions, $accountRepo))->currentAccount() === null);
+        session_write_close();
+
+        session_id($adminSessionId);
+        $sessions->start();
+        $deactivated = $controller->handle(Request::fromValues(
+            'POST', '/admin/users/' . $createdId . '/deactivate', '192.0.2.53', ['X-CSRF-Token' => $adminToken]
+        ));
+        $expect($deactivated['status'] === 200 && $deactivated['body']['data']['user']['status'] === 'inactive');
+        $versionAfterDeactivate = (int) $pdo->query('SELECT auth_version FROM users WHERE id = ' . $createdId)->fetchColumn();
+        $expect($versionAfterDeactivate === 3);
+        $reactivated = $controller->handle(Request::fromValues(
+            'POST', '/admin/users/' . $createdId . '/activate', '192.0.2.53', ['X-CSRF-Token' => $adminToken]
+        ));
+        $expect($reactivated['status'] === 200 && $reactivated['body']['data']['user']['status'] === 'active');
+        $adminTarget = $controller->handle(Request::fromValues(
+            'POST', '/admin/users/' . $admin->id . '/deactivate', '192.0.2.53', ['X-CSRF-Token' => $adminToken]
+        ));
+        $expect($adminTarget['status'] === 404);
+        $auditMetadata = $pdo->query("SELECT metadata FROM audit_logs WHERE entity_type = 'user'")->fetchAll(PDO::FETCH_COLUMN);
+        $expect(!str_contains(json_encode($auditMetadata), 'rotated-author-password-456'));
+    });
+});
+
+$run('admin post API lists all posts, derives system counts, and enforces CSRF on moderation actions', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $pdo = $createPostDatabase();
+        $users = new UserRepository($pdo);
+        $admin = $users->findByIdentifier('admin one');
+        $authorOne = $users->findByIdentifier('author one');
+        $authorTwo = $users->findByIdentifier('author two');
+        if ($admin === null || $authorOne === null || $authorTwo === null) {
+            throw new RuntimeException('Admin post-management fixtures were not created.');
+        }
+        $category = (new CategoryRepository($pdo))->create('Moderation', null, $admin->id);
+        $repository = new PostRepository($pdo);
+        $first = $repository->createDraft($authorOne->id, [
+            'title' => 'Author One Draft', 'content' => 'Draft article body.', 'category_id' => $category['id'],
+        ]);
+        $second = $repository->createDraft($authorTwo->id, [
+            'title' => 'Author Two Article', 'content' => 'Published article body.', 'category_id' => $category['id'],
+        ]);
+        $repository->publishForAuthor($second['id'], $authorTwo->id);
+
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $controller = new AdminPostController($repository, new AuthGuard($sessions, $users), $sessions);
+        $unauthenticated = $controller->handle(Request::fromValues('GET', '/admin/posts', '192.0.2.54'));
+        $expect($unauthenticated['status'] === 401);
+
+        $sessions->establish($authorOne);
+        $authorList = $controller->handle(Request::fromValues('GET', '/admin/posts', '192.0.2.54'));
+        $expect($authorList['status'] === 403);
+        $authorAction = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts/' . $second['id'] . '/unpublish', '192.0.2.54', ['X-CSRF-Token' => $sessions->csrfToken()]
+        ));
+        $expect($authorAction['status'] === 403);
+
+        $sessions->establish($admin);
+        $adminToken = $sessions->csrfToken();
+        $missingCsrf = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts/' . $first['id'] . '/publish', '192.0.2.54'
+        ));
+        $expect($missingCsrf['status'] === 403);
+        $filtered = $controller->handle(Request::fromValues(
+            'GET', '/admin/posts', '192.0.2.54', [], [], ['status' => 'published', 'page' => '1', 'per_page' => '1']
+        ));
+        $expect($filtered['status'] === 200 && $filtered['body']['meta']['total'] === 1);
+        $expect($filtered['body']['meta']['dashboard_counts'] === ['total' => 2, 'draft' => 1, 'published' => 1]);
+        $expect($filtered['body']['data']['posts'][0]['author_id'] === $authorTwo->id);
+
+        $detail = $controller->handle(Request::fromValues('GET', '/admin/posts/' . $first['id'], '192.0.2.54'));
+        $expect($detail['status'] === 200 && $detail['body']['data']['post']['author_id'] === $authorOne->id);
+        $pdo->prepare(
+            "UPDATE posts SET summary = 'Old moderation summary', summary_status = 'ready', summary_source_hash = :hash, summary_generated_at = :generated WHERE id = :id"
+        )->execute(['hash' => str_repeat('b', 64), 'generated' => gmdate('Y-m-d H:i:s'), 'id' => $second['id']]);
+        $updated = $controller->handle(Request::fromValues(
+            'PATCH', '/admin/posts/' . $second['id'], '192.0.2.54', ['X-CSRF-Token' => $adminToken], ['title' => 'Moderated Title']
+        ));
+        $expect($updated['status'] === 200 && $updated['body']['data']['post']['author_id'] === $authorTwo->id);
+        $expect($updated['body']['data']['post']['summary_status'] === 'stale');
+        $reassignment = $controller->handle(Request::fromValues(
+            'PATCH', '/admin/posts/' . $second['id'], '192.0.2.54', ['X-CSRF-Token' => $adminToken], ['author_id' => $authorOne->id]
+        ));
+        $expect($reassignment['status'] === 422);
+
+        $published = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts/' . $first['id'] . '/publish', '192.0.2.54', ['X-CSRF-Token' => $adminToken]
+        ));
+        $expect($published['status'] === 200 && $published['body']['data']['post']['status'] === 'published');
+        $unpublished = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts/' . $second['id'] . '/unpublish', '192.0.2.54', ['X-CSRF-Token' => $adminToken]
+        ));
+        $expect($unpublished['status'] === 200 && $unpublished['body']['data']['post']['status'] === 'draft');
+        $confirmed = $controller->handle(Request::fromValues(
+            'DELETE', '/admin/posts/' . $first['id'], '192.0.2.54', ['X-CSRF-Token' => $adminToken], ['confirm' => true]
+        ));
+        $expect($confirmed['status'] === 200 && $repository->findForAdmin($first['id']) === null);
+        $audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_type = 'post'");
+        $audit->execute(['actor' => $admin->id]);
+        $expect((int) $audit->fetchColumn() >= 4);
+    });
+});
+
 $exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $validConfiguration, $expect): void {
     $provisioner = new AdminProvisioner($pdo);
     $provisioner->provision('synthetic-shubham-password', 'synthetic-sounak-password');
@@ -1312,6 +1502,76 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $adminId]);
                     $pdo->prepare('DELETE FROM users WHERE username = :username')->execute(['username' => 'sounak sikdar']);
                 }
+            }
+        });
+
+        $run('MySQL author account repository hashes credentials, audits changes and revokes sessions', static function () use ($pdo, $expect): void {
+            $token = bin2hex(random_bytes(6));
+            $authorId = null;
+            $adminId = null;
+            $authorUsername = 'mysql-author-account-' . $token;
+            try {
+                (new AdminProvisioner($pdo))->provision('mysql-author-admin-pass-' . $token, 'mysql-author-admin-two-pass-' . $token);
+                $admin = (new UserRepository($pdo))->findByIdentifier('shubham banerjee');
+                if ($admin === null) {
+                    throw new RuntimeException('The MySQL author-management admin was not created.');
+                }
+                $adminId = $admin->id;
+                $repository = new AdminUserRepository($pdo);
+                $initialPassword = 'mysql-author-initial-' . $token;
+                $created = $repository->createAuthor(
+                    $authorUsername,
+                    'Synthetic Author ' . $token,
+                    password_hash($initialPassword, PASSWORD_DEFAULT),
+                    $adminId
+                );
+                $authorId = $created['id'];
+                $expect($created['role'] === 'author' && $created['status'] === 'active');
+                $expect(!array_key_exists('password_hash', $created), 'Author responses must not expose password hashes.');
+                $stored = $pdo->prepare('SELECT password_hash, auth_version FROM users WHERE id = :id');
+                $stored->execute(['id' => $authorId]);
+                $credentials = $stored->fetch(PDO::FETCH_ASSOC);
+                $expect(is_array($credentials) && password_verify($initialPassword, (string) $credentials['password_hash']));
+                $expect((int) $credentials['auth_version'] === 1);
+                $expect($repository->findAuthor($adminId) === null, 'Author management must not treat administrator accounts as authors.');
+
+                $replacementPassword = 'mysql-author-replaced-' . $token;
+                $updated = $repository->updateAuthor($authorId, [
+                    'display_name' => 'Updated Synthetic Author',
+                    'password_hash' => password_hash($replacementPassword, PASSWORD_DEFAULT),
+                ], $adminId);
+                $expect($updated['display_name'] === 'Updated Synthetic Author');
+                $stored->execute(['id' => $authorId]);
+                $credentials = $stored->fetch(PDO::FETCH_ASSOC);
+                $expect(is_array($credentials) && password_verify($replacementPassword, (string) $credentials['password_hash']));
+                $expect((int) $credentials['auth_version'] === 2, 'Password changes must revoke existing account sessions.');
+
+                $inactive = $repository->setActive($authorId, false, $adminId);
+                $expect($inactive['status'] === 'inactive');
+                $version = $pdo->prepare('SELECT auth_version FROM users WHERE id = :id');
+                $version->execute(['id' => $authorId]);
+                $expect((int) $version->fetchColumn() === 3, 'Deactivation must revoke existing account sessions.');
+                $active = $repository->setActive($authorId, true, $adminId);
+                $expect($active['status'] === 'active');
+                $version->execute(['id' => $authorId]);
+                $expect((int) $version->fetchColumn() === 4, 'Reactivation must also invalidate sessions created before the status change.');
+
+                $listed = $repository->listAuthors(1, 10);
+                $expect($listed['total'] === 1 && count($listed['users']) === 1);
+                $expect(!array_key_exists('password_hash', $listed['users'][0]));
+                $audit = $pdo->prepare(
+                    "SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_id = :entity AND action IN ('user.created', 'user.password_reset', 'user.deactivated', 'user.activated')"
+                );
+                $audit->execute(['actor' => $adminId, 'entity' => $authorId]);
+                $expect((int) $audit->fetchColumn() === 4, 'Every author-account state change must be audited.');
+            } finally {
+                if ($authorId !== null) {
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $authorId]);
+                }
+                if ($adminId !== null) {
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $adminId]);
+                }
+                $pdo->prepare('DELETE FROM users WHERE username = :username')->execute(['username' => 'sounak sikdar']);
             }
         });
 

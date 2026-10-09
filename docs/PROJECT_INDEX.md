@@ -4,9 +4,9 @@ Infinity Blog is a PHP and MySQL blog content management system. Authors manage 
 
 ## Current implementation and verification
 
-The repository contains the Phase 1 configuration, PDO, and versioned migration foundation; authentication and authorization; category management; author-owned post create/update/publish/unpublish/confirmed-delete operations; public published-post reads with search and pagination; and database-derived author post counts. Admin post/account management, admin dashboards, audit queries, AI provider integration, and frontend pages remain unimplemented. Oracle MySQL integration remains unverified.
+The repository contains the Phase 1 configuration, PDO, and versioned migration foundation; authentication and authorization; category management; author-owned post lifecycle; public published-post reads with search and pagination; author-scoped and system-wide database-derived post counts; admin post management; and admin author-account creation, updates, activation, and deactivation. Audit queries, AI provider integration, and frontend pages remain unimplemented. Oracle MySQL integration remains unverified.
 
-The latest local checks report 24 tests passed and 0 failed, PHP lint passed for 38 files including the root autoloader, and `git diff --check` passed. Oracle MySQL integration is still unverified. The available XAMPP database binary is MariaDB 10.4.32, local ports 3306 and 33060 did not accept connections, and the MySQL test environment was not configured. Category, author-post, and public-post behavior has SQLite coverage; the Oracle MySQL integration gate remains open.
+The latest local checks report 26 tests passed and 0 failed, PHP lint passed for 43 files including the root autoloader, and `git diff --check` passed. Oracle MySQL integration is still unverified. The available XAMPP database binary is MariaDB 10.4.32, local ports 3306 and 33060 did not accept connections, and the MySQL test environment was not configured. Category, author/admin post, public-post, and admin author-management behavior has SQLite coverage; the Oracle MySQL integration gate remains open.
 
 ## Recommended reading order
 

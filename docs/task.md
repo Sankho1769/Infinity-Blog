@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after trusted credential rotation. Admin-only category management, author-owned post lifecycle, public published-post reads, and author-scoped counts are implemented with SQLite coverage and MySQL integration tests that have not yet run. Current checks for this checkpoint: 24 passed, 0 failed; PHP lint passed for 38 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Admin post/account management, system-wide dashboards, audit query, and AI summarization remain later work.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, author/admin post counts, admin post management, and author-account administration are implemented with SQLite coverage and MySQL integration tests that have not yet run. Current checks for this checkpoint: 26 passed, 0 failed; PHP lint passed for 43 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Audit-log query, AI summarization, and frontend pages remain later work.
 
 ---
 
@@ -100,14 +100,12 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-064** Add pagination with a server-enforced maximum page size of 50.
 - [x] **T-065** Verify drafts/unpublished posts are excluded and stale summaries are not shown as current.
 
-## Phase 7 - Admin panel
-
-- [ ] **T-070** Implement system-wide admin dashboard post counts from database queries; show optional user/category totals where existing admin-list data supports them.
-- [ ] **T-071** Implement admin list/manage all posts.
-- [ ] **T-072** Implement user listing and safe account activation/deactivation.
-- [ ] **T-073** Restrict role changes to explicitly authorized administrative operations.
+- [x] **T-070** Implement system-wide database-derived post counts in the admin post-list metadata and database-derived user/category list totals.
+- [x] **T-071** Implement admin list/detail/edit/publish/unpublish/confirmed-delete operations across all posts.
+- [x] **T-072** Implement author-account listing, secure creation/password reset, and activation/deactivation with session revocation.
+- [x] **T-073** Reject role changes in account routes; only trusted administrator provisioning assigns the admin role.
 - [ ] **T-074** Implement audit-log query with pagination and safe fields only.
-- [ ] **T-075** Test every admin route using author and unauthenticated identities.
+- [x] **T-075** Exercise admin routes as unauthenticated users, authors, and admins; mutation routes also verify CSRF.
 
 ## Phase 8 - AI article summarization
 
@@ -142,7 +140,7 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
 - [x] **T-106** Test category validation, deactivation, audit events, and referential deletion rules with SQLite; MySQL-specific tests are present but not yet run.
 - [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
-- [-] **T-108** PHP lint passed for 38 files, the available test suite passed (24/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
+- [-] **T-108** PHP lint passed for 43 files, the available test suite passed (26/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation

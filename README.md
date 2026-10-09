@@ -4,7 +4,7 @@ Infinity Blog is a PHP and MySQL content management system for authors, administ
 
 ## Current status
 
-The repository contains the database foundation, authentication, admin-only category management, author-owned post lifecycle, and public published-post reads. Admin post/account management, AI summarization, and frontend features remain unimplemented. Local SQLite/unit tests cover current routes; Oracle MySQL integration remains unverified until the project is tested against MySQL 8.0.16 or newer.
+The repository contains the database foundation, authentication, admin-only category management, author-owned post lifecycle, public published-post reads, admin post management, and author-account administration. AI summarization and frontend features remain unimplemented. Local SQLite/unit tests cover current routes; Oracle MySQL integration remains unverified until the project is tested against MySQL 8.0.16 or newer.
 
 ## Start here
 

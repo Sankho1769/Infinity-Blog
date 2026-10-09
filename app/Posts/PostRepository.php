@@ -181,9 +181,59 @@ final class PostRepository
      */
     public function updateForAuthor(int $postId, int $authorId, array $changes): array
     {
+        return $this->updateAuthorized($postId, $authorId, $authorId, $changes);
+    }
+
+    /** @param array{title?: string, content?: string, category_id?: ?int} $changes
+     *  @return array<string, mixed>
+     */
+    public function updateForAdmin(int $postId, int $adminId, array $changes): array
+    {
+        return $this->updateAuthorized($postId, null, $adminId, $changes);
+    }
+
+    /** @return array<string, mixed> */
+    public function publishForAuthor(int $postId, int $authorId): array
+    {
+        return $this->changePublication($postId, $authorId, $authorId, true);
+    }
+
+    /** @return array<string, mixed> */
+    public function publishForAdmin(int $postId, int $adminId): array
+    {
+        return $this->changePublication($postId, null, $adminId, true);
+    }
+
+    /** @return array<string, mixed> */
+    public function unpublishForAuthor(int $postId, int $authorId): array
+    {
+        return $this->changePublication($postId, $authorId, $authorId, false);
+    }
+
+    /** @return array<string, mixed> */
+    public function unpublishForAdmin(int $postId, int $adminId): array
+    {
+        return $this->changePublication($postId, null, $adminId, false);
+    }
+
+    public function deleteForAuthor(int $postId, int $authorId): void
+    {
+        $this->deleteAuthorized($postId, $authorId, $authorId);
+    }
+
+    public function deleteForAdmin(int $postId, int $adminId): void
+    {
+        $this->deleteAuthorized($postId, null, $adminId);
+    }
+
+    /** @param array{title?: string, content?: string, category_id?: ?int} $changes
+     *  @return array<string, mixed>
+     */
+    private function updateAuthorized(int $postId, ?int $ownerId, int $actorId, array $changes): array
+    {
         $this->begin();
         try {
-            $current = $this->find($postId, $authorId, true);
+            $current = $this->find($postId, $ownerId, true);
             if ($current === null) {
                 throw new PostNotFoundException();
             }
@@ -196,9 +246,11 @@ final class PostRepository
             if ($current['status'] === 'published' && $nextCategoryId === null) {
                 throw new PostValidationException(['category_id' => 'Published posts require a category.']);
             }
-
             $sets = [];
-            $parameters = ['id' => $postId, 'author_id' => $authorId, 'updated_at' => gmdate('Y-m-d H:i:s')];
+            $parameters = ['id' => $postId, 'updated_at' => gmdate('Y-m-d H:i:s')];
+            if ($ownerId !== null) {
+                $parameters['author_id'] = $ownerId;
+            }
             foreach (['title', 'content', 'category_id'] as $field) {
                 if (array_key_exists($field, $changes)) {
                     $sets[] = $field . ' = :' . $field;
@@ -209,12 +261,14 @@ final class PostRepository
                 $sets[] = "summary_status = CASE WHEN summary IS NOT NULL THEN 'stale' ELSE summary_status END";
             }
             $sets[] = 'updated_at = :updated_at';
-            $update = $this->pdo->prepare(
-                'UPDATE posts SET ' . implode(', ', $sets) . ' WHERE id = :id AND author_id = :author_id'
-            );
+            $updateSql = 'UPDATE posts SET ' . implode(', ', $sets) . ' WHERE id = :id';
+            if ($ownerId !== null) {
+                $updateSql .= ' AND author_id = :author_id';
+            }
+            $update = $this->pdo->prepare($updateSql);
             $update->execute($parameters);
-            $this->writeAudit('post.updated', $postId, $authorId, ['fields' => array_keys($changes)]);
-            $saved = $this->find($postId, $authorId, false);
+            $this->writeAudit('post.updated', $postId, $actorId, ['fields' => array_keys($changes)]);
+            $saved = $this->find($postId, $ownerId, false);
             if ($saved === null) {
                 throw new PostNotFoundException();
             }
@@ -228,67 +282,47 @@ final class PostRepository
     }
 
     /** @return array<string, mixed> */
-    public function publishForAuthor(int $postId, int $authorId): array
+    private function changePublication(int $postId, ?int $ownerId, int $actorId, bool $publish): array
     {
         $this->begin();
         try {
-            $current = $this->find($postId, $authorId, true);
+            $current = $this->find($postId, $ownerId, true);
             if ($current === null) {
-                throw new PostNotFoundException();
-            }
-            if (trim((string) $current['title']) === '' || trim((string) $current['content']) === '') {
-                throw new PostValidationException(['post' => 'A title and article body are required before publishing.']);
-            }
-            if ($current['category_id'] === null) {
-                throw new PostValidationException(['category_id' => 'Choose an active category before publishing.']);
-            }
-            $this->requireActiveCategory((int) $current['category_id'], true);
-            $publishedAt = gmdate('Y-m-d H:i:s');
-            $update = $this->pdo->prepare(
-                "UPDATE posts SET status = 'published', published_at = :published_at, updated_at = :updated_at " .
-                'WHERE id = :id AND author_id = :author_id'
-            );
-            $update->execute([
-                'published_at' => $publishedAt,
-                'updated_at' => $publishedAt,
-                'id' => $postId,
-                'author_id' => $authorId,
-            ]);
-            $this->writeAudit('post.published', $postId, $authorId, []);
-            $saved = $this->find($postId, $authorId, false);
-            if ($saved === null) {
-                throw new PostNotFoundException();
-            }
-            $this->pdo->commit();
-
-            return $saved;
-        } catch (Throwable $exception) {
-            $this->rollback();
-            throw $exception;
-        }
-    }
-
-    /** @return array<string, mixed> */
-    public function unpublishForAuthor(int $postId, int $authorId): array
-    {
-        $this->begin();
-        try {
-            if ($this->find($postId, $authorId, true) === null) {
                 throw new PostNotFoundException();
             }
             $updatedAt = gmdate('Y-m-d H:i:s');
-            $update = $this->pdo->prepare(
-                "UPDATE posts SET status = 'draft', published_at = NULL, updated_at = :updated_at " .
-                'WHERE id = :id AND author_id = :author_id'
-            );
-            $update->execute(['updated_at' => $updatedAt, 'id' => $postId, 'author_id' => $authorId]);
-            $this->writeAudit('post.unpublished', $postId, $authorId, []);
-            $saved = $this->find($postId, $authorId, false);
+            if ($publish) {
+                if (trim((string) $current['title']) === '' || trim((string) $current['content']) === '') {
+                    throw new PostValidationException(['post' => 'A title and article body are required before publishing.']);
+                }
+                if ($current['category_id'] === null) {
+                    throw new PostValidationException(['category_id' => 'Choose an active category before publishing.']);
+                }
+                $this->requireActiveCategory((int) $current['category_id'], true);
+                $updateSql = "UPDATE posts SET status = 'published', published_at = :published_at, updated_at = :updated_at WHERE id = :id";
+                $parameters = ['published_at' => $updatedAt, 'updated_at' => $updatedAt, 'id' => $postId];
+                if ($ownerId !== null) {
+                    $updateSql .= ' AND author_id = :author_id';
+                    $parameters['author_id'] = $ownerId;
+                }
+                $action = 'post.published';
+            } else {
+                $updateSql = "UPDATE posts SET status = 'draft', published_at = NULL, updated_at = :updated_at WHERE id = :id";
+                $parameters = ['updated_at' => $updatedAt, 'id' => $postId];
+                if ($ownerId !== null) {
+                    $updateSql .= ' AND author_id = :author_id';
+                    $parameters['author_id'] = $ownerId;
+                }
+                $action = 'post.unpublished';
+            }
+            $update = $this->pdo->prepare($updateSql);
+            $update->execute($parameters);
+            $this->writeAudit($action, $postId, $actorId, []);
+            $saved = $this->find($postId, $ownerId, false);
             if ($saved === null) {
                 throw new PostNotFoundException();
             }
             $this->pdo->commit();
-
             return $saved;
         } catch (Throwable $exception) {
             $this->rollback();
@@ -296,17 +330,23 @@ final class PostRepository
         }
     }
 
-    public function deleteForAuthor(int $postId, int $authorId): void
+    private function deleteAuthorized(int $postId, ?int $ownerId, int $actorId): void
     {
         $this->begin();
         try {
-            $current = $this->find($postId, $authorId, true);
+            $current = $this->find($postId, $ownerId, true);
             if ($current === null) {
                 throw new PostNotFoundException();
             }
-            $delete = $this->pdo->prepare('DELETE FROM posts WHERE id = :id AND author_id = :author_id');
-            $delete->execute(['id' => $postId, 'author_id' => $authorId]);
-            $this->writeAudit('post.deleted', $postId, $authorId, ['status' => $current['status']]);
+            $sql = 'DELETE FROM posts WHERE id = :id';
+            $parameters = ['id' => $postId];
+            if ($ownerId !== null) {
+                $sql .= ' AND author_id = :author_id';
+                $parameters['author_id'] = $ownerId;
+            }
+            $delete = $this->pdo->prepare($sql);
+            $delete->execute($parameters);
+            $this->writeAudit('post.deleted', $postId, $actorId, ['status' => $current['status']]);
             $this->pdo->commit();
         } catch (Throwable $exception) {
             $this->rollback();
