@@ -216,11 +216,12 @@ $run('migration rollback requires explicit confirmation before any database chan
 });
 
 $run('API error envelope includes a safe request ID and hides internal details', static function () use ($expect): void {
-    $payload = ApiErrorResponder::internalFailure("bad\r\nheader");
+    $internalMarker = "private-database-error-marker-that-must-not-leak-20261009\r\nheader";
+    $payload = ApiErrorResponder::internalFailure($internalMarker);
     $expect($payload['error']['code'] === 'INTERNAL_ERROR');
     $expect($payload['error']['message'] === 'The request could not be completed.');
     $expect(preg_match('/^[a-f0-9]{32}$/', $payload['request_id']) === 1);
-    $expect(!str_contains(json_encode($payload), 'bad'));
+    $expect(!str_contains(json_encode($payload), $internalMarker));
 
     $validation = ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', ['title' => 'Title is required.'], 'req-12345678');
     $expect($validation['request_id'] === 'req-12345678');
