@@ -106,7 +106,7 @@ Do not declare the application ready for public deployment until the security ch
 
 Version 1.0 scope decisions: category management remains admin-only; category slugs are generated server-side and protected by a unique database constraint; post deletion is permanent and requires explicit confirmation. View tracking, tags, featured-image uploads, public author profiles, remember-me, password recovery, and trash/restore are deferred. Map category removal to admin-only deactivation, do not expose account data through a public author page, and do not display view counts. Authors must never access another author's private posts. Public requests return published posts only.
 
-AI summarization is in scope only through an authenticated and authorized backend operation. The backend loads canonical article text after permission checks and stores validated summaries in MySQL. The provider adapter receives bounded text and fixed instructions without database credentials, tools, or other application privileges; provider failures must not interrupt post creation, editing, or publication. The page-by-page risk and permission mapping is in `docs/WIREFRAME_BACKEND_MAPPING.md`.
+AI summarization is in scope only through an authenticated and authorized backend operation. The backend loads canonical article text after permission checks and stores validated summaries in MySQL. The provider adapter receives bounded text and fixed instructions without database credentials, tools, or other application privileges; provider failures must not interrupt post creation, editing, or publication. The page-by-page risk and permission mapping is in `WIREFRAME_BACKEND_MAPPING.md`.
 
 ## 9. Phase 2 implementation status and limits
 

@@ -4,9 +4,9 @@
 
 **Reference:** [Structural wireframe](wireframes/infinity-blog-flow.jpeg)
 
-**API contract:** [`API_SPEC.md`](../API_SPEC.md)
+**API contract:** [`API_SPEC.md`](API_SPEC.md)
 
-**Database contract:** [`DATABASE_DESIGN.md`](../DATABASE_DESIGN.md)
+**Database contract:** [`DATABASE_DESIGN.md`](DATABASE_DESIGN.md)
 
 ## Implementation status
 

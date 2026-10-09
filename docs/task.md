@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Phase 2 authentication code includes database-backed session revocation after trusted credential rotation. The additive auth-version migration and isolated rotation/revocation tests are implemented. Current checks: 20 passed, 0 failed; PHP lint passed for 28 files; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
+Phase 2 authentication code includes database-backed session revocation after trusted credential rotation. The additive auth-version migration and isolated rotation/revocation tests are implemented. Current checks: 20 passed, 0 failed; PHP lint passed for 29 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
 
 ---
 
@@ -142,7 +142,7 @@ Phase 2 authentication code includes database-backed session revocation after tr
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
 - [ ] **T-106** Test category deactivation and referential integrity.
 - [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
-- [-] **T-108** PHP lint passed for 28 files, the available test suite passed (20/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
+- [-] **T-108** PHP lint passed for 29 files, the available test suite passed (20/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation
@@ -156,8 +156,8 @@ Phase 2 authentication code includes database-backed session revocation after tr
 
 ## Phase 12 - Wireframe and frontend contract follow-up
 
-- [x] **T-120** Preserve the supplied structural wireframe at `docs/wireframes/infinity-blog-flow.jpeg`.
-- [x] **T-121** Map all wireframe pages to planned API operations, permissions, schema data, validation/errors, and implementation status in `docs/WIREFRAME_BACKEND_MAPPING.md`.
+- [x] **T-120** Preserve the supplied structural wireframe at `wireframes/infinity-blog-flow.jpeg`.
+- [x] **T-121** Map all wireframe pages to planned API operations, permissions, schema data, validation/errors, and implementation status in `WIREFRAME_BACKEND_MAPPING.md`.
 - [ ] **T-122** Create a separate Admin Panel wireframe for dashboard, system-wide posts, user management, category management, and audit activity.
 - [ ] **T-123** Add the summary-generation/regeneration controls, lifecycle states, and safe failure states to a future wireframe.
 - [x] **T-124** Finalize and document Version 1.0 dashboard-count, slug, AI-summary, deletion, and deferred-feature decisions. Counts use existing post-list response metadata; that scope decision introduced no endpoint or schema change.
