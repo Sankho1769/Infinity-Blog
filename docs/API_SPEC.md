@@ -3,7 +3,7 @@
 ## Infinity Blog - REST JSON Contract
 
 **Version:** `/api/v1`  
-**Status:** Authentication, category management, author post lifecycle, public post reads, admin post management, and admin author-account management are implemented. Audit-log query and summary generation remain planned and are not exposed by the current router.
+**Status:** Authentication, category management, author post lifecycle, public post reads, admin post management, admin author-account management, and safe admin audit-log queries are implemented. AI summary generation remains planned and is not yet exposed by the current router.
 
 ---
 
@@ -205,7 +205,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 
 ## 8. Audit endpoints
 
-- `GET /admin/audit-logs` - admin-only, paginated safe event list. Filters may include actor, action, entity type, and date range. Do not return secrets, password hashes, full provider payloads, or full article bodies.
+- `GET /admin/audit-logs` - **Implemented.** Admin-only paginated event list. Accepts `actor_id`, `action`, `entity_type`, inclusive `from`/`to` calendar dates (`YYYY-MM-DD`), `page`, and `per_page` (default 20, maximum 50). Returns only event ID, actor ID, action, entity type, entity ID, and timestamp. Audit metadata is intentionally omitted from API responses.
 
 ## 9. HTTP status expectations
 
@@ -226,9 +226,9 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 
 ## 10. API security checklist
 
-- [x] Implemented authentication and author routes check active server-side sessions; future protected routes remain to be implemented.
+- [x] Implemented protected routes check active server-side sessions; user identity and role come from the trusted database record.
 - [x] Implemented identity/role derives from the MySQL user record; author post queries enforce owner scope.
-- [x] CSRF is checked for implemented login/logout, category mutations, and author post mutations.
+- [x] CSRF is checked for login/logout and all implemented category, author-post, admin-post, and admin-user mutations.
 - [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
 - [x] Admin post and author-account operations require the admin role; state changes require CSRF.
 - [ ] CORS is restricted to known origins if required.
@@ -240,5 +240,6 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [ ] Summary requests are rate-limited and never run on public views.
 - [x] Author post lists/counts are owner-scoped; admin post lists/counts span database records.
 - [x] Admin author management never returns password hashes, only creates `author` roles, and increments `auth_version` on password/status changes.
+- [x] Admin audit-log reads require the admin role, use parameterized filters, and omit metadata from responses.
 - [x] Category slugs are generated server-side and protected by the database unique constraint.
 - [ ] The provider adapter has no database credentials or application tools/privileges.

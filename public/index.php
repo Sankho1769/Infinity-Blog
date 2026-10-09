@@ -7,10 +7,12 @@ use InfinityBlog\Auth\DatabaseLoginAttemptLimiter;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
 use InfinityBlog\Categories\CategoryRepository;
+use InfinityBlog\Audit\AuditLogRepository;
 use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AdminPostController;
+use InfinityBlog\Http\AdminAuditLogController;
 use InfinityBlog\Http\AdminUserController;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
@@ -44,6 +46,8 @@ try {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/posts' || str_starts_with($request->path, '/admin/posts/')) {
         $controller = new AdminPostController(new PostRepository($pdo), $guard, $sessions);
+    } elseif ($request->path === '/admin/audit-logs') {
+        $controller = new AdminAuditLogController(new AuditLogRepository($pdo), $guard);
     } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
         $controller = new PostController(new PostRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {

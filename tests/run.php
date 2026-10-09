@@ -11,6 +11,7 @@ use InfinityBlog\Auth\LoginAttemptLimiter;
 use InfinityBlog\Auth\LoginResult;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Audit\AuditLogRepository;
 use InfinityBlog\Categories\CategoryConflictException;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Database\ConnectionFactory;
@@ -21,6 +22,7 @@ use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\AdminUserController;
 use InfinityBlog\Http\AdminPostController;
+use InfinityBlog\Http\AdminAuditLogController;
 use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
@@ -876,6 +878,66 @@ $run('admin post API lists all posts, derives system counts, and enforces CSRF o
     });
 });
 
+$run('admin audit API enforces the admin boundary, filters safely, and omits audit metadata', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $pdo = $createPostDatabase();
+        $users = new UserRepository($pdo);
+        $admin = $users->findByIdentifier('admin one');
+        $author = $users->findByIdentifier('author one');
+        if ($admin === null || $author === null) {
+            throw new RuntimeException('Audit API fixtures were not created.');
+        }
+        $insert = $pdo->prepare(
+            'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+            'VALUES (:actor, :action, :entity_type, :entity_id, :metadata, :created_at)'
+        );
+        foreach ([
+            [$admin->id, 'post.published', 'post', 7, '{"article_body":"private-body","api_key":"private-secret"}', '2026-10-01 12:00:00'],
+            [$author->id, 'post.published', 'post', 8, '{"content":"another-private-body"}', '2026-10-02 13:00:00'],
+            [$admin->id, 'user.updated', 'user', $author->id, '{"fields":["display_name"]}', '2026-10-03 13:00:00'],
+        ] as [$actorId, $action, $entityType, $entityId, $metadata, $createdAt]) {
+            $insert->execute([
+                'actor' => $actorId,
+                'action' => $action,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
+                'metadata' => $metadata,
+                'created_at' => $createdAt,
+            ]);
+        }
+
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $controller = new AdminAuditLogController(new AuditLogRepository($pdo), new AuthGuard($sessions, $users));
+        $anonymous = $controller->handle(Request::fromValues('GET', '/admin/audit-logs', '192.0.2.59'));
+        $expect($anonymous['status'] === 401);
+
+        $sessions->establish($author);
+        $authorRead = $controller->handle(Request::fromValues('GET', '/admin/audit-logs', '192.0.2.59'));
+        $expect($authorRead['status'] === 403);
+
+        $sessions->establish($admin);
+        $filtered = $controller->handle(Request::fromValues(
+            'GET', '/admin/audit-logs', '192.0.2.59', [], [],
+            ['action' => 'post.published', 'from' => '2026-10-01', 'to' => '2026-10-02', 'page' => '1', 'per_page' => '1']
+        ));
+        $expect($filtered['status'] === 200 && $filtered['body']['meta']['total'] === 2);
+        $expect($filtered['body']['meta']['total_pages'] === 2 && count($filtered['body']['data']['events']) === 1);
+        $expect($filtered['body']['data']['events'][0]['actor_user_id'] === $author->id);
+        $expect(!array_key_exists('metadata', $filtered['body']['data']['events'][0]));
+        $expect(!str_contains(json_encode($filtered), 'private-body') && !str_contains(json_encode($filtered), 'private-secret'));
+
+        $invalid = $controller->handle(Request::fromValues(
+            'GET', '/admin/audit-logs', '192.0.2.59', [], [], ['to' => '2026-02-30']
+        ));
+        $expect($invalid['status'] === 422);
+        $reverseRange = $controller->handle(Request::fromValues(
+            'GET', '/admin/audit-logs', '192.0.2.59', [], [], ['from' => '2026-10-03', 'to' => '2026-10-01']
+        ));
+        $expect($reverseRange['status'] === 422);
+    });
+});
+
 $exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $validConfiguration, $expect): void {
     $provisioner = new AdminProvisioner($pdo);
     $provisioner->provision('synthetic-shubham-password', 'synthetic-sounak-password');
@@ -1564,6 +1626,13 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 );
                 $audit->execute(['actor' => $adminId, 'entity' => $authorId]);
                 $expect((int) $audit->fetchColumn() === 4, 'Every author-account state change must be audited.');
+                $auditEvents = (new AuditLogRepository($pdo))->listEvents(
+                    ['actor_id' => $adminId, 'action' => 'user.created'],
+                    1,
+                    10
+                );
+                $expect($auditEvents['total'] === 1 && count($auditEvents['events']) === 1);
+                $expect(!array_key_exists('metadata', $auditEvents['events'][0]), 'Audit API data access must not return metadata.');
             } finally {
                 if ($authorId !== null) {
                     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $authorId]);

@@ -10,7 +10,7 @@
 
 ## Implementation status
 
-The repository has the Phase 1 configuration, PDO, error-envelope, and migration foundation, authentication, category APIs, author post lifecycle, public published-post APIs, and admin post/author-account APIs. No frontend pages are present. Audit queries and summary generation remain planned. Oracle MySQL integration for the implemented SQL remains unverified.
+The repository has the Phase 1 configuration, PDO, error-envelope, and migration foundation, authentication, category APIs, author post lifecycle, public published-post APIs, admin post/author-account APIs, and safe admin audit-log reads. No frontend pages are present. Summary generation remains planned. Oracle MySQL integration for the implemented SQL remains unverified.
 
 The PHP filenames shown in the wireframe are reference page names, not files present in the repository. Page status refers to implementation, not whether the wireframe depicts the page.
 
@@ -28,7 +28,7 @@ The PHP filenames shown in the wireframe are reference page names, not files pre
 | **8. Categories** — `categories.php` | Public/authors may read active categories; only admins may manage them | `categories`; `posts.category_id` preserves existing assignments | Read active categories: `GET /api/v1/categories`; admin list/create: `GET/POST /api/v1/admin/categories`; edit: `PATCH /api/v1/admin/categories/{id}`; activate/deactivate: `POST /api/v1/admin/categories/{id}/activate` and `/deactivate`; optional unreferenced delete: `DELETE /api/v1/admin/categories/{id}` | Category mutations are admin-only even if the page appears in an author navigation bar. Map the wireframe's delete control to deactivation; the API permits hard deletion only when no posts reference the category, with the restrictive foreign key as final enforcement. The server generates a lowercase URL-safe slug from the name and resolves collisions with numeric suffixes; clients do not supply it. The `created_by` foreign key does not enforce the actor's admin role; the application does. | Backend API implemented; frontend page remains planned; MySQL integration unverified |
 | **9. Author Profile** — `author.php?id={id}` | Public author profiles are deferred from Version 1.0 | Current schema has `users.username`, `display_name`, role/status, timestamps, and `posts`; it has no `bio`, avatar, or view counts | No public author-profile endpoint is defined. `GET /api/v1/auth/me` is private to the authenticated user and is not a public profile route. | Do not expose email or other private account fields. Do not create a public directory/profile from the wireframe. | Deferred; not implemented |
 
-Authentication, category, author-post, public-article, and admin post/author-account operations noted above have route handlers. Audit queries and summary generation remain planned.
+Authentication, category, author-post, public-article, admin post/author-account operations, and admin audit-log reads noted above have route handlers. Summary generation remains planned.
 
 Use the existing API error contract: `401` for an unauthenticated request, `403` for a denied role/CSRF check, `404` for missing or intentionally concealed resources, `409` for uniqueness conflicts, `422` for field validation, `429` for rate limits, and a generic `500` for unexpected failures. Responses must not expose SQL, stack traces, filesystem paths, password hashes, provider details, or secrets.
 
@@ -90,4 +90,4 @@ The planned operation is `POST /api/v1/author/posts/{id}/summary`. It must load 
 - AI summaries remain in scope. An authorized backend operation loads canonical post text, stores validated summaries in MySQL, and public requests reuse only the current stored result. Provider failure must not interrupt post CRUD or publication; the provider adapter has no database credentials or application privileges.
 - The agreed Admin Panel remains required; the supplied wireframe does not replace it. Category management stays admin-only, authors see/manage only their own private posts, and public requests return published posts only.
 
-Authentication, category, author post lifecycle, public post reads, admin post management, and admin author-account management are implemented. Audit queries, AI summary endpoints, and frontend pages remain planned. The wireframe integration decisions remain unchanged.
+Authentication, category, author post lifecycle, public post reads, admin post management, admin author-account management, and safe admin audit queries are implemented. AI summary endpoints and frontend pages remain planned. The wireframe integration decisions remain unchanged.

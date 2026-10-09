@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, author/admin post counts, admin post management, and author-account administration are implemented with SQLite coverage and MySQL integration tests that have not yet run. Current checks for this checkpoint: 26 passed, 0 failed; PHP lint passed for 43 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Audit-log query, AI summarization, and frontend pages remain later work.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, author/admin post counts, admin post management, author-account administration, and safe admin audit-log reads are implemented with SQLite coverage and MySQL integration tests that have not yet run. Current checks for this checkpoint: 27 passed, 0 failed; PHP lint passed for 45 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. AI summarization and frontend pages remain later work.
 
 ---
 
@@ -104,7 +104,7 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-071** Implement admin list/detail/edit/publish/unpublish/confirmed-delete operations across all posts.
 - [x] **T-072** Implement author-account listing, secure creation/password reset, and activation/deactivation with session revocation.
 - [x] **T-073** Reject role changes in account routes; only trusted administrator provisioning assigns the admin role.
-- [ ] **T-074** Implement audit-log query with pagination and safe fields only.
+- [x] **T-074** Implement admin-only audit-log query with validated filters, pagination, and safe fields only; omit metadata from responses.
 - [x] **T-075** Exercise admin routes as unauthenticated users, authors, and admins; mutation routes also verify CSRF.
 
 ## Phase 8 - AI article summarization

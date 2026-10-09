@@ -64,7 +64,7 @@ The AI endpoint must come from trusted deployment configuration/provider adapter
 4. Apply migrations with `php bin/migrate.php up`; inspect them with `php bin/migrate.php status`. Apply `202610090003_add_auth_version_to_users` before deploying code that reads `users.auth_version`; sessions created before that migration are rejected and require users to sign in again.
 5. Run `php tests/run.php`. For MySQL integration, configure a fresh, empty, dedicated database named `*_test` and the explicit `TEST_DB_*` settings described in `TEST_PLAN.md`; the suite refuses nonempty databases and runs a confirmed rollback only on that disposable schema.
 
-To serve the implemented API, configure Apache's virtual host document root to the repository's `public/` directory and enable `mod_rewrite`/`.htaccess`. Set `APP_BASE_URL` to the origin used by that virtual host. Never expose the repository root as the document root. The router exposes authentication, category, author post lifecycle, public published-post reads, and admin post/author-account management documented in `API_SPEC.md`; audit queries and AI routes remain unimplemented.
+To serve the implemented API, configure Apache's virtual host document root to the repository's `public/` directory and enable `mod_rewrite`/`.htaccess`. Set `APP_BASE_URL` to the origin used by that virtual host. Never expose the repository root as the document root. The router exposes authentication, category, author post lifecycle, public published-post reads, admin post/author-account management, and admin audit-log reads documented in `API_SPEC.md`; AI routes remain unimplemented.
 
 ## 4. Administrator provisioning and rotation
 
