@@ -1,300 +1,189 @@
-# Product and UI Design Specification
+# Functional UI and Interaction Specification
 
-## Content Management System (CMS)
+## Infinity Blog
 
 **Version:** 1.0  
-**Design Goal:** Simple, credible, readable, and practical.
+**Purpose:** Define which pages exist, what information appears on them, which actions connect to which pages/endpoints, and what data is needed. This document intentionally does not prescribe colors, visual style, effects, typography, or the final design language.
 
 ---
 
-## 1. Design Direction
+## 1. Navigation model
 
-The interface should look like a small professional publishing tool rather than a college form collection.
+### Public navigation
 
-The design should be:
+- Home / Blog
+- Category browsing/filtering
+- Search
+- Login
+- Article detail
 
-- Clean.
-- Content-first.
-- Easy to scan.
-- Consistent across pages.
-- Comfortable for long article text.
-- Responsive enough for normal desktop and mobile browser use.
+### Author navigation
 
-Avoid excessive cards, decorative gradients, animated backgrounds, and unnecessary dashboards. The article and the actions around it are the important parts.
+- Dashboard
+- My Posts
+- Create Post
+- Profile/account information if provided
+- Public Blog
+- Logout
 
-## 2. Information Architecture
+### Admin navigation
 
-```text
-Public
-├── Home / Blog
-└── Article
+- Admin Dashboard
+- All Posts
+- Users
+- Categories
+- Activity Log
+- Public Blog
+- Logout
 
-Author
-├── Login
-├── Dashboard
-├── Create Post
-├── Edit Post
-└── Logout
-```
+The frontend may present these links differently. It must not rely on navigation visibility for authorization; the API is the authority.
 
-## 3. Public Experience
+## 2. Page inventory
 
-### Home / Blog
+| Page | Access | Main information | Main actions | Data / API dependency |
+|---|---|---|---|---|
+| Public Home | Public | Latest published posts, category, author, date, summary/excerpt | Search, filter, open article, login | `GET /api/v1/posts`, `GET /api/v1/categories` |
+| Article Detail | Public | Title, author, category, dates, summary, full body | Back to list | `GET /api/v1/posts/{id}` |
+| Login | Public | Login identifier, password, error message | Login | `POST /api/v1/auth/login` |
+| Author Dashboard | Author | Database-derived own-post total/draft/published counts and recent posts | Create, edit, publish, delete, summary | `GET /api/v1/author/posts` |
+| My Posts | Author | Own posts with status and timestamps | Search/filter, edit, delete, publish | Author post endpoints |
+| Create Post | Author | Title, content, active category, draft/publish intent | Save Draft, Publish, Cancel, Generate Summary after save | `POST /api/v1/author/posts` and summary endpoint |
+| Edit Post | Author owner or Admin | Existing fields, status, summary status | Save, Publish/Unpublish, Generate/Regenerate Summary, Delete | `GET/PATCH/POST/DELETE /api/v1/...` |
+| Admin Dashboard | Admin | Database-derived system-wide post total/draft/published counts, user/category totals where available, and recent events | Open posts/users/categories/activity | Existing admin post/user/category lists and audit endpoint |
+| Admin Posts | Admin | All posts, author, status, category | Edit, publish/unpublish, delete, view | `/api/v1/admin/posts` |
+| Admin Users | Admin | User name, role, active state, timestamps | Create/deactivate, role actions if authorized | `/api/v1/admin/users` |
+| Admin Categories | Admin | Name, server-generated slug, active state, post count | Create, edit, activate/deactivate | `/api/v1/admin/categories` |
+| Admin Activity | Admin | Timestamp, actor, action, entity | Filter/view details within policy | `/api/v1/admin/audit-logs` |
 
-Recommended order:
+## 3. Login page
 
-```text
-Header
-  ├── Blog title
-  └── Author Login
+Required fields:
 
-Main
-  ├── Page heading
-  ├── Published article list
-  │    ├── Title
-  │    ├── Author
-  │    ├── Published date
-  │    └── Short excerpt
-  └── Pagination if required
-```
+- User ID / username
+- Password
 
-The homepage should make the newest published posts easy to find.
+Actions:
 
-### Article Page
+- Login
 
-Recommended structure:
+Behavior:
 
-```text
-Back to Blog
+- Show a generic failure message for invalid credentials.
+- On success, navigate to the correct dashboard based on the server-returned role.
+- Never decide the user's role based only on the entered name.
+- Do not show whether a username exists in the failure message.
 
-Article Title
+## 4. Author dashboard
 
-By Author Name
-Published Date
-Last Updated Date
+Show a summary of the author's own content only:
 
---------------------------------
+- Total posts.
+- Drafts.
+- Published posts.
+- Recent posts.
+- Status, category, last updated date, actions.
 
-Article content
+Actions and destinations:
 
---------------------------------
+- **Create Post** opens the creation form.
+- **Edit** opens the selected post, after authorization is checked by the backend.
+- **Publish / Unpublish** calls the relevant status action.
+- **Delete** opens a confirmation step and then sends a CSRF-protected delete request.
+- **Generate Summary** is available only for a post the author can manage.
 
-Back to Blog
-```
+## 5. Create/Edit Post form
 
-Use readable line length and generous spacing around paragraphs.
+Fields:
 
-## 4. Author Experience
+- Title (required).
+- Article body (required to save a post).
+- Category selector sourced from active categories.
+- Status where the author is allowed to set it.
+- Summary status and summary preview when present.
 
-### Login
+Actions:
 
-```text
-+--------------------------------+
-|           Author Login         |
-|                                |
-| Username / Email               |
-| [__________________________]   |
-|                                |
-| Password                       |
-| [__________________________]   |
-|                                |
-| [        Login        ]        |
-|                                |
-| Error message when required    |
-+--------------------------------+
-```
+- Save Draft.
+- Publish or Update.
+- Cancel / return to posts.
+- Generate Summary after the post has been saved; a draft may be summarized if it has content.
+- Regenerate Summary when an existing summary is stale or a permitted manual regeneration is requested.
+- Delete as a separate, confirmed destructive action.
 
-Keep the form focused. Do not mix management information into the login screen.
+Validation:
+
+- Show errors next to affected fields where possible.
+- Retain safe field values after validation errors.
+- Server responses are authoritative.
+- The frontend must not render arbitrary summary HTML.
+
+## 6. Public article list
+
+Each listing item may show:
+
+- Title.
+- Author display name.
+- Category.
+- Published date.
+- Current summary or a plain-text excerpt.
+- Link to article details.
+
+Actions:
+
+- Search by keyword.
+- Filter by category.
+- Clear filters.
+- Move between pages.
+
+Only published posts are returned by the public API. Search and filter controls must not expose draft information through counts or error messages.
+
+## 7. Admin panel
 
 ### Dashboard
 
-The dashboard should answer three questions immediately:
+Show total, draft, and published post counts from database records and a short list of recent audit events. Author counts include only the authenticated author's posts; admin counts are system-wide. The admin dashboard should also show user and category totals where those values are available from existing admin-list data. Do not display view counts. These values use existing list API operations, not a new endpoint.
 
-1. What posts do I have?
-2. What state are they in?
-3. What can I do next?
+### Category management
 
-Suggested structure:
+Fields: name, optional description, active status. The backend generates and returns a unique slug from the name; the client does not supply an authoritative slug.
 
-```text
-Dashboard                              [Create New Post]
+Actions: create, edit, activate/deactivate.
 
-Posts
------------------------------------------------------------
-Title                    Status       Updated      Actions
------------------------------------------------------------
-Getting Started with PHP Published    08 Oct       Edit Delete
-MySQL Basics             Draft        08 Oct       Edit Delete
-```
+Do not offer a casual hard-delete when posts reference the category.
 
-A small count summary may be shown above the table:
+### User management
 
-```text
-All Posts | Published | Drafts
-```
+Show account identifier, display name, role, active status, creation date, and last login where appropriate. Password hashes must never be displayed. Account creation/role changes must use protected operations.
 
-These counts are useful, but the post list remains the primary element.
+### All-post management
 
-### Create / Edit Post
+Allow admins to find posts across authors, view status/category, and perform permitted edit/publish/unpublish/delete operations. Require confirmation for destructive actions.
 
-```text
-Title
-[____________________________________________]
+### Activity log
 
-Content
-[                                            ]
-[                                            ]
-[                                            ]
-[                                            ]
+Display actor, action, entity, and timestamp. Avoid showing secret values or private content in the audit UI.
 
-Status
-[ Draft v ]
+## 8. Required interface states
 
-[Save Post]   [Cancel]
-```
+Every data-driven page should consider:
 
-For edit mode:
+- Loading.
+- Success.
+- Empty result.
+- Validation error.
+- Unauthorized/forbidden response.
+- Not found.
+- Rate limited.
+- Server/dependency failure.
 
-```text
-[Save Changes]
-```
+## 9. Confirmation and navigation rules
 
-For publication:
+- Destructive actions require confirmation.
+- After successful create/update/delete, return to a sensible page and show status feedback.
+- Failed actions must not be presented as successful.
+- Logout ends the server session before showing the signed-out state.
+- A stale summary must be clearly indicated to authors and must not be presented publicly as current.
 
-```text
-[Publish]
-```
+## 10. Visual styling boundary
 
-Buttons should make the consequence clear.
-
-## 5. Component Guidelines
-
-### Header
-
-- Blog name at left.
-- Context-appropriate navigation.
-- Authentication state on author pages.
-
-### Buttons
-
-Primary button: one clear main action per screen.
-
-Secondary button: navigation or non-primary action.
-
-Danger button: delete.
-
-Avoid using the same visual treatment for primary and destructive actions.
-
-### Forms
-
-- Label every field.
-- Show required fields clearly.
-- Keep validation close to the field when practical.
-- Preserve entered values after recoverable validation errors.
-
-### Tables
-
-Use a table on the author dashboard when several posts must be compared.
-
-Columns should be kept concise:
-
-```text
-Title | Status | Updated | Actions
-```
-
-## 6. Status Presentation
-
-Use clear text labels:
-
-```text
-Draft
-Published
-```
-
-Do not rely on color alone to communicate status.
-
-## 7. Typography
-
-Recommended defaults:
-
-- Headings: strong, clear sans-serif.
-- Body: highly readable sans-serif or system font.
-- Article body: approximately 16px on desktop.
-- Line height: approximately 1.5-1.7 for long-form text.
-- Avoid more than two font families.
-
-The final type scale should be set in CSS variables so it can be changed centrally.
-
-## 8. Color
-
-Use a restrained neutral palette with one primary accent.
-
-Example design tokens:
-
-```css
---color-bg: #f7f8fa;
---color-surface: #ffffff;
---color-text: #1f2937;
---color-muted: #6b7280;
---color-border: #e5e7eb;
---color-primary: #1d4ed8;
---color-danger: #b91c1c;
-```
-
-These are starting values, not mandatory final colors.
-
-## 9. Responsive Behavior
-
-At smaller widths:
-
-- Stack form fields vertically.
-- Let the article list switch from wide table layout to stacked rows or cards.
-- Keep buttons reachable without horizontal scrolling.
-- Preserve readable article text.
-- Avoid fixed-width containers that force the page wider than the viewport.
-
-## 10. Accessibility
-
-The interface should:
-
-- Use semantic HTML where practical.
-- Use labels associated with form fields.
-- Provide visible keyboard focus.
-- Maintain sufficient contrast.
-- Avoid color-only status indicators.
-- Use meaningful link/button text.
-- Keep error messages understandable.
-
-## 11. Empty and Error States
-
-The product should handle empty states explicitly.
-
-Example:
-
-```text
-No posts yet.
-
-Create your first article to get started.
-[Create Post]
-```
-
-For public pages:
-
-```text
-No published articles are available.
-```
-
-For failures:
-
-```text
-We couldn't save the post.
-Please check the required fields and try again.
-```
-
-Do not expose raw SQL errors to ordinary users.
-
-## 12. Design Principle
-
-The CMS should feel like a tool for writing and maintaining content.
-
-The design should support the workflow rather than compete with it.
+This specification defines information architecture and behavior only. Colors, typography, shadows, gradients, glass/clay effects, iconography, animation, and final spacing are intentionally left to the separate visual design decision. Do not infer a visual theme from this document.

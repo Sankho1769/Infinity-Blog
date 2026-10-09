@@ -1,311 +1,190 @@
 # System Architecture
 
-## Content Management System (CMS)
+## Infinity Blog
 
 **Version:** 1.0  
-**Status:** Baseline Architecture
+**Architecture style:** Modular PHP monolith with JSON API and MySQL persistence
 
 ---
 
-## 1. Architecture Objective
+## 1. Architecture goals
 
-The architecture should be simple enough for a BCA mini-project while following sound application structure.
+- Keep the codebase understandable and maintainable for a small project.
+- Separate HTTP handling, authentication/authorization, business rules, database access, and AI provider integration.
+- Define a stable contract for an independently developed frontend.
+- Ensure the AI summarizer cannot perform application actions.
+- Make security-sensitive behavior testable.
 
-The system separates:
+## 2. Recommended stack
 
-- Web requests and page rendering.
-- Authentication and authorization.
-- Post management logic.
-- Database access.
-- Persistent data.
-
-The architecture should also leave room for later features such as categories, search, revisions, or additional roles.
-
-## 2. Recommended Stack
-
-| Layer | Technology |
+| Layer | Recommendation |
 |---|---|
-| Client | HTML5, CSS3, JavaScript |
-| Server | PHP 8.x |
-| Database | MySQL 8.x |
-| Web Server | Apache |
-| Local Development | XAMPP or equivalent |
-| Authentication | PHP sessions |
-| Password Storage | `password_hash()` / `password_verify()` |
+| Backend runtime | A supported PHP 8.x release compatible with hosting |
+| HTTP layer | PHP controllers/routes returning JSON under `/api/v1` |
+| Database | MySQL 8.x or compatible supported release |
+| Browser auth | PHP sessions with secure cookie settings |
+| Data access | PDO or mysqli with prepared statements; use one consistently |
+| Frontend | Existing agreed frontend stack; integrate against `API_SPEC.md` |
+| Local environment | XAMPP or equivalent for the academic setup |
+| AI | Provider adapter configured server-side; provider/model chosen in environment configuration |
 
-Exact runtime versions may be adjusted to the available lab environment, but the application should be written for a currently supported PHP/MySQL combination.
+The repository is the first source of truth. Codex must inspect existing files and dependencies before choosing or replacing frameworks.
 
-## 3. High-Level Architecture
-
-```text
-+---------------------------+
-|        Public Visitor     |
-|  Blog List / Article View |
-+-------------+-------------+
-              |
-              v
-+---------------------------+
-|       PHP Web Layer       |
-| Routes / Pages / Forms    |
-+-------------+-------------+
-              |
-      +-------+--------+
-      |                |
-      v                v
-+-----------+    +-------------+
-| Auth      |    | Post Logic  |
-| Sessions  |    | CRUD        |
-+-----+-----+    +------+------+
-      |                 |
-      +--------+--------+
-               |
-               v
-       +---------------+
-       | MySQL Database|
-       | users / posts |
-       +---------------+
-```
-
-## 4. Responsibility Boundaries
-
-### Presentation Layer
-
-Responsible for:
-
-- HTML output.
-- Form rendering.
-- User feedback.
-- Basic client-side validation.
-- Public post display.
-
-It should not contain raw database connection logic scattered across templates.
-
-### Application Layer
-
-Responsible for:
-
-- Authentication checks.
-- Input validation.
-- Post ownership checks.
-- Create/update/delete operations.
-- Deciding whether a post is eligible for public display.
-
-### Data Layer
-
-Responsible for:
-
-- Database connection.
-- Prepared statements.
-- Query execution.
-- Fetching records.
-- Maintaining database relationships.
-
-## 5. Suggested Project Structure
+## 3. High-level architecture
 
 ```text
-cms/
-│
-├── config/
-│   └── database.php
-│
-├── includes/
-│   ├── auth.php
-│   ├── header.php
-│   └── footer.php
-│
-├── public/
-│   ├── index.php
-│   └── post.php
-│
-├── author/
-│   ├── login.php
-│   ├── logout.php
-│   ├── dashboard.php
-│   ├── create_post.php
-│   ├── edit_post.php
-│   └── delete_post.php
-│
-├── assets/
-│   ├── css/
-│   └── js/
-│
-├── database/
-│   └── schema.sql
-│
-└── README.md
+Browser Frontend
+   | HTTPS / JSON, session cookie, CSRF token
+   v
+PHP HTTP/API Layer (/api/v1)
+   |
+   +--> Authentication & Session Service
+   |
+   +--> Authorization Policy (admin / author / ownership)
+   |
+   +--> Post Service -------------------+
+   |                                    |
+   +--> Category Service                v
+   |                                  MySQL
+   +--> Admin/User Service       users, posts, categories,
+   |                             audit_logs, rate limits
+   +--> Article Summary Service
+             |
+             v
+       Provider Adapter
+             |
+             v
+      Configured AI Provider
+      (text input/output only; no tools)
 ```
 
-The exact directory arrangement can be adapted to the selected hosting setup. The important rule is to keep database, authentication, public pages, and management pages logically separated.
+## 4. Module responsibilities
 
-## 6. Database Design
+### HTTP/API layer
 
-### users
+- Parse requests and return consistent JSON responses.
+- Validate request method and content type.
+- Validate session and CSRF token as appropriate.
+- Map application errors to safe HTTP status codes.
+- Generate/request a correlation ID for diagnostics.
 
-```text
-users
---------------------------------
-id              INT PK
-username        VARCHAR(...)
-password_hash   VARCHAR(...)
-created_at      TIMESTAMP
-```
+### Authentication service
 
-### posts
+- Verify username/password.
+- Create and destroy sessions.
+- Regenerate session ID after authentication.
+- Update last-login information where used.
+- Apply MySQL-backed login rate limits.
+- Use generic credential failures and never return password hashes.
 
-```text
-posts
---------------------------------
-id              INT PK
-author_id       INT FK
-title           VARCHAR(...)
-content         TEXT
-status          VARCHAR/ENUM
-created_at      TIMESTAMP
-updated_at      TIMESTAMP
-```
+Current implementation is in `app/Auth/`: `AuthenticationService` coordinates verification and limiting, `UserRepository` uses prepared PDO statements, `SessionManager` owns the server-side session and CSRF token, `AuthGuard` reloads active role data from MySQL, and `AdminProvisioner` is CLI-only. `DatabaseLoginAttemptLimiter` stores only HMAC bucket hashes in the additive `login_rate_limits` migration.
 
-Relationship:
+### Authorization policy
 
-```text
-users 1 -------- N posts
-```
+- Enforce `admin` versus `author` roles server-side.
+- Enforce post ownership for author operations.
+- Enforce active-account status.
+- Avoid authorization logic based solely on frontend visibility.
 
-A foreign key from `posts.author_id` to `users.id` maintains the relationship.
+### Post service
 
-## 7. Main Request Flows
+- Create, edit, publish/unpublish, retrieve, and delete posts.
+- Validate post state and category selection.
+- Ensure public listing/detail operations return published posts only.
+- Calculate dashboard counts from `posts` records: author queries are constrained to the authenticated author's `author_id`; admin queries cover all posts. Do not report view counts.
+- Mark a summary stale when the title or body changes.
+- Write audit records for sensitive operations.
 
-### Login
+### Category service
 
-```text
-Browser
-  -> login form
-  -> PHP
-  -> validate input
-  -> SELECT author
-  -> password_verify()
-  -> create session
-  -> dashboard
-```
+- Admin-only create/update/activate/deactivate operations.
+- Generate normalized, unique category slugs on the server from category names; resolve collisions with a deterministic numeric suffix and retain the database unique constraint.
+- List active categories for author forms and public filtering.
+- Preserve existing relationships when a category is deactivated.
 
-### Create Post
+### Admin/user service
 
-```text
-Author Form
-  -> PHP
-  -> validate
-  -> INSERT
-  -> MySQL
-  -> dashboard
-```
+- List and manage author accounts.
+- Enable/deactivate accounts.
+- Permit role changes only through explicitly authorized operations.
+- Never expose password hashes in API responses.
 
-### Edit Post
+### Article summary service
 
-```text
-Dashboard
-  -> edit request
-  -> load post for current author
-  -> validate
-  -> UPDATE
-  -> MySQL
-  -> dashboard
-```
+- Expose generation only through an authenticated, authorized backend operation; the backend loads canonical post text after checking ownership/admin permission and persists validated output through the normal data-access layer.
+- Authorize requester before generation.
+- Enforce per-article size limits, timeout, and rate limits.
+- Build the provider request with a fixed summarization instruction and the article clearly delimited as untrusted data.
+- Call only the configured provider endpoint.
+- Validate plain-text output, bound length, store summary metadata, and handle failure without failing the article operation.
+- Give the provider adapter only bounded text input and access to the configured provider. It receives no database credentials, tools, shell execution, filesystem access, arbitrary URL access, or other application privileges.
+- Treat provider failure as an isolated summary failure; post creation, editing, publication, and public reading continue to work.
 
-### Delete Post
+### Data access layer
 
-```text
-Dashboard
-  -> delete confirmation
-  -> ownership check
-  -> DELETE
-  -> MySQL
-  -> dashboard
-```
+- Centralize database creation/configuration.
+- Use prepared statements.
+- Implement transactions for multi-step updates where needed.
+- Apply foreign keys and indexes.
+- Never include internal query errors in public responses.
 
-### Public Article
+## 5. Deployment shape
 
-```text
-Visitor
-  -> public page
-  -> SELECT published post
-  -> render escaped content
-```
+Preferred production arrangement:
 
-## 8. Authentication and Authorization
+- Frontend and API are served from one origin, or are placed behind a reverse proxy under the same site.
+- HTTPS is enabled.
+- Session cookies are `Secure`, `HttpOnly`, and use an appropriate `SameSite` setting.
+- If separate origins are unavoidable, configure a strict CORS allowlist and credentials handling; never use wildcard origins with credentialed requests. Maintain CSRF and Origin checks.
+- Secrets are configured in environment variables or a protected server configuration outside version control.
 
-Authentication answers:
+## 6. Authentication and request security
 
-> Who is logged in?
+- Browser session cookie identifies the authenticated user.
+- A CSRF token is required for state-changing requests.
+- The session stores user ID and expiry timestamps; each protected request reloads the active role from the trusted user record.
+- Login regenerates the session ID and rotates the session-bound CSRF token.
+- Logout destroys the server session and expires the cookie.
+- Cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` whenever the configured or request transport is HTTPS. Idle expiry is 30 minutes; absolute expiry is 12 hours.
+- Login and logout both require a valid CSRF token. Failed logins are limited to 5 per identifier and 20 per socket source in a 15-minute window.
+- Request origin validation is an additional layer, not a replacement for CSRF tokens.
+- Role and resource authorization are checked for every protected route.
 
-Authorization answers:
+The current HTTP entry point is `public/index.php`; it exposes only `/api/v1/auth/csrf`, `/auth/login`, `/auth/logout`, and `/auth/me`. Post, category, public-content, and Admin Panel routes remain later phases. `AuthGuard` is the reusable role boundary for those future modules; resource ownership checks will be added with post operations.
 
-> What is this logged-in user allowed to do?
+## 7. Data flow: create post
 
-Version 1.0 uses a single author role.
+1. Frontend submits title, content, selected category, status, and CSRF token.
+2. API authenticates the session.
+3. Server validates input and status.
+4. Server validates any category ID against the categories table and current category state.
+5. Server derives `author_id` from session; the client cannot choose it.
+6. Prepared insert saves the post.
+7. Audit event is stored where applicable.
+8. API returns the post representation without sensitive fields.
 
-Rules:
+## 8. Data flow: summarize article
 
-- Login is required for author management pages.
-- The current user's ID is stored in the session.
-- Post management queries should include the current author ID where ownership matters.
-- A public visitor must not receive author dashboard functionality.
-- Logout must destroy the active session.
+1. Frontend requests summary generation for a post.
+2. API authenticates and confirms requester is the owner or authorized admin.
+3. Rate limiter checks account, resource, and provider limits.
+4. Backend loads current title/body from MySQL; never trusts client-supplied article text as the canonical source.
+5. Backend passes a size-limited payload to the configured provider.
+6. Provider output is validated as bounded plain text.
+7. Backend stores summary, source content hash, status, and generation timestamp.
+8. On any failure, summary status becomes `failed` or remains stale; the existing post remains usable.
 
-## 9. Security Architecture
+## 9. Key design constraints
 
-### Passwords
+- No public AI generation endpoint.
+- No summary regeneration on public article reads.
+- No AI model authority over application actions.
+- No arbitrary provider URL configured by an ordinary user.
+- No permanent category deletion that breaks referenced posts.
+- No public access to draft posts.
+- No shared admin password hardcoded in code or migrations.
+- Do not introduce queues, Redis, microservices, Docker, or other infrastructure without a clear need and an approved scope change.
 
-Never store passwords in plain text.
+## 10. Extensibility
 
-Use:
-
-```php
-password_hash($password, PASSWORD_DEFAULT);
-```
-
-Verify with:
-
-```php
-password_verify($password, $hash);
-```
-
-### SQL Injection
-
-Use prepared/parameterized statements instead of concatenating user input into SQL.
-
-### Output Encoding
-
-Escape stored values before placing them into HTML when rich HTML is not intentionally supported.
-
-### Session Security
-
-Use server-side sessions. Regenerate the session ID after successful authentication.
-
-### Input Validation
-
-Validate required fields and constrain values such as post status to known allowed values.
-
-### Ownership
-
-For edit/delete operations, identify the current author from the session rather than trusting a client-supplied author ID.
-
-## 10. Scalability Considerations
-
-The initial deployment is intended for a small blog.
-
-The design nevertheless keeps future changes possible:
-
-- Search can be added without replacing the post model.
-- Categories can be added through a separate table and foreign key.
-- Additional roles can be introduced through a role field or role table.
-- Media storage can be separated from article text.
-- Pagination can be added to public and author listings.
-
-The baseline should not introduce premature infrastructure such as microservices, message brokers, or distributed storage.
-
-## 11. Architectural Constraints
-
-- PHP is the server-side implementation language.
-- MySQL is the primary database.
-- Version 1.0 is web-based.
-- The application should be understandable and demonstrable in a college laboratory environment.
-- The system must remain within the supplied CMS problem statement.
+The initial design allows categories, search, summaries, roles, and audit history to evolve independently. New modules must follow the same rules: clear contract, server-side authorization, prepared statements, output handling, and tests.

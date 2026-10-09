@@ -1,443 +1,182 @@
-# Implementation Task Plan
+# Implementation Plan and Task Board
 
-## Content Management System (CMS)
+## Infinity Blog
 
 **Version:** 1.0  
-**Status:** Implementation Baseline
+**Status:** Baseline plan; update checkboxes only after work is actually verified.
+
+## Current implementation checkpoint
+
+Phase 2 authentication code and isolated unit tests are implemented. Current checks: 19 passed, 0 failed; PHP lint passed; PowerShell provisioning script parsing passed; `git diff --check` passed. The Oracle MySQL integration suite is skipped because the available XAMPP database is MariaDB 10.4.32 and no MySQL server is listening on `127.0.0.1:3306`. Do not interpret SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
 
 ---
 
-## 1. Task Status Legend
+## Status legend
 
 - `[ ]` Not started
 - `[-]` In progress
-- `[x]` Completed
+- `[x]` Completed and verified
 - `[!]` Blocked
 
----
-
-## 2. Phase 0 — Project Setup
-
-### T-001 [ ] Create project repository
-- Create the PHP project directory.
-- Initialize Git.
-- Add `.gitignore`.
-- Add `README.md`.
-
-### T-002 [ ] Prepare local environment
-- Start Apache.
-- Start MySQL.
-- Verify PHP execution.
-- Verify database connection.
-
-### T-003 [ ] Create project structure
-- Add configuration directory.
-- Add author pages.
-- Add public pages.
-- Add shared includes.
-- Add assets directory.
-- Add database directory.
-
-**Depends on:** T-001, T-002
-
----
-
-## 3. Phase 1 — Database
-
-### T-010 [ ] Create database
-- Create CMS database.
-- Document database name and local setup.
-
-### T-011 [ ] Create users table
-- Primary key.
-- Username/email field.
-- Password hash field.
-- Creation timestamp.
-- Appropriate uniqueness constraint.
-
-### T-012 [ ] Create posts table
-- Primary key.
-- Author foreign key.
-- Title.
-- Content.
-- Status.
-- Creation timestamp.
-- Update timestamp.
-
-### T-013 [ ] Add sample data for development
-- Create a test author through the application where practical.
-- Add a small number of test posts.
-- Include both draft and published examples.
-
-**Depends on:** T-010
-
----
-
-## 4. Phase 2 — Database Access
-
-### T-020 [ ] Build database connection
-- Centralize credentials/configuration.
-- Handle connection failure.
-- Set the expected character set.
-
-### T-021 [ ] Build reusable query patterns
-- Prepared statement examples.
-- Error handling.
-- Result handling.
-
-**Depends on:** T-020, T-012
-
----
-
-## 5. Phase 3 — Authentication
-
-### T-030 [ ] Build author login page
-- Username/email field.
-- Password field.
-- Validation.
-- Error feedback.
-
-### T-031 [ ] Implement password hashing
-- Hash password during account creation.
-- Never store raw passwords.
-
-### T-032 [ ] Implement login verification
-- Retrieve author by login identifier.
-- Verify using `password_verify()`.
-
-### T-033 [ ] Implement session management
-- Start session.
-- Store current author ID.
-- Regenerate session ID after successful login.
-
-### T-034 [ ] Implement logout
-- Clear session data.
-- Destroy session.
-- Redirect to login page.
-
-### T-035 [ ] Build authentication guard
-- Block unauthenticated dashboard access.
-- Reuse the guard across protected pages.
-
-**Depends on:** T-021, T-011
-
----
-
-## 6. Phase 4 — Author Dashboard
-
-### T-040 [ ] Build dashboard layout
-- Page title.
-- Current author identity.
-- Create Post action.
-- Logout action.
-
-### T-041 [ ] List author's posts
-- Query posts for current author.
-- Sort recent posts first.
-- Display title, status, date, and actions.
-
-### T-042 [ ] Add empty state
-- Display a useful message when the author has no posts.
-
-**Depends on:** T-035, T-012
-
----
-
-## 7. Phase 5 — Create Post
-
-### T-050 [ ] Build create-post form
-Fields:
-- Title.
-- Content.
-- Status.
-
-### T-051 [ ] Validate post input
-- Title required.
-- Content required.
-- Status restricted to supported values.
-
-### T-052 [ ] Insert post
-- Use prepared statement.
-- Associate post with current author.
-
-### T-053 [ ] Add save feedback
-- Redirect after success.
-- Show useful feedback on failure.
-
-**Depends on:** T-041, T-021
-
----
-
-## 8. Phase 6 — Edit Post
-
-### T-060 [ ] Load editable post
-- Read post by ID.
-- Confirm current author owns or may manage it.
-- Reject unauthorized access.
-
-### T-061 [ ] Build edit form
-- Pre-fill current values.
-- Preserve validation feedback.
-
-### T-062 [ ] Update post
-- Validate.
-- Execute prepared `UPDATE`.
-- Update modification timestamp.
-
-### T-063 [ ] Verify public result
-- Confirm published post changes are reflected on the public page.
-
-**Depends on:** T-060, T-061
-
----
-
-## 9. Phase 7 — Delete Post
-
-### T-070 [ ] Add delete action
-- Place action on dashboard.
-- Use clear wording.
-
-### T-071 [ ] Add delete confirmation
-- Prevent accidental deletion.
-
-### T-072 [ ] Implement ownership-safe delete
-- Confirm post belongs to current author.
-- Execute prepared `DELETE`.
-
-### T-073 [ ] Verify removal
-- Post disappears from dashboard.
-- Post cannot be viewed publicly.
-
-**Depends on:** T-041, T-021
-
----
-
-## 10. Phase 8 — Public Blog
-
-### T-080 [ ] Build public homepage
-- No login required.
-- Query only published posts.
-- Show title, author, date, and excerpt/basic content.
-
-### T-081 [ ] Build public article page
-- Retrieve one published post.
-- Display title, author, publication information, and full content.
-
-### T-082 [ ] Add not-found handling
-- Unknown post ID.
-- Unpublished post.
-- Deleted post.
-
-### T-083 [ ] Add navigation
-- Blog home.
-- Article page.
-- Author login link where appropriate.
-
-**Depends on:** T-012
-
----
-
-## 11. Phase 9 — Security Hardening
-
-### T-090 [ ] Review all SQL queries
-- Replace string-concatenated user input with prepared statements.
-
-### T-091 [ ] Review all HTML output
-- Escape untrusted values before rendering.
-
-### T-092 [ ] Review author access
-- Test dashboard without login.
-- Test edit/delete with another author's post ID.
-
-### T-093 [ ] Review session handling
-- Login.
-- Logout.
-- Session regeneration.
-- Direct URL access after logout.
-
-### T-094 [ ] Review error exposure
-- Do not reveal raw SQL/database details to public users.
-
----
-
-## 12. Phase 10 — UI Polish
-
-### T-100 [ ] Build shared page shell
-- Header.
-- Footer.
-- Shared navigation.
-- Consistent spacing.
-
-### T-101 [ ] Style author dashboard
-- Readable table.
-- Clear status labels.
-- Consistent action buttons.
-
-### T-102 [ ] Style public blog
-- Readable article list.
-- Comfortable article typography.
-- Clear metadata.
-
-### T-103 [ ] Add responsive behavior
-- Test narrower desktop windows.
-- Test phone-sized browser viewport.
-
-### T-104 [ ] Add accessible form states
-- Labels.
-- Focus states.
-- Visible errors.
-- Keyboard-friendly controls.
-
----
-
-## 13. Phase 11 — Testing
-
-### T-110 [ ] Authentication tests
-- Valid login.
-- Invalid login.
-- Logout.
-- Protected route without login.
-
-### T-111 [ ] Create-post tests
-- Valid submission.
-- Missing title.
-- Missing content.
-- Invalid status.
-
-### T-112 [ ] Edit-post tests
-- Valid edit.
-- Missing post.
-- Unauthorized edit.
-
-### T-113 [ ] Delete tests
-- Valid delete.
-- Cancel delete.
-- Unauthorized delete.
-- Deleted post not public.
-
-### T-114 [ ] Public-page tests
-- Published post visible.
-- Draft not visible.
-- Unknown post handled safely.
-
-### T-115 [ ] Security tests
-- Basic SQL injection attempts.
-- Script-like input rendered safely.
-- Session behavior checked.
-- Direct URL access checked.
-
----
-
-## 14. Phase 12 — Documentation and Submission
-
-### T-120 [ ] Update README
-Include:
-- Project overview.
-- Features.
-- Requirements.
-- Installation steps.
-- Database setup.
-- Local run instructions.
-
-### T-121 [ ] Verify planning documents
-- PRD.
-- Architecture.
-- Rules.
-- Design.
-- Memory.
-- Task list.
-
-### T-122 [ ] Prepare database script
-- Clean schema.
-- Reproducible setup.
-- Sample data only when appropriate.
-
-### T-123 [ ] Final end-to-end check
-Run the complete flow:
+## Version 1.0 scope baseline
+
+- Author and admin dashboards show database-derived total/draft/published post counts within their authorized scope; view tracking is deferred.
+- Category slugs are generated by the server and must remain unique.
+- AI summaries are generated through an authorized backend operation, stored in MySQL, and reused by public reads; provider failures are isolated from post operations.
+- Tags, featured-image uploads, public author profiles, remember-me, password recovery, and trash/restore are deferred. Post deletion is permanent after explicit confirmation.
+
+## Phase 1 repository audit result
+
+- The repository initially contained project documentation only; no PHP entry point, dependency manifest, schema, migration runner, or automated tests were present.
+- All required project documents were present. No Phase 1 conflict was found between the API contract and logical database design. Drafts may be uncategorized; publication requires an active category. Category deactivation preserves post references.
+- XAMPP PHP 8.2.12 and `pdo_mysql` are installed. Composer is not installed or needed for the dependency-free foundation. The available XAMPP database client reports MariaDB 10.4.32, not MySQL 8; no local database service was reachable during the audit.
+- Existing documentation edits and untracked project documents were preserved.
+
+## Phase 0 - Repository reconnaissance
+
+- [x] **T-001** Inspect the repository, current frontend, backend, dependencies, and existing tests.
+- [x] **T-002** Document the current entry points, runtime versions, and existing architecture.
+- [ ] **T-003** Identify integration assumptions with the frontend developer.
+- [x] **T-004** Confirm route conventions and avoid replacing working code unnecessarily.
+
+## Phase 1 - Project foundation
+
+- [x] **T-010** Create/verify project structure and Git ignore rules.
+- [x] **T-011** Centralize configuration and environment variable loading.
+- [x] **T-012** Create database connection module with safe error handling.
+- [x] **T-013** Add development and production configuration instructions.
+- [x] **T-014** Add the documented generic API error envelope and generated/sanitized request IDs. Authentication routing was added in Phase 2; private diagnostic logging and non-authentication API routes remain later work.
+
+## Phase 2 - Database schema
+
+- [-] **T-020** Create versioned schema/migration for users.
+- [-] **T-021** Create categories table with unique normalized name, server-generated unique slug, and active state.
+- [-] **T-022** Create posts table with author/category foreign keys, status, timestamps, and summary metadata.
+- [-] **T-023** Create audit log table with safe metadata.
+- [-] **T-024** Add relevant indexes and constraints.
+- [x] **T-025** Add a trusted CLI/setup flow to provision `Shubham Banerjee` and `Sounak Sikdar`; the secure PowerShell prompt requires separate passwords, stores `password_hash()` output, and provides no public admin-creation path or committed default password. SQLite unit tests pass; MySQL provisioning remains part of blocked integration verification.
+- [-] **T-026** Verify migrations from a clean database and document rollback/backup expectations. MySQL integration verification remains pending because no supported local MySQL service is available.
+
+## Phase 3 - Authentication and authorization
+
+- [x] **T-030** Implement login using `password_verify()`, generic failure responses, and active-account checks.
+- [x] **T-031** Regenerate session ID after successful authentication and rotate CSRF token.
+- [x] **T-032** Implement logout, server-side session destruction, and session-cookie invalidation.
+- [x] **T-033** Add reusable fail-closed session/active-account guards to implemented protected authentication routes; future module routes must call the guard.
+- [x] **T-034** Enforce separate `author` and `admin` roles in reusable server-side guards. Category mutation enforcement is still pending its later endpoint phase.
+- [ ] **T-035** Enforce ownership on every author post read/change; authors cannot access another author's private posts.
+- [x] **T-036** Add session-bound CSRF token generation and validation for the implemented login/logout browser operations; future state-changing operations must also use it.
+- [x] **T-037** Add MySQL-backed login rate limiting and generic authentication errors. Unit behavior passes; MySQL-specific integration is unverified.
+- [x] **T-038** Verify inactive accounts cannot authenticate or retain protected access.
+
+## Phase 4 - Category management
+
+- [ ] **T-040** Admin list categories.
+- [ ] **T-041** Admin create category.
+- [ ] **T-042** Admin edit category; generate slugs server-side and enforce unique slug/name policy.
+- [ ] **T-043** Admin activate/deactivate category.
+- [ ] **T-044** Ensure authors cannot access category mutation endpoints.
+- [ ] **T-045** Preserve posts when a category is deactivated.
+- [ ] **T-046** Expose active categories to author forms and public browsing.
+
+## Phase 5 - Post lifecycle
+
+- [ ] **T-050** Implement author dashboard, own-post list, and database-derived own-post counts.
+- [ ] **T-051** Implement post creation with validation and session-derived author ID.
+- [ ] **T-052** Implement post detail for authorized management view.
+- [ ] **T-053** Implement update with ownership validation.
+- [ ] **T-054** Implement publish/unpublish state changes.
+- [ ] **T-055** Require a valid active category before publication.
+- [ ] **T-056** Implement permanent deletion with explicit UI confirmation and server-side authorization; no trash/restore.
+- [ ] **T-057** Write audit events for key post actions.
+- [ ] **T-058** Mark summaries stale when title/body changes.
+
+## Phase 6 - Public blog
+
+- [ ] **T-060** Implement published-post listing.
+- [ ] **T-061** Implement published-post detail.
+- [ ] **T-062** Implement category filtering.
+- [ ] **T-063** Implement safe keyword search.
+- [ ] **T-064** Add pagination with a server-enforced maximum page size.
+- [ ] **T-065** Verify drafts, deleted posts, and inactive/unpublished data are not leaked publicly.
+
+## Phase 7 - Admin panel
+
+- [ ] **T-070** Implement system-wide admin dashboard post counts from database queries; show optional user/category totals where existing admin-list data supports them.
+- [ ] **T-071** Implement admin list/manage all posts.
+- [ ] **T-072** Implement user listing and safe account activation/deactivation.
+- [ ] **T-073** Restrict role changes to explicitly authorized administrative operations.
+- [ ] **T-074** Implement audit-log query with pagination and safe fields only.
+- [ ] **T-075** Test every admin route using author and unauthenticated identities.
+
+## Phase 8 - AI article summarization
+
+- [ ] **T-080** Define provider interface and provider-specific adapter.
+- [ ] **T-081** Load provider credentials from server-side environment/configuration.
+- [ ] **T-082** Build fixed summarization instruction with source article explicitly marked as untrusted text.
+- [ ] **T-083** Add source length limits, timeout, output length limits, and summary-generation rate limits.
+- [ ] **T-084** Load article content from the database after ownership/role verification.
+- [ ] **T-085** Validate model response as plain text; do not accept executable HTML/instructions.
+- [ ] **T-086** Persist summary, status, timestamp, and source hash.
+- [ ] **T-087** Ensure public reads reuse the current summary stored in MySQL and never call the provider.
+- [ ] **T-088** Ensure provider failure does not break post creation, editing, or publishing; provider adapter has no database credentials or application tools/privileges.
+- [ ] **T-089** Test prompt-injection content, malformed output, timeout, and repeated requests.
+
+## Phase 9 - Frontend integration
+
+- [ ] **T-090** Align frontend requests and response shapes with `API_SPEC.md`.
+- [ ] **T-091** Integrate login/logout and role-based dashboard routing.
+- [ ] **T-092** Integrate author create/edit/publish/delete flows.
+- [ ] **T-093** Integrate admin category and user management flows.
+- [ ] **T-094** Integrate public search and category filtering.
+- [ ] **T-095** Integrate summary generation and stale/failed states.
+- [ ] **T-096** Verify loading, empty, validation, unauthorized, rate-limited, and server-error states.
+
+## Phase 10 - Security and quality verification
+
+- [x] **T-100** Automate valid/invalid login, password-hash verification, session ID regeneration, logout destruction, expiry, and inactive-account tests. MySQL-backed integration remains unverified.
+- [ ] **T-101** Automate author/admin role boundaries, admin-only category access, cross-author private-post denial, and rejection of public admin-role assignment.
+- [x] **T-102** Run CSRF tests for missing, invalid, and valid tokens on the implemented login/logout operations.
+- [x] **T-103** Review authentication/provisioning SQL for prepared statement usage; migration SQL contains no request-controlled values.
+- [ ] **T-104** Test stored/reflected XSS cases and summary rendering.
+- [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
+- [ ] **T-106** Test category deactivation and referential integrity.
+- [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
+- [-] **T-108** PHP lint and all available tests pass; `git diff --check` passes. No static-analysis tool is configured, and MySQL integration remains skipped.
+- [x] **T-109** Record remaining known limitations; do not claim complete security.
+
+## Phase 11 - Release and documentation
+
+- [-] **T-110** Update `README.md` setup and Phase 2 authentication instructions; validate the setup on a clean MySQL environment after the MySQL blocker is resolved.
+- [x] **T-111** Confirm `.env` and real credentials remain excluded from Git.
+- [x] **T-112** Review SRS, PRD, architecture, API, database, and test plan consistency for Version 1.0 scope.
+- [ ] **T-113** Create a clean database setup/migration package.
+- [ ] **T-114** Test the complete flow: login -> create -> category -> publish -> public view -> summary -> edit -> delete.
+- [ ] **T-115** Prepare release notes and a list of verified features/known gaps.
+
+## Phase 12 - Wireframe and frontend contract follow-up
+
+- [x] **T-120** Preserve the supplied structural wireframe at `docs/wireframes/infinity-blog-flow.jpeg`.
+- [x] **T-121** Map all wireframe pages to planned API operations, permissions, schema data, validation/errors, and implementation status in `docs/WIREFRAME_BACKEND_MAPPING.md`.
+- [ ] **T-122** Create a separate Admin Panel wireframe for dashboard, system-wide posts, user management, category management, and audit activity.
+- [ ] **T-123** Add the summary-generation/regeneration controls, lifecycle states, and safe failure states to a future wireframe.
+- [x] **T-124** Finalize and document Version 1.0 dashboard-count, slug, AI-summary, deletion, and deferred-feature decisions. Counts use existing post-list response metadata; that scope decision introduced no endpoint or schema change.
+
+## Dependency-aware order
 
 ```text
-Login
-  v
-Dashboard
-  v
-Create Post
-  v
-Publish
-  v
-Public Blog
-  v
-Edit
-  v
-Public Blog
-  v
-Delete
+Repository review
+  -> configuration/database
+  -> schema
+  -> authentication/authorization
+  -> categories and post lifecycle
+  -> public API and Admin Panel
+  -> isolated summary service
+  -> frontend integration
+  -> security and regression tests
+  -> release documentation
 ```
 
-### T-124 [ ] Final submission package
-Verify:
-- Source code present.
-- Database script present.
-- Documentation present.
-- No secrets present.
-- Project starts on a clean local setup.
+## Definition of complete
 
----
-
-## 15. Suggested Build Order
-
-Build in this order to reduce rework:
-
-```text
-Database
-   v
-Database connection
-   v
-Authentication
-   v
-Dashboard
-   v
-Create
-   v
-Edit
-   v
-Delete
-   v
-Public blog
-   v
-Security review
-   v
-UI polish
-   v
-Testing
-   v
-Documentation
-```
-
-## 16. Version 1.0 Completion Gate
-
-Version 1.0 is complete only when:
-
-- All required problem-statement capabilities work.
-- Authentication is enforced.
-- Post ownership is enforced.
-- Drafts are private.
-- Published posts are public.
-- CRUD operations work against MySQL.
-- Main security checks pass.
-- Public and author interfaces are usable.
-- The application can be reproduced from the documented setup steps.
-
-## 17. Post-Version-1 Backlog
-
-These are deliberately deferred:
-
-- `[ ]` Categories.
-- `[ ]` Tags.
-- `[ ]` Search.
-- `[ ]` Filtering.
-- `[ ]` Revision history.
-- `[ ]` Editor/Admin roles.
-- `[ ]` Scheduled publishing.
-- `[ ]` Media library.
-- `[ ]` Analytics.
-- `[ ]` Comments and moderation.
+Version 1.0 is not complete until required functionality passes acceptance tests, author/admin access is enforced server-side, public endpoints expose published posts only, category integrity is preserved, AI failures are isolated from core CMS operations, and the security/test review has been recorded.

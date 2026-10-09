@@ -1,0 +1,56 @@
+<?php
+declare(strict_types=1);
+
+namespace InfinityBlog\Auth;
+
+final class AuthGuard
+{
+    private SessionManager $sessions;
+    private UserRepository $users;
+
+    public function __construct(SessionManager $sessions, UserRepository $users)
+    {
+        $this->sessions = $sessions;
+        $this->users = $users;
+    }
+
+    public function currentAccount(): ?UserAccount
+    {
+        $id = $this->sessions->currentUserId();
+        if ($id === null) {
+            return null;
+        }
+        if ($this->sessions->isExpired()) {
+            $this->sessions->clearAuthentication();
+            return null;
+        }
+
+        $account = $this->users->findById($id);
+        if ($account === null || !$account->isActive()) {
+            $this->sessions->clearAuthentication();
+            return null;
+        }
+
+        $this->sessions->touch();
+
+        return $account;
+    }
+
+    /** @param list<string> $allowedRoles */
+    public function permits(array $allowedRoles): bool
+    {
+        $account = $this->currentAccount();
+
+        return $account !== null && in_array($account->role, $allowedRoles, true);
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->permits(['admin']);
+    }
+
+    public function isAuthorOrAdmin(): bool
+    {
+        return $this->permits(['author', 'admin']);
+    }
+}

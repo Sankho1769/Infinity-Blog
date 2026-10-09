@@ -1,240 +1,174 @@
 # Product Requirements Document
 
-## Content Management System (CMS)
+## Infinity Blog
 
-**Document Version:** 1.0  
-**Status:** Baseline  
-**Product Type:** Web-based blog CMS  
-**Primary Stack:** PHP, MySQL, HTML, CSS, JavaScript  
-**Audience:** Student developers, faculty evaluators, project reviewers
+**Version:** 1.0
+
+**Status:** Baseline for implementation
+
+**Product:** Blog Content Management System
+
+**Primary stack:** PHP and MySQL
 
 ---
 
-## 1. Product Summary
+## 1. Product summary
 
-The Content Management System is a web application for managing articles on a blog.
+Infinity Blog is a web-based CMS for managing blog articles. Authors manage their own posts. Administrators manage all posts, author accounts, and the categories available to authors. Public visitors can browse published articles, filter by category, search, and read article pages. An AI-assisted feature can generate and store a concise summary for an article when an authorized user requests it.
 
-The system gives authenticated authors a central place to create, edit, publish, and delete posts. Public visitors can browse published articles through a structured blog interface without accessing the author management area.
+## 2. Problem statement
 
-The product is deliberately focused. It is not intended to become a social network, forum, e-commerce platform, or general-purpose publishing suite in Version 1.0.
+A blog needs a central place to create, revise, publish, and remove content. Managing article content manually or through direct database edits becomes error-prone, while unrestricted access makes it difficult to protect drafts and maintain clear ownership. Readers also need a structured way to discover published articles. Infinity Blog brings article management, category administration, and public reading into one application.
 
-## 2. Problem
+## 3. Product goals
 
-A small blog needs a reliable way to manage articles without editing website files manually or depending on direct database changes.
+1. Satisfy the supplied CMS problem statement using PHP and MySQL.
+2. Make author post management understandable and efficient.
+3. Keep public readers separate from authenticated management capabilities.
+4. Give administrators controlled authority over accounts, categories, and all posts.
+5. Let authors use administrator-created categories without granting authors category administration.
+6. Add article summaries without making AI a critical dependency for ordinary publishing or reading.
+7. Establish security and testability as implementation requirements from the start.
 
-Without a CMS, common problems include:
+## 4. Target users
 
-- Content is difficult to maintain as the number of posts grows.
-- Authors need a clear place to manage their own articles.
-- Draft content can be mixed with published content.
-- Updating an existing article is unnecessarily manual.
-- Published content needs a consistent public presentation.
-- Author access must be separated from public viewing.
-- Repeated database operations should be handled by application code rather than ad-hoc edits.
+### 4.1 Public visitor
 
-## 3. Product Goal
+Needs to discover and read published articles without an account. May search by keyword and filter by category.
 
-Provide a simple, secure, maintainable CMS that covers the complete basic article lifecycle:
+### 4.2 Author
 
-**Login -> Create -> Edit -> Publish -> View Publicly -> Delete**
+Needs to sign in, create drafts, edit their own posts, assign an active category, publish or unpublish their own posts, request an article summary, and delete their own posts.
 
-## 4. Success Criteria
+### 4.3 Administrator
 
-Version 1.0 is successful when:
+Needs a separate protected panel to review system-wide posts, manage author accounts, create and maintain categories, perform authorized post-management actions, and inspect important activity records.
 
-1. An author can log in using valid credentials.
-2. An author can create a new post and save it to MySQL.
-3. An author can edit an existing post.
-4. An author can publish a post.
-5. An author can delete a post.
-6. A visitor can see published posts without logging in.
-7. Draft or unpublished posts are not exposed publicly.
-8. Author-only pages cannot be accessed by unauthenticated users.
-9. Passwords are stored as hashes rather than plain text.
-10. Database operations use safe query handling.
+## 5. Roles and authorization summary
 
-## 5. Target Users
+| Capability | Public visitor | Author | Admin |
+|---|---:|---:|---:|
+| Read published posts | Yes | Yes | Yes |
+| Search/filter published posts | Yes | Yes | Yes |
+| Read drafts | No | Own drafts only in management area | Yes, in admin area |
+| Create post | No | Yes | Yes, where needed for administration |
+| Edit/delete own post | No | Yes | Yes |
+| Edit/delete another author's post | No | No | Yes |
+| Request summary for a post | No | Own post | Any permitted post |
+| Create/edit/deactivate category | No | No | Yes |
+| Manage author accounts | No | No | Yes |
+| Assign administrator role | No | No | Restricted to secure administrative procedure / explicitly authorized admin operation |
 
-### 5.1 Author
+## 6. Version 1.0 scope
 
-An author writes and maintains blog articles.
+### Must have
 
-Typical needs:
-
-- Log in quickly.
-- See existing posts.
-- Create a new post.
-- Update a post.
-- Decide when a post becomes public.
-- Remove a post that is no longer needed.
-
-### 5.2 Public Visitor
-
-A visitor reads the blog.
-
-Typical needs:
-
-- Open the blog without an account.
-- See published articles.
-- Select an article.
-- Read the complete article.
-- Understand the title, author, and publication information.
-
-## 6. Product Scope
-
-### 6.1 Version 1.0
-
-Version 1.0 includes:
-
-- Author authentication.
-- Session-based access control.
+- PHP backend and MySQL persistence.
+- Secure authentication and session handling.
+- At least `admin` and `author` roles.
+- Two administrator accounts provisioned through secure setup: `Shubham Banerjee` and `Sounak Sikdar`.
+- Admin dashboard.
 - Author dashboard.
-- Post creation.
-- Post editing.
-- Post publication.
-- Post deletion.
-- Published/unpublished status.
-- Public post listing.
-- Public article detail page.
-- MySQL persistence.
-- Input validation.
-- Secure password storage.
-- Prepared/parameterized database queries.
-- Safe output rendering.
+- Database-derived post counts: total, draft, and published counts for an author's own posts and system-wide counts for admins.
+- Create, read, update, publish/unpublish, and delete posts.
+- Category creation and maintenance restricted to admins.
+- Author category selection from active categories.
+- Public article list and detail view.
+- Public category filtering and keyword search.
+- Stored article summaries generated only after an authorized request.
+- Security controls and automated/manual tests for the sensitive routes.
 
-### 6.2 Explicitly Out of Scope
+### Should have
 
-The following are not part of the baseline:
+- Pagination.
+- Summary status display (`none`, `ready`, `stale`, `failed`).
+- Admin dashboard user and category totals where available from existing admin data.
+- Audit trail for key administrative and publishing actions.
+- Clear empty, loading, validation-error, and server-error states.
 
-- Comments.
-- Likes and reactions.
-- Followers.
-- Private messaging.
-- Online payments.
-- Multi-tenant organization management.
-- Native mobile apps.
-- Advanced approval chains.
-- Advertising management.
-- Full analytics platform.
+### Out of scope for Version 1.0
 
-These may be considered in a later version.
+- Comments and user reactions.
+- Social networking, followers, direct messages, forums, or campus ERP functions.
+- Payments, subscriptions, advertising, or monetization.
+- Multiple organizations/tenants.
+- Native mobile application.
+- Public author self-registration with automatic role assignment.
+- View tracking and view-count metrics.
+- Post tags.
+- Featured-image uploads and other user file uploads.
+- Public author profile pages.
+- Remember-me login sessions.
+- Password recovery/reset workflows.
+- Trash/restore workflows. Deleting a post requires explicit confirmation and permanently removes it.
+- AI tools, web browsing, code execution, or agentic actions.
 
-## 7. Core User Flows
+## 7. Main workflows
 
-### 7.1 Author Login
+### Author content workflow
 
-1. Author opens the login page.
-2. Author enters credentials.
-3. System validates credentials.
-4. System creates an authenticated session.
-5. System redirects to the dashboard.
+1. Author signs in.
+2. Author opens the dashboard and chooses **Create Post**.
+3. Author enters title and body and selects an active category when ready to publish.
+4. Author saves a draft or publishes.
+5. Author may request a summary; the backend validates and stores the result.
+6. Author edits or deletes only content they are allowed to manage.
 
-### 7.2 Create and Publish Post
+### Admin category workflow
 
-1. Author opens the create-post page.
-2. Author enters title and article content.
-3. Author saves the post.
-4. System stores the post in MySQL.
-5. Author chooses to publish it.
-6. System marks the post as published.
-7. The article appears on the public blog.
+1. Admin signs in to the Admin Panel.
+2. Admin creates a category with a unique name; the server generates a unique URL-safe slug.
+3. The category becomes available to authors while active.
+4. Authors can assign it to drafts/posts according to the publishing rules.
+5. When a category is no longer needed, admin deactivates it. Existing posts retain the relationship; inactive categories cannot be assigned to new or newly published content.
 
-### 7.3 Edit Post
+### Public reading workflow
 
-1. Author opens the dashboard.
-2. Author selects a post.
-3. System loads the post into an edit form.
-4. Author changes the content.
-5. System validates and stores the updated values.
-6. Updated content is used on the next public view when the post is published.
+1. Visitor opens the homepage.
+2. The application returns published posts only.
+3. Visitor filters by category or searches for a keyword.
+4. Visitor opens an article detail page.
+5. The page displays the stored summary if it is current; otherwise it may display a plain-text excerpt or omit the summary.
 
-### 7.4 Delete Post
+## 8. AI summary product requirements
 
-1. Author selects a post to delete.
-2. System requests confirmation.
-3. Author confirms the action.
-4. System deletes the post.
-5. The post is no longer shown publicly.
+- An authorized author/admin can request a summary for a post they may manage.
+- Summary generation uses a configured server-side provider. No secret is delivered to browser code.
+- The source article is treated as untrusted text, not instructions.
+- The model receives no tools or application privileges.
+- The application validates the response and stores it as plain text.
+- Public page views never trigger a new AI request.
+- The authorized backend operation stores generated summaries in MySQL; public pages reuse the current stored summary.
+- When title/body changes, the prior summary is marked stale and must not be presented as current.
+- AI errors must not prevent saving, editing, publishing, or reading the article.
+- The provider adapter receives bounded article text only and has no database credentials, tools, or application privileges.
+- Generation is subject to input/output limits, timeout, and rate limits.
 
-### 7.5 Public Reading
+## 9. Success criteria
 
-1. Visitor opens the blog.
-2. System retrieves published posts.
-3. System displays posts in a consistent format.
-4. Visitor selects an article.
-5. System displays the full article.
+Version 1.0 is acceptable when all of the following are demonstrated:
 
-## 8. Functional Product Requirements
+1. Admin and author sign-in work with role enforcement.
+2. Authors can create, edit, publish/unpublish, and delete their own posts.
+3. An author cannot modify another author's post by changing an ID in a request.
+4. Admins can manage posts and categories.
+5. Authors can assign an active admin-created category.
+6. Public queries show published posts only.
+7. Category filters and keyword search return correct public results.
+8. An authorized summary request stores a valid summary; public views reuse the stored result.
+9. Failed AI requests leave core post operations available.
+10. The test plan's core security and functional checks pass.
 
-| ID | Requirement | Priority |
-|---|---|---|
-| PR-01 | Authors shall authenticate before accessing management functions. | Must |
-| PR-02 | Authors shall be able to create posts. | Must |
-| PR-03 | Authors shall be able to edit posts they are permitted to manage. | Must |
-| PR-04 | Authors shall be able to publish posts. | Must |
-| PR-05 | Authors shall be able to delete posts they are permitted to manage. | Must |
-| PR-06 | The system shall store users and posts in MySQL. | Must |
-| PR-07 | The public blog shall display published posts. | Must |
-| PR-08 | Unpublished posts shall not be publicly visible. | Must |
-| PR-09 | The system shall validate required fields. | Must |
-| PR-10 | The system shall protect author-only pages with authentication. | Must |
-| PR-11 | The system should show recent published posts first. | Should |
-| PR-12 | The system should provide meaningful error messages for failed operations. | Should |
+## 10. Product decisions
 
-## 9. Content Model
-
-### Author
-
-- ID
-- Username or email
-- Password hash
-- Account creation timestamp
-
-### Post
-
-- ID
-- Author ID
-- Title
-- Content
-- Status
-- Creation timestamp
-- Last updated timestamp
-
-### Status
-
-Version 1.0 uses:
-
-- `draft`
-- `published`
-
-The status controls whether an article is visible on the public blog.
-
-## 10. Product Principles
-
-1. **Keep the core workflow obvious.** Authors should not need technical knowledge to manage a post.
-2. **Public and author areas stay separate.** Reading content should not expose management controls.
-3. **The database is the source of record.** Posts should not be maintained as hard-coded HTML files.
-4. **Security is part of the implementation, not an afterthought.**
-5. **Prefer small, understandable components over a complicated framework structure.**
-6. **Build Version 1.0 around the provided problem statement.**
-
-## 11. Future Direction
-
-After Version 1.0 is stable, useful additions can include:
-
-- Categories and tags.
-- Keyword search.
-- Filtering by category.
-- Featured posts.
-- Revision history.
-- Separate editor/admin roles.
-- Scheduled publishing.
-- Image/media management.
-- Article analytics.
-- Comments with moderation.
-
-Future features must not weaken the simple author-to-public workflow.
-
-## 12. Release Definition
-
-A release is ready when all Version 1.0 acceptance criteria pass, the main author and public flows work end-to-end, database operations are verified, and no known critical security or data-integrity issue remains.
+- The application uses a simple PHP/MySQL architecture; avoid unnecessary distributed infrastructure.
+- The frontend and backend communicate through the API contract in `API_SPEC.md` unless the existing repository already uses a server-rendered pattern that has been explicitly approved.
+- Authentication uses PHP server-side sessions for browser flows, with CSRF protections for state-changing requests.
+- The two initial administrator login identifiers are their names, normalized by trimming leading/trailing ASCII spaces and lowercasing to `shubham banerjee` and `sounak sikdar`; credentials are provisioned through a trusted CLI workflow only.
+- The public blog never displays draft content.
+- Category deletion should be conservative: deactivate categories in normal operation; do not orphan or silently reassign posts.
+- Category create/edit requests do not accept a client-authoritative slug; the server generates a normalized slug and resolves collisions with a numeric suffix while enforcing database uniqueness.
+- Author post operations and dashboard counts are scoped to the authenticated author's own records; admin counts are system-wide.
+- No Version 1.0 operation tracks article views.
+- The AI provider remains configurable and replaceable.
+- Visual styling, color, and visual effects are intentionally not specified in this document.

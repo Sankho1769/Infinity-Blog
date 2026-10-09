@@ -1,212 +1,133 @@
-# Project Memory
+# Project Memory and Decision Record
 
-## Content Management System (CMS)
+## Infinity Blog
 
-**Memory Version:** 1.0  
-**Purpose:** Persistent project context for future development sessions.
+**Version:** 1.0
+
+**Purpose:** Preserve stable context across implementation sessions and coding-agent handoffs.
 
 ---
 
-## 1. Project Identity
+## 1. Project identity
 
-**Project Name:** Content Management System (CMS)
+- Product: **Infinity Blog**.
+- Product type: web-based Content Management System for a blog.
+- Core technology: PHP + MySQL.
+- Frontend integrates with a backend API contract unless the existing repository has a documented approved alternative.
+- Main actors: public visitor, author, admin.
 
-**Primary Purpose:**  
-Provide a web-based system for authors to manage blog posts and for public visitors to read published articles.
+## 2. Official problem statement
 
-**Primary Technologies:**  
-PHP + MySQL
+A blog site requires a CMS that allows authors to write, edit, and publish articles. The application must use PHP and MySQL, allow authors to log in, create new posts, edit existing posts, and delete posts, and display posts to the public in a structured format.
 
-**Academic Context:**  
-BCA 5th Semester mini-project.
+This remains the mandatory core scope.
 
-## 2. Official Problem Statement
+## 3. Product boundaries
 
-A blog site requires a CMS that allows authors to write, edit, and publish articles.
+Infinity Blog is not a campus ERP, social network, forum, marketplace, or e-commerce platform. Features must remain tied to article management and public blog reading.
 
-The system must use PHP and MySQL, allow authors to log in, create new posts, edit existing posts, and delete posts, and display posts to the public in a structured format.
+## 4. Role model
 
-This statement is the scope anchor for Version 1.0.
+Initial administrator identifiers are normalized names (`shubham banerjee`, `sounak sikdar`): trim leading/trailing ASCII spaces and lowercase the identifier; passwords remain unchanged. Initial accounts are created or rotated only through the trusted CLI credential workflow. Authentication routes exist, but the MySQL integration suite remains unverified until run against Oracle MySQL 8.0.16+.
 
-## 3. Product Decision
-
-The project is a **blog CMS**, not a campus ERP, social network, forum, e-commerce system, or general communication platform.
-
-Any idea that moves the core product away from article management should be treated as a separate project or a future extension.
-
-## 4. Core Actors
+### Public visitor
+- Read published posts.
+- Search and filter published posts.
+- View current stored summary where available.
 
 ### Author
+- Log in and log out.
+- Create and manage own posts.
+- Select admin-created active categories.
+- Publish/unpublish own posts.
+- Request a summary for a post they may manage.
 
-Authenticated user who manages blog posts.
+### Admin
+- Access a protected admin panel.
+- Manage all posts.
+- Create/edit/deactivate categories.
+- Create/deactivate author accounts and perform explicitly authorized account/role management.
+- View permitted audit events.
+- Request summaries for posts they are permitted to manage.
 
-Core capabilities:
+## 5. Initial administrator setup
 
-- Login.
-- Create post.
-- Edit post.
-- Publish post.
-- Delete post.
-- View own posts in the dashboard.
-- Logout.
+Two initial administrator identifiers are requested:
+- `Shubham Banerjee`
+- `Sounak Sikdar`
 
-### Public Visitor
+Provision them through a secure setup/CLI process. Keep passwords separate, strong, and out of source code, Markdown, SQL seed files, and Git. Do not preserve any plaintext credential in this memory file. Rotate temporary setup credentials before deployment.
 
-Unauthenticated reader.
+## 6. Main data entities
 
-Core capabilities:
+- `users`: identity, password hash, role, active status, timestamps.
+- `categories`: name, unique server-generated slug, description, active status, creator and timestamps.
+- `posts`: author, optional/required category according to publication rules, title, content, status, summary metadata, publication and timestamps.
+- `audit_logs`: actor, action, entity type/ID, safe metadata, timestamp.
+- `rate_limit_buckets` or an equivalent rate-limit mechanism, if the chosen implementation stores limits in MySQL.
 
-- View published posts.
-- Open a full published article.
+## 7. Category decisions
 
-## 5. Core Data
+- Admins are the only role allowed to create, edit, activate, or deactivate categories.
+- Authors can assign active categories to posts.
+- Deactivation preserves existing references and history.
+- Category slugs are generated from the category name by the server; normalized collisions use numeric suffixes and the database unique constraint remains authoritative.
+- A post requires an active category to be published. Drafts may be saved without a category if that keeps drafting easy, but this behavior must be consistent in UI and tests.
 
-### User
+## 8. AI summarization decisions
 
-```text
-id
-username/email
-password_hash
-created_at
-```
+- Summary generation is explicit and authorized, not automatic on every public page view.
+- Backend loads the canonical article content from MySQL.
+- AI provider is selected/configured on the server and can be replaced through a service adapter.
+- The model gets article text only as untrusted content, with no tools or application privileges.
+- Summary is stored as plain text and safely rendered.
+- Summary has state (`none`, `ready`, `stale`, `failed`) and generation timestamp/source hash as implemented.
+- On title/body edits, mark a previous summary stale.
+- AI failure must not interrupt post creation, editing, publishing, or reading.
+- The backend performs authorized MySQL reads/writes; the provider adapter receives bounded text only and has no database credentials or application privileges.
+- Rate limit summary generation and enforce input/output/time limits.
 
-### Post
+## 9. Version 1.0 scope decisions
 
-```text
-id
-author_id
-title
-content
-status
-created_at
-updated_at
-```
+- Author dashboard counts are database-derived and limited to the signed-in author's posts; admin post counts are system-wide. There is no view tracking.
+- Tags, featured-image uploads, public author profiles, remember-me, password recovery, and trash/restore are deferred. Post deletion is permanent after confirmation.
 
-### Status
+## 10. Security decisions
 
-```text
-draft
-published
-```
+- PHP sessions for browser authentication.
+- Session ID regeneration after login.
+- CSRF tokens for state-changing requests.
+- Prepared statements.
+- Role and post ownership checked server-side on every relevant request.
+- Public endpoints return published content only.
+- Output encoding by context; AI summary is plain text.
+- Secrets live outside version control.
+- No claim that the application is 100% secure.
 
-## 6. Important Design Decisions
+## 11. Integration contract
 
-1. MySQL is the persistent data store.
-2. PHP handles server-side processing.
-3. PHP sessions handle author authentication.
-4. Passwords are hashed.
-5. Prepared statements are used for database queries influenced by user input.
-6. Only published posts are public.
-7. Post ownership is checked for management operations.
-8. Public rendering escapes untrusted output unless a deliberate sanitized rich-text policy is introduced.
-9. Version 1.0 favors simplicity over an elaborate framework architecture.
+- `API_SPEC.md` is the frontend/backend integration contract.
+- `DATABASE_DESIGN.md` defines logical data fields and relationship expectations.
+- If an API payload or database field changes, update both documents and associated tests.
+- The frontend must not invent successful states when the backend returns an error.
 
-## 7. Current Scope
+## 12. Implementation approach
 
-### Required
+1. Inspect the repository before modifying code.
+2. Preserve existing work unless a change is justified.
+3. Implement schema and configuration first.
+4. Add auth/authorization before protected CRUD routes.
+5. Add post and category management.
+6. Add public list/detail and search/filter.
+7. Add the isolated summary service.
+8. Test negative and malicious input cases.
+9. Keep the task board honest and update the docs with actual decisions.
 
-- Login/logout.
-- Create.
-- Read.
-- Update.
-- Delete.
-- Publish/unpublish state handling as required to keep drafts private.
-- Public article listing.
-- Public article detail view.
-- MySQL schema.
-- Validation.
-- Basic security.
+## 13. Change control
 
-### Later
+When a new feature or change is requested:
 
-- Categories.
-- Tags.
-- Search.
-- Filtering.
-- Revision history.
-- Editor/Admin roles.
-- Scheduled publication.
-- Media library.
-- Analytics.
-- Comments.
-
-## 8. Non-Negotiable Security Expectations
-
-The project must not:
-
-- Store raw passwords.
-- Concatenate untrusted input directly into SQL queries.
-- Trust a client-supplied author ID when deciding ownership.
-- Expose draft content publicly.
-- Expose raw database errors to ordinary visitors.
-
-## 9. Expected User Experience
-
-Author flow:
-
-```text
-Login
-  v
-Dashboard
-  v
-Create/Edit
-  v
-Save Draft or Publish
-  v
-Manage Posts
-```
-
-Public flow:
-
-```text
-Blog Home
-  v
-Published Post List
-  v
-Article Detail
-```
-
-## 10. Implementation Guidance
-
-Keep the code understandable enough for an academic viva.
-
-A reviewer should be able to trace:
-
-```text
-Form
-  v
-PHP request
-  v
-Validation
-  v
-Prepared SQL
-  v
-MySQL
-  v
-Response / redirect
-```
-
-Avoid hiding the main logic behind unnecessary abstraction during the first version.
-
-## 11. Documentation State
-
-The project should maintain these planning documents:
-
-- `PRD.md` — product requirements and scope.
-- `architecture.md` — technical structure.
-- `rules.md` — development and security rules.
-- `design.md` — UI and UX decisions.
-- `memory.md` — stable project context.
-- `task.md` — implementation checklist and progress.
-
-These documents should remain aligned with the actual codebase.
-
-## 12. Change Control
-
-When a future requirement is proposed:
-
-1. Check whether it is already in the PRD.
-2. Decide whether it belongs to Version 1.0 or a later version.
-3. Update the relevant planning document.
-4. Add implementation tasks.
-5. Keep the core problem statement unchanged unless there is an explicit project change.
+1. Check the SRS and PRD.
+2. Decide whether it is in scope or a separately approved extension.
+3. Update relevant docs and tests before implementation.
+4. Document the reason for material architecture/security changes.

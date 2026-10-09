@@ -1,0 +1,21 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated files
+/vendor/
+/coverage/
+/.phpunit.cache/
+/var/cache/
+/var/log/
+/storage/logs/
+/tmp/
+*.log
+*.sql.gz
+*.dump
+
+# Operating system/editor files
+.DS_Store
+Thumbs.db
+*.swp
