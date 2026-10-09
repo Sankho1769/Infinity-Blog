@@ -3,7 +3,7 @@
 ## Infinity Blog - REST JSON Contract
 
 **Version:** `/api/v1`  
-**Status:** The four authentication routes in Section 2 are implemented. All post, category, user-management, audit, and summary routes remain planned and are not exposed by the current router.
+**Status:** The four authentication routes in Section 2 and category routes in Section 6 are implemented. Post, user-management, audit, and summary routes remain planned and are not exposed by the current router.
 
 ---
 
@@ -186,8 +186,9 @@ The implementation may reuse application services with explicit permission polic
 - `PATCH /admin/categories/{id}` - edit name and description; when the name changes, the server regenerates and returns the unique slug.
 - `POST /admin/categories/{id}/activate` - activate category.
 - `POST /admin/categories/{id}/deactivate` - deactivate category.
+- `DELETE /admin/categories/{id}` - delete only when no posts reference the category; otherwise return `409 CATEGORY_IN_USE`.
 
-Category mutation endpoints require admin role and CSRF. Names must be unique after normalization. The server generates lowercase URL-safe slugs from category names; if a generated base slug is already used, it appends a deterministic numeric suffix and retries a concurrent uniqueness collision. The database unique constraint remains authoritative. Clients must not supply a slug as an authoritative value. Deactivation preserves existing post links. Hard deletion is not a normal operation.
+Category mutation endpoints require an active admin session and a valid CSRF token. Names must be unique after whitespace normalization and the database collation. The server generates lowercase URL-safe slugs from category names; if a generated base slug is already used, it appends a deterministic numeric suffix and retries a concurrent slug collision. The database unique constraint remains authoritative. Clients must not supply a slug as an authoritative value. Deactivation preserves existing post links. Deletion is allowed only when no post references the category; the foreign key remains restrictive, and deactivation is preferred.
 
 ## 7. Admin user endpoints
 
@@ -226,6 +227,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [x] Implemented authentication routes check active server-side sessions where required; future protected routes remain to be implemented.
 - [x] Implemented authentication derives identity and role from the MySQL user record; future resource ownership checks remain to be implemented.
 - [x] CSRF is checked for implemented login/logout operations; future state-changing routes must also check it.
+- [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
 - [ ] CORS is restricted to known origins if required.
 - [x] Implemented login request size and field lengths are bounded.
 - [ ] IDs and status values are validated.
@@ -234,5 +236,5 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [ ] Public endpoints return published content only.
 - [ ] Summary requests are rate-limited and never run on public views.
 - [ ] Author post lists and dashboard counts are scoped to that author's records; admin counts are system-wide and database-derived.
-- [ ] Category slugs are generated server-side and protected by the database unique constraint.
+- [x] Category slugs are generated server-side and protected by the database unique constraint.
 - [ ] The provider adapter has no database credentials or application tools/privileges.

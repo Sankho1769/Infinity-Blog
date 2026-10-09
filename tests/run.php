@@ -11,11 +11,14 @@ use InfinityBlog\Auth\LoginAttemptLimiter;
 use InfinityBlog\Auth\LoginResult;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Categories\CategoryConflictException;
+use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Database\DatabaseUnavailableException;
 use InfinityBlog\Database\MigrationRunner;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AuthController;
+use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\Request;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -252,6 +255,29 @@ $createUserDatabase = static function (): PDO {
     return $pdo;
 };
 
+$createCategoryDatabase = static function () use ($createUserDatabase): PDO {
+    $pdo = $createUserDatabase();
+    $pdo->exec('PRAGMA foreign_keys = ON');
+    $pdo->exec(
+        'CREATE TABLE categories (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
+        'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
+        'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT)'
+    );
+    $pdo->exec(
+        'CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER NULL ' .
+        'REFERENCES categories(id) ON DELETE RESTRICT)'
+    );
+    $pdo->exec(
+        'CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL ' .
+        'REFERENCES users(id) ON DELETE SET NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, ' .
+        'entity_id INTEGER NULL, metadata TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+    );
+
+    return $pdo;
+};
+
 $run('authentication verifies known credentials and records only safe identity data', static function () use ($createUserDatabase, $expect): void {
     $pdo = $createUserDatabase();
     $limiter = new TestLoginAttemptLimiter();
@@ -319,6 +345,123 @@ $withSession = static function (callable $test): void {
         rmdir($directory);
     }
 };
+
+$run('category repository validates uniqueness and generates collision-safe slugs', static function () use ($createCategoryDatabase, $expect): void {
+    $pdo = $createCategoryDatabase();
+    $repository = new CategoryRepository($pdo);
+    $first = $repository->create('Technology News', 'First category', 2);
+    $second = $repository->create('Technology-News', null, 2);
+    $expect($first['slug'] === 'technology-news');
+    $expect($second['slug'] === 'technology-news-2');
+    $expect($second['description'] === null && $second['is_active']);
+
+    $duplicateRejected = false;
+    try {
+        $repository->create('technology news', null, 2);
+    } catch (CategoryConflictException $exception) {
+        $duplicateRejected = $exception->reason === CategoryConflictException::NAME_EXISTS;
+    }
+    $expect($duplicateRejected, 'Names that collide under the database collation must be rejected.');
+
+    $renamed = $repository->update($second['id'], 'Education & Learning', 'Updated', 2);
+    $expect($renamed['slug'] === 'education-learning' && $renamed['description'] === 'Updated');
+    $expect(count($repository->listActive()) === 2);
+    $expect(count($repository->listAdmin()) === 2);
+});
+
+$run('category API enforces admin role, CSRF, validation, deactivation, deletion and audit', static function () use ($withSession, $validConfiguration, $createCategoryDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createCategoryDatabase, $expect): void {
+        $pdo = $createCategoryDatabase();
+        $users = new UserRepository($pdo);
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $controller = new CategoryController(new CategoryRepository($pdo), new AuthGuard($sessions, $users), $sessions);
+
+        $unauthenticated = $controller->handle(Request::fromValues('GET', '/admin/categories', '192.0.2.50'));
+        $expect($unauthenticated['status'] === 401);
+
+        $author = $users->findByIdentifier('author one');
+        $admin = $users->findByIdentifier('admin one');
+        if ($author === null || $admin === null) {
+            throw new RuntimeException('Category API test accounts were not created.');
+        }
+        $sessions->establish($author);
+        $authorToken = $sessions->csrfToken();
+        $authorWrite = $controller->handle(Request::fromValues(
+            'POST', '/admin/categories', '192.0.2.50', ['X-CSRF-Token' => $authorToken], ['name' => 'Forbidden']
+        ));
+        $expect($authorWrite['status'] === 403);
+        $authorRead = $controller->handle(Request::fromValues('GET', '/admin/categories', '192.0.2.50'));
+        $expect($authorRead['status'] === 403);
+
+        $sessions->establish($admin);
+        $token = $sessions->csrfToken();
+        $missingCsrf = $controller->handle(Request::fromValues('POST', '/admin/categories', '192.0.2.50', [], ['name' => 'No CSRF']));
+        $expect($missingCsrf['status'] === 403);
+
+        $clientSlug = $controller->handle(Request::fromValues(
+            'POST', '/admin/categories', '192.0.2.50', ['X-CSRF-Token' => $token],
+            ['name' => 'Client Slug', 'slug' => 'client-controlled']
+        ));
+        $expect($clientSlug['status'] === 422);
+
+        $created = $controller->handle(Request::fromValues(
+            'POST', '/admin/categories', '192.0.2.50', ['X-CSRF-Token' => $token],
+            ['name' => '  Technology   News ', 'description' => 'Technology articles.']
+        ));
+        $expect($created['status'] === 201);
+        $category = $created['body']['data']['category'] ?? null;
+        $expect(is_array($category) && $category['name'] === 'Technology News' && $category['slug'] === 'technology-news');
+        $categoryId = (int) $category['id'];
+
+        $adminList = $controller->handle(Request::fromValues('GET', '/admin/categories', '192.0.2.50'));
+        $expect($adminList['status'] === 200 && $adminList['body']['meta']['total'] === 1);
+        $expect($adminList['body']['data']['categories'][0]['post_count'] === 0);
+
+        $publicList = $controller->handle(Request::fromValues('GET', '/categories', '192.0.2.50'));
+        $expect($publicList['status'] === 200 && count($publicList['body']['data']['categories']) === 1);
+        $expect(!array_key_exists('post_count', $publicList['body']['data']['categories'][0]));
+
+        $insertPost = $pdo->prepare('INSERT INTO posts (category_id) VALUES (:category_id)');
+        $insertPost->execute(['category_id' => $categoryId]);
+        $postId = (int) $pdo->lastInsertId();
+        $deactivated = $controller->handle(Request::fromValues(
+            'POST', '/admin/categories/' . $categoryId . '/deactivate', '192.0.2.50', ['X-CSRF-Token' => $token]
+        ));
+        $expect($deactivated['status'] === 200 && !$deactivated['body']['data']['category']['is_active']);
+        $expect((int) $pdo->query('SELECT category_id FROM posts WHERE id = ' . $postId)->fetchColumn() === $categoryId);
+        $expect($controller->handle(Request::fromValues('GET', '/categories', '192.0.2.50'))['body']['data']['categories'] === []);
+        $adminList = $controller->handle(Request::fromValues('GET', '/admin/categories', '192.0.2.50'));
+        $expect(count($adminList['body']['data']['categories']) === 1);
+        $expect(!$adminList['body']['data']['categories'][0]['is_active']
+            && $adminList['body']['data']['categories'][0]['post_count'] === 1);
+
+        $deleteInUse = $controller->handle(Request::fromValues(
+            'DELETE', '/admin/categories/' . $categoryId, '192.0.2.50', ['X-CSRF-Token' => $token]
+        ));
+        $expect($deleteInUse['status'] === 409 && $deleteInUse['body']['error']['code'] === 'CATEGORY_IN_USE');
+
+        $activated = $controller->handle(Request::fromValues(
+            'POST', '/admin/categories/' . $categoryId . '/activate', '192.0.2.50', ['X-CSRF-Token' => $token]
+        ));
+        $expect($activated['status'] === 200 && $activated['body']['data']['category']['is_active']);
+
+        $updated = $controller->handle(Request::fromValues(
+            'PATCH', '/admin/categories/' . $categoryId, '192.0.2.50', ['X-CSRF-Token' => $token],
+            ['name' => 'Technology & Education', 'description' => 'Updated description.']
+        ));
+        $expect($updated['status'] === 200);
+        $expect($updated['body']['data']['category']['slug'] === 'technology-education');
+
+        $pdo->prepare('DELETE FROM posts WHERE id = :id')->execute(['id' => $postId]);
+        $deleted = $controller->handle(Request::fromValues(
+            'DELETE', '/admin/categories/' . $categoryId, '192.0.2.50', ['X-CSRF-Token' => $token]
+        ));
+        $expect($deleted['status'] === 200);
+        $expect((int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'category'")->fetchColumn() === 5);
+        $expect($controller->handle(Request::fromValues('GET', '/categories', '192.0.2.50'))['body']['data']['categories'] === []);
+    });
+});
 
 $exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $validConfiguration, $expect): void {
     $provisioner = new AdminProvisioner($pdo);
@@ -871,6 +1014,82 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $statement->execute(['id' => $userId]);
             }
         }
+        });
+
+        $run('MySQL category repository persists slugs, audit events, state changes and delete restrictions', static function () use ($pdo, $expect): void {
+            $token = bin2hex(random_bytes(6));
+            $postId = null;
+            $categoryIds = [];
+            $adminId = null;
+            $shubhamPassword = 'mysql-test-shubham-' . $token;
+            $sounakPassword = 'mysql-test-sounak-' . $token;
+            try {
+                (new AdminProvisioner($pdo))->provision($shubhamPassword, $sounakPassword);
+                $admin = (new UserRepository($pdo))->findByIdentifier('shubham banerjee');
+                if ($admin === null) {
+                    throw new RuntimeException('The MySQL category test admin was not created.');
+                }
+                $adminId = $admin->id;
+                $repository = new CategoryRepository($pdo);
+                $first = $repository->create('Database Integration ' . $token, 'Synthetic category.', $adminId);
+                $categoryIds[] = $first['id'];
+                $second = $repository->create('Database-Integration ' . $token, null, $adminId);
+                $categoryIds[] = $second['id'];
+                $expect($first['slug'] === 'database-integration-' . $token);
+                $expect($second['slug'] === 'database-integration-' . $token . '-2');
+                $expect(count($repository->listActive()) >= 2);
+
+                $duplicateRejected = false;
+                try {
+                    $repository->update($second['id'], $first['name'], null, $adminId);
+                } catch (CategoryConflictException $exception) {
+                    $duplicateRejected = $exception->reason === CategoryConflictException::NAME_EXISTS;
+                }
+                $expect($duplicateRejected, 'MySQL must reject a duplicate normalized category name.');
+
+                $updated = $repository->update($second['id'], 'Renamed Category ' . $token, 'Updated.', $adminId);
+                $expect($updated['slug'] === 'renamed-category-' . $token);
+                $expect($updated['description'] === 'Updated.');
+
+                $insertPost = $pdo->prepare(
+                    "INSERT INTO posts (author_id, category_id, title, content) VALUES (:author, :category, 'Category integration test', 'Synthetic content.')"
+                );
+                $insertPost->execute(['author' => $adminId, 'category' => $first['id']]);
+                $postId = (int) $pdo->lastInsertId();
+                $deactivated = $repository->setActive($first['id'], false, $adminId);
+                $expect(!$deactivated['is_active'] && $deactivated['post_count'] === 1);
+
+                $deleteBlocked = false;
+                try {
+                    $repository->delete($first['id'], $adminId);
+                } catch (CategoryConflictException $exception) {
+                    $deleteBlocked = $exception->reason === CategoryConflictException::IN_USE;
+                }
+                $expect($deleteBlocked, 'A category referenced by a post must not be deleted.');
+
+                $pdo->prepare('DELETE FROM posts WHERE id = :id')->execute(['id' => $postId]);
+                $postId = null;
+                $repository->delete($first['id'], $adminId);
+                $repository->delete($second['id'], $adminId);
+                $categoryIds = [];
+                $auditCount = $pdo->prepare(
+                    "SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_type = 'category' AND action LIKE 'category.%'"
+                );
+                $auditCount->execute(['actor' => $adminId]);
+                $expect((int) $auditCount->fetchColumn() >= 6, 'Category writes and state changes must be audited.');
+            } finally {
+                if ($postId !== null) {
+                    $pdo->prepare('DELETE FROM posts WHERE id = :id')->execute(['id' => $postId]);
+                }
+                foreach ($categoryIds as $categoryId) {
+                    $pdo->prepare('DELETE FROM posts WHERE category_id = :id')->execute(['id' => $categoryId]);
+                    $pdo->prepare('DELETE FROM categories WHERE id = :id')->execute(['id' => $categoryId]);
+                }
+                if ($adminId !== null) {
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $adminId]);
+                    $pdo->prepare('DELETE FROM users WHERE username = :username')->execute(['username' => 'sounak sikdar']);
+                }
+            }
         });
 
         $run('MySQL-backed credential rotation revokes only the target account sessions', static function () use ($pdo, $exerciseCredentialRevocation): void {

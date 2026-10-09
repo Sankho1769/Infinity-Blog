@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Phase 2 authentication code includes database-backed session revocation after trusted credential rotation. The additive auth-version migration and isolated rotation/revocation tests are implemented. Current checks: 20 passed, 0 failed; PHP lint passed for 29 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
+Phase 2 authentication and authorization code includes database-backed session revocation after trusted credential rotation. Admin-only category management and public active-category reads are implemented with SQLite unit coverage and MySQL integration coverage that has not yet run. Current checks for this checkpoint: 22 passed, 0 failed; PHP lint passed for 33 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Post ownership enforcement, post CRUD, public article endpoints, Admin Panel, and AI summarization remain later work.
 
 ---
 
@@ -45,7 +45,7 @@ Phase 2 authentication code includes database-backed session revocation after tr
 - [x] **T-011** Centralize configuration and environment variable loading.
 - [x] **T-012** Create database connection module with safe error handling.
 - [x] **T-013** Add development and production configuration instructions.
-- [x] **T-014** Add the documented generic API error envelope and generated/sanitized request IDs. Authentication routing was added in Phase 2; private diagnostic logging and non-authentication API routes remain later work.
+- [x] **T-014** Add the documented generic API error envelope and generated/sanitized request IDs. Authentication and category routing are implemented; private diagnostic logging and remaining product routes are later work.
 
 ## Phase 2 - Database schema
 
@@ -63,21 +63,21 @@ Phase 2 authentication code includes database-backed session revocation after tr
 - [x] **T-031** Regenerate session ID after successful authentication and rotate CSRF token.
 - [x] **T-032** Implement logout, server-side session destruction, and session-cookie invalidation.
 - [x] **T-033** Add reusable fail-closed session/active-account guards to implemented protected authentication routes; future module routes must call the guard.
-- [x] **T-034** Enforce separate `author` and `admin` roles in reusable server-side guards. Category mutation enforcement is still pending its later endpoint phase.
+- [x] **T-034** Enforce separate `author` and `admin` roles in reusable server-side guards; category mutations also require an active admin account.
 - [ ] **T-035** Enforce ownership on every author post read/change; authors cannot access another author's private posts.
-- [x] **T-036** Add session-bound CSRF token generation and validation for the implemented login/logout browser operations; future state-changing operations must also use it.
+- [x] **T-036** Add session-bound CSRF token generation and validation for implemented login/logout and category mutation operations; future state-changing operations must also use it.
 - [x] **T-037** Add MySQL-backed login rate limiting and generic authentication errors. Unit behavior passes; MySQL-specific integration is unverified.
 - [x] **T-038** Verify inactive accounts cannot authenticate or retain protected access.
 
 ## Phase 4 - Category management
 
-- [ ] **T-040** Admin list categories.
-- [ ] **T-041** Admin create category.
-- [ ] **T-042** Admin edit category; generate slugs server-side and enforce unique slug/name policy.
-- [ ] **T-043** Admin activate/deactivate category.
-- [ ] **T-044** Ensure authors cannot access category mutation endpoints.
-- [ ] **T-045** Preserve posts when a category is deactivated.
-- [ ] **T-046** Expose active categories to author forms and public browsing.
+- [x] **T-040** Admin list all categories and associated post counts; public reads return active categories only.
+- [x] **T-041** Admin create categories with validated names/descriptions and server-generated unique slugs.
+- [x] **T-042** Admin edit category; regenerate slugs server-side and reject duplicate normalized names.
+- [x] **T-043** Admin activate/deactivate categories with CSRF protection and audit events.
+- [x] **T-044** Enforce admin authorization on all category mutations; unit tests deny authors and unauthenticated callers.
+- [x] **T-045** Preserve post references when deactivating; only delete unreferenced categories and retain restrictive FK enforcement.
+- [x] **T-046** Expose active categories for public reads and future author forms. SQLite unit tests pass; category SQL integration tests are added but remain unverified on Oracle MySQL.
 
 ## Phase 5 - Post lifecycle
 
@@ -140,9 +140,9 @@ Phase 2 authentication code includes database-backed session revocation after tr
 - [x] **T-103** Review authentication/provisioning SQL for prepared statement usage; migration SQL contains no request-controlled values.
 - [ ] **T-104** Test stored/reflected XSS cases and summary rendering.
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
-- [ ] **T-106** Test category deactivation and referential integrity.
+- [x] **T-106** Test category validation, deactivation, audit events, and referential deletion rules with SQLite; MySQL-specific tests are present but not yet run.
 - [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
-- [-] **T-108** PHP lint passed for 29 files, the available test suite passed (20/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
+- [-] **T-108** PHP lint passed for 33 files, the available test suite passed (22/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation

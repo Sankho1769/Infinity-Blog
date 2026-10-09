@@ -4,9 +4,9 @@ Infinity Blog is a PHP and MySQL blog content management system. Authors manage 
 
 ## Current implementation and verification
 
-The repository contains the Phase 1 configuration, PDO, and versioned migration foundation, plus Phase 2 authentication and authorization work: login/logout, server-side sessions, CSRF, login limiting, role guards, trusted administrator provisioning, and credential-rotation session revocation. The web router currently exposes authentication routes only. Post CRUD, public article endpoints, category management, Admin Panel endpoints, AI provider integration, and frontend pages are not implemented.
+The repository contains the Phase 1 configuration, PDO, and versioned migration foundation, Phase 2 authentication and authorization, and category management: public active-category reads plus admin-only category list/create/update/activate/deactivate and guarded deletion. Post CRUD, public article endpoints, author-account management, Admin Panel endpoints, AI provider integration, and frontend pages remain unimplemented. Oracle MySQL integration remains unverified.
 
-The latest local checks report 20 tests passed and 0 failed, PHP lint passed for 29 files including the root autoloader, and `git diff --check` passed. Oracle MySQL integration is still unverified. The available XAMPP database binary is MariaDB 10.4.32, local ports 3306 and 33060 did not accept connections, and the MySQL test environment was not configured. Phase 2 is ready for review; the MySQL verification gate must pass before proceeding to Phase 3.
+The latest local checks report 22 tests passed and 0 failed, PHP lint passed for 33 files including the root autoloader, and `git diff --check` passed. Oracle MySQL integration is still unverified. The available XAMPP database binary is MariaDB 10.4.32, local ports 3306 and 33060 did not accept connections, and the MySQL test environment was not configured. Category API behavior has SQLite coverage; the Oracle MySQL integration gate remains open.
 
 ## Recommended reading order
 

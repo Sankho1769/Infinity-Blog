@@ -6,10 +6,12 @@ use InfinityBlog\Auth\AuthenticationService;
 use InfinityBlog\Auth\DatabaseLoginAttemptLimiter;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AuthController;
+use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\JsonResponse;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestException;
@@ -29,11 +31,16 @@ try {
 
     $pdo = ConnectionFactory::create($config->database);
     $users = new UserRepository($pdo);
-    $controller = new AuthController(
-        new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
-        new AuthGuard($sessions, $users),
-        $sessions
-    );
+    $guard = new AuthGuard($sessions, $users);
+    if ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
+        $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
+    } else {
+        $controller = new AuthController(
+            new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
+            $guard,
+            $sessions
+        );
+    }
 
     $result = $controller->handle($request);
     JsonResponse::send($result['status'], $result['body']);

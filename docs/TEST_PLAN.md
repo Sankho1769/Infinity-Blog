@@ -51,7 +51,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category deactivation, MySQL-backed credential-rotation/session-revocation and login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL-backed administrator provisioning and credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
 5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
 
 ## 3. Functional tests
@@ -101,6 +101,9 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | F-022 | AI provider fails | Post remains readable/manageable; safe summary error returned |
 | F-023 | Empty and not-found states | UI/API returns clear safe responses |
 | F-024 | Admin dashboard optional user/category totals | When available from existing admin-list metadata, totals are database-derived; no dashboard endpoint is needed |
+| F-025 | Public/admin category list | Public list contains active categories only and omits private counts; admin list includes active and inactive categories with associated post counts |
+| F-026 | Admin category create/update | Names and descriptions are bounded and validated; clients cannot choose slugs; name duplicates are rejected and slug collisions get unique numeric suffixes |
+| F-027 | Admin category state/delete | Deactivation preserves post references, hides the category from public/author selection, and deletion is blocked while posts reference it |
 
 ## 4. Authorization tests
 
@@ -114,6 +117,7 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | A-006 | Request body includes `author_id` for another user | Ignored/rejected; server uses session identity |
 | A-007 | Request body includes `role=admin` | Ignored/rejected unless performed through an explicitly authorized admin operation |
 | A-008 | Inactive account uses existing session | Protected actions denied according to active-account policy |
+| A-009 | Unauthenticated user or author calls admin category routes | 401 or 403; no category mutation; state changes without valid CSRF are rejected |
 
 ## 5. Injection and request-security tests
 
@@ -151,6 +155,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 - Duplicate username is rejected.
 - Duplicate normalized category name is rejected.
 - Category slug is generated server-side; normalized slug collisions resolve to a unique suffixed slug, with the database unique constraint guarding concurrent requests.
+- Category delete is rejected while `posts.category_id` references the category; deactivation preserves the reference.
+- Category create, update, activation, deactivation, and deletion write audit events in the same database transaction.
 - Post author/category foreign keys remain valid.
 - Dashboard aggregate counts use database records and enforce author ownership scope.
 - Deactivated category does not break historic posts.
