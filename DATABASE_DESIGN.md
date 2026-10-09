@@ -37,6 +37,7 @@ A user can author many posts. A category can contain many posts. A post referenc
 | `display_name` | VARCHAR(190) | Required display label |
 | `email` | VARCHAR(254) NULL | Optional/unique if collected |
 | `password_hash` | VARCHAR(255) | Required; output never exposed |
+| `auth_version` | BIGINT UNSIGNED | Required, default 1; incremented atomically when credentials are rotated/reset to revoke prior sessions |
 | `role` | VARCHAR(20) or ENUM | Allowlist: `admin`, `author` |
 | `status` | VARCHAR(20) or ENUM | Allowlist: `active`, `inactive` |
 | `must_change_password` | TINYINT(1) | Set where setup policy requires a first-login change |
@@ -45,6 +46,8 @@ A user can author many posts. A category can contain many posts. A post referenc
 | `last_login_at` | DATETIME NULL | Optional operational metadata |
 
 Constraints: unique normalized username; unique email if email is collected; valid role/status values. Store only a secure password hash, not the password itself.
+
+The additive migration `202610090003_add_auth_version_to_users` adds `auth_version` without rewriting the initial schema migration. A successful login copies the current database value into the server-side session. The reusable `AuthGuard` compares it with the current user row on every protected request and clears the session when it is missing or stale. Credential-changing code must update the password hash and increment this value in the same database statement. The version is never accepted from request parameters or returned to clients. This performs one indexed user lookup per guard check and does not depend on PHP session-store enumeration. Rollback removes the column and its revocation state, so it requires the migration runner's explicit destructive confirmation and a coordinated deployment/session invalidation plan.
 
 ## 4. `categories`
 
@@ -143,7 +146,8 @@ The MySQL implementation allows 5 failures per normalized identifier and 20 fail
 - Category deactivation changes only `is_active`; it preserves all post references. Category deletion is restricted while referenced. Publishing and new active-category assignment checks remain application-service responsibilities in later phases.
 - The existing `categories.slug` unique constraint supports server-generated slugs; this decision needs no schema change. Dashboard counts are query results and need no persisted aggregate or schema change.
 - The initial migration has a guarded down operation. It drops all four tables and permanently deletes their data; require a backup and a disposable database before invoking it.
-- The second migration adds only the transient login limiter table. Its guarded rollback drops that table and its ephemeral counters; it does not alter the CMS entity schema. Both migrations still require verification against Oracle MySQL 8.0.16 or newer; MariaDB is not an accepted substitute.
+- The second migration adds only the transient login limiter table. Its guarded rollback drops that table and its ephemeral counters; it does not alter the CMS entity schema.
+- The third migration adds `users.auth_version` for server-side session revocation after credential rotation/reset. Its guarded rollback drops the column and therefore removes revocation state; coordinate rollback with code deployment and invalidate sessions. All three migrations still require verification against Oracle MySQL 8.0.16 or newer; MariaDB is not an accepted substitute.
 
 The migration runner uses `DB_*` settings by default. Deployments should provide a separate, short-lived migration account with `MIGRATION_DB_*` overrides; the application runtime account should not have DDL or `DROP` privileges. Production database connections require a trusted `DB_SSL_CA` certificate and PDO server-certificate verification; remote database hosts require the CA in all environments. Loopback development may omit TLS. Configure MySQL `require_secure_transport=ON` for production so the server also rejects plaintext connections.
 

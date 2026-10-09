@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Phase 2 authentication code and isolated unit tests are implemented. Current checks: 19 passed, 0 failed; PHP lint passed; PowerShell provisioning script parsing passed; `git diff --check` passed. The Oracle MySQL integration suite is skipped because the available XAMPP database is MariaDB 10.4.32 and no MySQL server is listening on `127.0.0.1:3306`. Do not interpret SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
+Phase 2 authentication code includes database-backed session revocation after trusted credential rotation. The additive auth-version migration and isolated rotation/revocation tests are implemented. Current checks: 20 passed, 0 failed; PHP lint passed for 28 files; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Post ownership enforcement, category APIs, post CRUD, Admin Panel, and AI summarization remain later work.
 
 ---
 
@@ -134,7 +134,7 @@ Phase 2 authentication code and isolated unit tests are implemented. Current che
 
 ## Phase 10 - Security and quality verification
 
-- [x] **T-100** Automate valid/invalid login, password-hash verification, session ID regeneration, logout destruction, expiry, and inactive-account tests. MySQL-backed integration remains unverified.
+- [-] **T-100** Automate valid/invalid login, password-hash verification, session ID regeneration, logout destruction, expiry, inactive-account tests, and credential-rotation session revocation. Isolated tests cover target-session revocation and unrelated-session preservation; MySQL-backed integration remains unverified.
 - [ ] **T-101** Automate author/admin role boundaries, admin-only category access, cross-author private-post denial, and rejection of public admin-role assignment.
 - [x] **T-102** Run CSRF tests for missing, invalid, and valid tokens on the implemented login/logout operations.
 - [x] **T-103** Review authentication/provisioning SQL for prepared statement usage; migration SQL contains no request-controlled values.
@@ -142,7 +142,7 @@ Phase 2 authentication code and isolated unit tests are implemented. Current che
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
 - [ ] **T-106** Test category deactivation and referential integrity.
 - [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
-- [-] **T-108** PHP lint and all available tests pass; `git diff --check` passes. No static-analysis tool is configured, and MySQL integration remains skipped.
+- [-] **T-108** PHP lint passed for 28 files, the available test suite passed (20/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation

@@ -82,12 +82,11 @@ final class AdminProvisioner
 
         $this->begin();
         try {
-            $statement = $this->pdo->prepare(
-                "UPDATE users SET password_hash = :password_hash, updated_at = CURRENT_TIMESTAMP " .
-                "WHERE username = :username AND role = 'admin'"
-            );
-            $statement->execute(['password_hash' => $hash, 'username' => $username]);
-            if ($statement->rowCount() !== 1) {
+            $lookup = $this->pdo->prepare("SELECT id FROM users WHERE username = :username AND role = 'admin' LIMIT 1");
+            $lookup->execute(['username' => $username]);
+            $id = filter_var($lookup->fetchColumn(), FILTER_VALIDATE_INT);
+            if ($id === false || $id < 1
+                || !(new UserRepository($this->pdo))->replacePasswordHashAndRevokeSessions((int) $id, $hash)) {
                 throw new AdminProvisioningException('The configured administrator account does not exist.');
             }
             $this->pdo->commit();

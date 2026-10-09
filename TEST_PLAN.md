@@ -21,7 +21,7 @@ Use a combination of unit tests for validators/services, integration tests for d
 
 ### Foundation and authentication unit checks
 
-Run `php tests/run.php` for configuration validation, production TLS checks, `.env` parsing/override behavior, generic PDO connection failure handling, migration rollback protection, and secret-file ignore checks. The isolated SQLite/service-double cases also verify successful/failed/unknown/inactive login, missing and malformed fields, role derivation despite client-supplied role/user ID, session ID regeneration, idle expiry, logout invalidation, CSRF rejection/acceptance, limiter thresholds, admin provisioning/rotation, and duplicate refusal. These unit tests do not verify MySQL syntax, constraints, or concurrency behavior.
+Run `php tests/run.php` for configuration validation, production TLS checks, `.env` parsing/override behavior, generic PDO connection failure handling, migration rollback protection, and secret-file ignore checks. The isolated SQLite/service-double cases also verify successful/failed/unknown/inactive login, missing and malformed fields, role derivation despite client-supplied role/user ID, session ID regeneration, idle expiry, logout invalidation, CSRF rejection/acceptance, limiter thresholds, administrator provisioning/rotation, database-backed auth-version revocation, unrelated-session preservation, and duplicate refusal. These unit tests do not verify MySQL syntax, constraints, or concurrency behavior.
 
 MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=test`, `INFINITY_BLOG_RUN_DB_TESTS=1`, and explicit `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_DATABASE`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD`. The database must be fresh/empty, its name must end exactly in `_test`, and its account must be dedicated and non-root. Remote test hosts also require `TEST_DB_SSL_CA`. Integration never reads `DB_*` as a fallback. If integration is enabled but settings are missing or invalid, the runner fails before making a connection. If integration is not enabled, the runner reports it as skipped; a skip is not a passing schema verification.
 
@@ -51,7 +51,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and rerun of both migrations, required indexes, uniqueness/check/foreign-key behavior, category deactivation, MySQL-backed login limiter thresholds/cleanup behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies both migrations to leave the schema reproducible.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category deactivation, MySQL-backed credential-rotation/session-revocation and login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
 5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
 
 ## 3. Functional tests
@@ -71,8 +71,9 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
 | AU-009 | Public request attempts registration | `404`; no public registration or admin-creation route exists |
 | AU-010 | Provision initial admins twice | First CLI operation stores distinct password hashes; duplicate run refuses without partial changes |
 | AU-011 | Five failures for one identifier or 20 for one source in 15 minutes | Subsequent login is limited; changing identifier does not bypass the source bucket |
+| AU-012 | Rotate a user's credentials through trusted provisioning | The old session is rejected on its next guarded request; old password fails; new login succeeds; another user's session remains valid |
 
-MySQL limiter state and the new migration require the MySQL integration run. Unit tests use a test double for the limiter; this is not evidence of MySQL integration success.
+MySQL limiter state and all three migrations require the MySQL integration run. The suite also repeats credential rotation and session-revocation checks with MySQL-backed user records when enabled. Unit tests use SQLite for account/version behavior and a test double for the limiter; these are not evidence of MySQL integration success.
 
 | ID | Scenario | Expected result |
 |---|---|---|

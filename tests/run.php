@@ -234,7 +234,7 @@ $createUserDatabase = static function (): PDO {
         'CREATE TABLE users (' .
         'id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
         'display_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, ' .
-        "status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0, " .
+        "status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0, auth_version INTEGER NOT NULL DEFAULT 1, " .
         'last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
     );
     $insert = $pdo->prepare(
@@ -319,6 +319,89 @@ $withSession = static function (callable $test): void {
     }
 };
 
+$exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $validConfiguration, $expect): void {
+    $provisioner = new AdminProvisioner($pdo);
+    $provisioner->provision('synthetic-shubham-password', 'synthetic-sounak-password');
+    $inactiveUsername = 'phase2-inactive-' . bin2hex(random_bytes(5));
+    $insertInactive = $pdo->prepare(
+        "INSERT INTO users (username, display_name, password_hash, role, status) " .
+        "VALUES (:username, 'Inactive Test Account', :password_hash, 'author', 'inactive')"
+    );
+    $insertInactive->execute([
+        'username' => $inactiveUsername,
+        'password_hash' => password_hash('synthetic-inactive-password', PASSWORD_DEFAULT),
+    ]);
+
+    try {
+        $withSession(static function () use ($pdo, $validConfiguration, $expect, $provisioner, $inactiveUsername): void {
+            $users = new UserRepository($pdo);
+            $limiter = new TestLoginAttemptLimiter();
+            $authentication = new AuthenticationService($users, $limiter);
+            $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+            $guard = new AuthGuard($sessions, $users);
+
+            $sessions->start();
+            $firstLogin = $authentication->login('shubham banerjee', 'synthetic-shubham-password', '192.0.2.90');
+            $expect($firstLogin->status === LoginResult::SUCCESS && $firstLogin->account !== null, 'The initial admin should authenticate.');
+            $sessions->establish($firstLogin->account);
+            $shubhamSessionId = session_id();
+            $expect($guard->currentAccount()?->username === 'shubham banerjee', 'The initial session should be accepted.');
+            session_write_close();
+
+            session_id('');
+            $sessions->start();
+            $secondLogin = $authentication->login('sounak sikdar', 'synthetic-sounak-password', '192.0.2.91');
+            $expect($secondLogin->status === LoginResult::SUCCESS && $secondLogin->account !== null, 'The unrelated admin should authenticate.');
+            $sessions->establish($secondLogin->account);
+            $sounakSessionId = session_id();
+            $expect($guard->currentAccount()?->username === 'sounak sikdar');
+            session_write_close();
+
+            $provisioner->rotatePassword('Shubham Banerjee', 'synthetic-shubham-rotated');
+            $rotatedAccount = $users->findByIdentifier('shubham banerjee');
+            $expect($rotatedAccount?->authVersion === 2, 'The current database version should increment with the password hash.');
+
+            session_id($shubhamSessionId);
+            $sessions->start();
+            $expect($guard->currentAccount() === null, 'A previously issued session must fail after credential rotation.');
+            $expect($sessions->currentUserId() === null, 'A revoked session must be cleared from the server-side session.');
+            session_write_close();
+
+            session_id($sounakSessionId);
+            $sessions->start();
+            $expect($guard->currentAccount()?->username === 'sounak sikdar', 'Rotating one account must preserve another account session.');
+            session_write_close();
+
+            session_id('');
+            $sessions->start();
+            $oldPassword = $authentication->login('shubham banerjee', 'synthetic-shubham-password', '192.0.2.92');
+            $newPassword = $authentication->login('shubham banerjee', 'synthetic-shubham-rotated', '192.0.2.92');
+            $expect($oldPassword->status === LoginResult::FAILURE, 'The rotated password must no longer authenticate.');
+            $expect($newPassword->status === LoginResult::SUCCESS && $newPassword->account !== null, 'The replacement password must authenticate.');
+            $sessions->establish($newPassword->account);
+            $expect($guard->currentAccount()?->username === 'shubham banerjee', 'A newly issued session must be accepted.');
+            $sessions->logout();
+            $expect($guard->currentAccount() === null, 'Logout must invalidate the current session.');
+
+            session_id('');
+            $sessions->start();
+            $inactive = $users->findByIdentifier($inactiveUsername);
+            if ($inactive === null) {
+                throw new RuntimeException('The inactive test account was not created.');
+            }
+            $sessions->establish($inactive);
+            $expect($guard->currentAccount() === null, 'Inactive accounts must not retain authenticated access.');
+        });
+    } finally {
+        $cleanup = $pdo->prepare('DELETE FROM users WHERE username IN (:shubham, :sounak, :inactive)');
+        $cleanup->execute([
+            'shubham' => 'shubham banerjee',
+            'sounak' => 'sounak sikdar',
+            'inactive' => $inactiveUsername,
+        ]);
+    }
+};
+
 $run('session ID regenerates on login, role guards read the account, and logout destroys access', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
     $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
         $config = AppConfig::fromArray($validConfiguration);
@@ -345,6 +428,10 @@ $run('session ID regenerates on login, role guards read the account, and logout 
         $sessions->logout();
         $expect($guard->currentAccount() === null);
     });
+});
+
+$run('credential rotation revokes only the target account sessions and fresh login works', static function () use ($createUserDatabase, $exerciseCredentialRevocation): void {
+    $exerciseCredentialRevocation($createUserDatabase());
 });
 
 $run('administrator role guard permits an active admin account from the database', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
@@ -454,9 +541,10 @@ $run('auth controller rejects unauthenticated role escalation and public admin r
             '/auth/login',
             '192.0.2.40',
             ['X-CSRF-Token' => $csrf],
-            ['identifier' => 'author one', 'password' => 'author-pass-1234', 'role' => 'admin', 'user_id' => 2]
+            ['identifier' => 'author one', 'password' => 'author-pass-1234', 'role' => 'admin', 'user_id' => 2, 'auth_version' => 999999]
         ));
         $expect($login['status'] === 200 && $login['body']['data']['user']['role'] === 'author');
+        $expect($sessions->currentAuthVersion() === 1, 'Client-supplied version data must not affect the server-side session.');
 
         $registration = $controller->handle(Request::fromValues('POST', '/auth/register', '192.0.2.40', [], ['role' => 'admin']));
         $expect($registration['status'] === 404);
@@ -475,7 +563,7 @@ $run('initial administrators are provisioned with distinct hashes and duplicates
     $pdo->exec(
         'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
         'display_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'active\', ' .
-        'must_change_password INTEGER NOT NULL DEFAULT 0, last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, ' .
+        'must_change_password INTEGER NOT NULL DEFAULT 0, auth_version INTEGER NOT NULL DEFAULT 1, last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, ' .
         'updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
     );
     $provisioner = new AdminProvisioner($pdo);
@@ -489,9 +577,11 @@ $run('initial administrators are provisioned with distinct hashes and duplicates
     $expect(!str_contains(json_encode($rows), 'shubham-strong-password'));
 
     $provisioner->rotatePassword('Shubham Banerjee', 'rotated-shubham-password');
-    $rotatedHash = $pdo->query("SELECT password_hash FROM users WHERE username = 'shubham banerjee'")->fetchColumn();
+    $rotated = $pdo->query("SELECT password_hash, auth_version FROM users WHERE username = 'shubham banerjee'")->fetch(PDO::FETCH_ASSOC);
+    $rotatedHash = $rotated['password_hash'] ?? false;
     $expect(is_string($rotatedHash) && password_verify('rotated-shubham-password', $rotatedHash));
     $expect(!password_verify('shubham-strong-password', $rotatedHash));
+    $expect((int) ($rotated['auth_version'] ?? 0) === 2, 'Credential rotation must increment the database-backed auth version.');
 
     $duplicateWasRejected = false;
     try {
@@ -507,7 +597,7 @@ $run('administrator provisioning rejects duplicate passwords and unsafe configur
     $pdo = new PDO('sqlite::memory:');
     $pdo->exec(
         'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, ' .
-        'password_hash TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'active\', updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+        'password_hash TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'active\', auth_version INTEGER NOT NULL DEFAULT 1, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
     );
     try {
         (new AdminProvisioner($pdo))->provision('same-password-123', 'same-password-123');
@@ -603,9 +693,14 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
 
         $migrationRunner = new MigrationRunner($pdo, dirname(__DIR__) . '/database/migrations');
         $migrationRunner->migrate();
-        $migrationRunner->migrate();
+        $expect($migrationRunner->migrate() === [], 'Rerunning applied migrations must be a no-op.');
         $expect(in_array('202610090001_create_cms_schema', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610090002_create_login_rate_limits', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610090003_add_auth_version_to_users', $migrationRunner->appliedMigrations(), true));
+        $authVersionColumn = $pdo->query(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'auth_version'"
+        )->fetchColumn();
+        $expect((int) $authVersionColumn === 1, 'The additive authentication-version migration must add the users column.');
         $indexes = $pdo->query(
             "SELECT CONCAT(table_name, ':', index_name) FROM information_schema.statistics WHERE table_schema = DATABASE()"
         )->fetchAll(PDO::FETCH_COLUMN);
@@ -777,6 +872,10 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         }
         });
 
+        $run('MySQL-backed credential rotation revokes only the target account sessions', static function () use ($pdo, $exerciseCredentialRevocation): void {
+            $exerciseCredentialRevocation($pdo);
+        });
+
         $run('MySQL-backed login limiter enforces account and source limits and clears successful accounts', static function () use ($pdo, $expect): void {
             $key = str_repeat('b', 64);
             $limiter = new \InfinityBlog\Auth\DatabaseLoginAttemptLimiter($pdo, $key);
@@ -829,6 +928,12 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610090003_add_auth_version_to_users');
+                $authVersionColumn = $pdo->query(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'auth_version'"
+                )->fetchColumn();
+                $expect((int) $authVersionColumn === 0, 'Confirmed rollback should remove the authentication-version column.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610090002_create_login_rate_limits');
                 $rateLimitTables = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'login_rate_limits'")->fetchColumn();
                 $expect($rateLimitTables === 0, 'The rate-limit table should be removed by its guarded rollback.');
@@ -840,6 +945,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect($countCmsTables() === 4, 'The schema must be reproducible after rollback.');
                 $expect(in_array('202610090001_create_cms_schema', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610090002_create_login_rate_limits', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610090003_add_auth_version_to_users', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

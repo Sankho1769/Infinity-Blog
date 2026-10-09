@@ -64,6 +64,7 @@ final class SessionManager
         $_SESSION = [
             'auth' => [
                 'user_id' => $account->id,
+                'auth_version' => $account->authVersion,
                 'issued_at' => $now,
                 'last_activity' => $now,
             ],
@@ -83,6 +84,20 @@ final class SessionManager
         $id = $auth['user_id'] ?? null;
 
         return is_int($id) && $id > 0 ? $id : null;
+    }
+
+    public function currentAuthVersion(): ?int
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return null;
+        }
+        $auth = $_SESSION['auth'] ?? null;
+        if (!is_array($auth)) {
+            return null;
+        }
+        $version = $auth['auth_version'] ?? null;
+
+        return is_int($version) && $version > 0 ? $version : null;
     }
 
     public function isExpired(): bool

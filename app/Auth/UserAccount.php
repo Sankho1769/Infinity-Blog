@@ -10,6 +10,7 @@ final class UserAccount
     public string $displayName;
     public string $role;
     public string $status;
+    public int $authVersion;
     private string $passwordHash;
 
     public function __construct(
@@ -18,13 +19,15 @@ final class UserAccount
         string $displayName,
         string $role,
         string $status,
-        string $passwordHash
+        string $passwordHash,
+        int $authVersion
     ) {
         $this->id = $id;
         $this->username = $username;
         $this->displayName = $displayName;
         $this->role = $role;
         $this->status = $status;
+        $this->authVersion = $authVersion;
         $this->passwordHash = $passwordHash;
     }
 

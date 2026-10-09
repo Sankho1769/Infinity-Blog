@@ -26,7 +26,9 @@ final class AuthGuard
         }
 
         $account = $this->users->findById($id);
-        if ($account === null || !$account->isActive()) {
+        $sessionVersion = $this->sessions->currentAuthVersion();
+        if ($account === null || !$account->isActive()
+            || $sessionVersion === null || $sessionVersion !== $account->authVersion) {
             $this->sessions->clearAuthentication();
             return null;
         }

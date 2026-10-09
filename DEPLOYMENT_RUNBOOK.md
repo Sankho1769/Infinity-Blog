@@ -61,7 +61,7 @@ The AI endpoint must come from trusted deployment configuration/provider adapter
 1. Install PHP 8.0+ with `pdo_mysql` and Oracle MySQL 8.0.16+; MariaDB is not the supported target.
 2. Copy `.env.example` to `.env` and set local values.
 3. Create a dedicated MySQL database and separate runtime/migration users through an interactive database administration session. The runtime user requires DML access to `users` and `login_rate_limits`; the migration account is used only by `bin/migrate.php`.
-4. Apply migrations with `php bin/migrate.php up`; inspect them with `php bin/migrate.php status`.
+4. Apply migrations with `php bin/migrate.php up`; inspect them with `php bin/migrate.php status`. Apply `202610090003_add_auth_version_to_users` before deploying code that reads `users.auth_version`; sessions created before that migration are rejected and require users to sign in again.
 5. Run `php tests/run.php`. For MySQL integration, configure a fresh, empty, dedicated database named `*_test` and the explicit `TEST_DB_*` settings described in `TEST_PLAN.md`; the suite refuses nonempty databases and runs a confirmed rollback only on that disposable schema.
 
 To serve the implemented API, configure Apache's virtual host document root to the repository's `public/` directory and enable `mod_rewrite`/`.htaccess`. Set `APP_BASE_URL` to the origin used by that virtual host. Never expose the repository root as the document root. The router currently exposes only the four authentication endpoints documented in `API_SPEC.md`; post, category, Admin Panel, and AI routes remain unimplemented.
@@ -79,7 +79,7 @@ The login identifier is trimmed and lowercased before lookup; the password is no
 
 For another platform, supply `ADMIN_SHUBHAM_PASSWORD` and `ADMIN_SOUNAK_PASSWORD` to `php bin/admin-credentials.php provision` through a protected secret-injection mechanism; for rotation, use `ADMIN_NEW_PASSWORD` and the allowlisted name argument. The PHP command clears these variables on exit and never prints the values. Use distinct passwords and rotate any temporary bootstrap credential before production.
 
-Password rotation does not revoke already-issued sessions. Sessions remain subject to the 30-minute idle and 12-hour absolute expiry; if an account is suspected compromised, invalidate the server-side sessions using the host's controlled session-store procedure. Automated session revocation on credential rotation is not implemented.
+Password rotation updates the stored hash and increments `users.auth_version` in one statement. `AuthGuard` compares that database value on each protected request and clears any older session for the rotated account; users must sign in again. Future password reset/change operations must use the same atomic version increment. The CLI does not print passwords, hashes, session IDs, or version values. A request already authorized before a concurrent rotation can finish.
 
 Sessions use server-side PHP storage, `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS, 30-minute idle expiry, and 12-hour absolute expiry. PHP's session storage path must be writable only by the application account and outside the public document root; the configured garbage-collection lifetime is at least the absolute session limit. `APP_BASE_URL` with an HTTPS scheme enables `Secure`; production configuration also requires `SESSION_SECURE_COOKIE=true`.
 

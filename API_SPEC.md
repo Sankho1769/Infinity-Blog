@@ -13,7 +13,7 @@
 - Request/response format: JSON, except where the server-rendered repository already defines another approved standard.
 - Authentication: PHP session cookie for browser clients.
 - State-changing browser requests: valid session-bound `X-CSRF-Token` required, including login and logout.
-- Session cookie: server-side PHP session; `HttpOnly`, `SameSite=Lax`, and `Secure` for HTTPS/production. Sessions expire after 30 minutes idle or 12 hours absolute.
+- Session cookie: server-side PHP session; `HttpOnly`, `SameSite=Lax`, and `Secure` for HTTPS/production. Sessions expire after 30 minutes idle or 12 hours absolute. The server-side session stores the user ID and the database `auth_version`; protected requests reload the account from MySQL and reject a version mismatch. Clients cannot set or override this value.
 - Production transport: HTTPS.
 - The server is authoritative for roles, ownership, post status, category state, and summary generation.
 - All request-controlled SQL values must use prepared statements.
@@ -90,7 +90,7 @@ Implemented. Requires an active authenticated account and valid `X-CSRF-Token`. 
 
 ### `GET /auth/me`
 
-Implemented. Requires an active session, reloads the active account and role from MySQL on each call, and returns `data.user` with `id`, username/display name, and role only. Never returns a password hash or secret configuration. Expired or inactive-account sessions receive `401` and lose authorization.
+Implemented. Requires an active session, reloads the active account, role, and authentication version from MySQL on each call, and returns `data.user` with `id`, username/display name, and role only. Never returns a password hash or secret configuration. Expired, inactive, or revoked sessions receive `401` and lose authorization.
 
 ### `GET /auth/csrf`
 

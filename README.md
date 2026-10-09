@@ -66,7 +66,7 @@ The `.env.example` file contains placeholders only. `.gitignore` excludes `.env`
 
 ## Authentication setup
 
-After applying both migrations and configuring the database runtime account with DML access, use the secure PowerShell prompt to provision administrators:
+After applying all three migrations and configuring the database runtime account with DML access, use the secure PowerShell prompt to provision administrators:
 
 ```powershell
 .\bin\admin-credentials.ps1 -Mode provision
