@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 31 passed, 0 failed; PHP lint passed for 59 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes, same-origin validation for state-changing browser requests, and CSRF protection. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 32 passed, 0 failed; PHP lint passed for 60 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
 
 ---
 
@@ -139,8 +139,8 @@ Authentication and authorization include database-backed session revocation afte
 - [ ] **T-104** Test stored/reflected XSS cases and summary rendering.
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
 - [x] **T-106** Test category validation, deactivation, audit events, and referential deletion rules with SQLite; MySQL-specific tests are present but not yet run.
-- [x] **T-107** Review API headers (`no-store`, `nosniff`, same-origin referrer policy), absent cross-origin allow headers, session cookie flags, production configuration, generic public errors, and secret handling. Deployment-level HTTPS, PHP logging, and session-storage permissions still require operator verification.
-- [-] **T-108** Current local checks pass: `php tests/run.php` (31 passed, 0 failed), PHP lint (59 files), and `git diff --check`. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
+- [x] **T-107** Review API headers (`no-store`, `nosniff`, same-origin referrer policy), enforce same-origin request checks, verify absent cross-origin allow headers, and review session cookie flags, production configuration, generic public errors, and secret handling. Deployment-level HTTPS, PHP logging, and session-storage permissions still require operator verification.
+- [-] **T-108** Current local checks pass: `php tests/run.php` (32 passed, 0 failed), PHP lint (60 files), and `git diff --check`. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation

@@ -20,6 +20,7 @@ use InfinityBlog\Http\JsonResponse;
 use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
+use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Http\RequestException;
 use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Posts\PostRepository;
@@ -33,9 +34,14 @@ require dirname(__DIR__) . '/autoload.php';
 
 try {
     $config = AppConfig::fromEnvironment();
+    $request = Request::fromGlobals($config->baseUrl);
+    if (!RequestOriginPolicy::allows($request, $config->baseUrl)) {
+        JsonResponse::send(403, ApiErrorResponder::build('ORIGIN_FORBIDDEN', 'The request origin is not permitted.'));
+        return;
+    }
+
     $sessions = new SessionManager($config);
     $sessions->start();
-    $request = Request::fromGlobals($config->baseUrl);
 
     if ($request->path === '/auth/csrf' && $request->method === 'GET') {
         JsonResponse::send(200, ['data' => ['csrf_token' => $sessions->csrfToken()]]);

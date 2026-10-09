@@ -13,6 +13,7 @@
 - Request/response format: JSON, except where the server-rendered repository already defines another approved standard.
 - Authentication: PHP session cookie for browser clients.
 - State-changing browser requests: valid session-bound `X-CSRF-Token` required, including login and logout.
+- For state-changing requests, a supplied `Origin` must match the configured `APP_BASE_URL` origin and `Sec-Fetch-Site: cross-site` is rejected before session or database work. Missing browser metadata does not replace the CSRF requirement.
 - Session cookie: server-side PHP session; `HttpOnly`, `SameSite=Lax`, and `Secure` for HTTPS/production. Sessions expire after 30 minutes idle or 12 hours absolute. The server-side session stores the user ID and the database `auth_version`; protected requests reload the account from MySQL and reject a version mismatch. Clients cannot set or override this value.
 - Production transport: HTTPS.
 - The server is authoritative for roles, ownership, post status, category state, and summary generation.
@@ -223,7 +224,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 | 204 | Successful delete with no response body, if used consistently |
 | 400 | Malformed request |
 | 401 | Not authenticated |
-| 403 | Authenticated but not permitted or CSRF failure, according to chosen consistent policy |
+| 403 | Authenticated but not permitted, invalid CSRF, or a state-changing browser request with a disallowed origin |
 | 404 | Resource not found or intentionally concealed by authorization policy |
 | 409 | Conflict, such as duplicate category slug |
 | 422 | Valid JSON but validation failed |
@@ -238,7 +239,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [x] CSRF is checked for login/logout and all implemented category, author-post, admin-post, and admin-user mutations.
 - [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
 - [x] Admin post and author-account operations require the admin role; state changes require CSRF.
-- [x] The API emits no `Access-Control-Allow-Origin` header; browser use is same-origin only. If a separate frontend origin is introduced, configure an explicit origin allowlist before enabling credentialed CORS.
+- [x] The API emits no `Access-Control-Allow-Origin` header; state-changing requests with browser metadata must be same-origin, and cross-site Fetch Metadata is rejected. If a separate frontend origin is introduced, configure an explicit origin allowlist before enabling credentialed CORS.
 - [x] Implemented login request size and field lengths are bounded.
 - [x] IDs and status values are validated for implemented category/post routes.
 - [x] Query parameters are validated and parameterized for implemented post lists.

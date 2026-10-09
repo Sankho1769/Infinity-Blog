@@ -143,7 +143,7 @@ MySQL login and summary limiter state and all four migrations require the MySQL 
 | S-005 | State change without CSRF token | Denied |
 | S-006 | State change with invalid CSRF token | Denied |
 | S-007 | State change with valid session and CSRF token | Allowed only with required authorization |
-| S-008 | Credentialed request from untrusted Origin | Rejected by CORS/Origin policy |
+| S-008 | State-changing request with a foreign or malformed Origin, or `Sec-Fetch-Site: cross-site` | Rejected with 403 before session/database work; missing browser metadata remains subject to CSRF |
 | S-009 | Oversized title/body/search request | Rejected with bounded validation response |
 | S-010 | Excessive login attempts | Rate limited; no account enumeration details |
 | S-011 | Excessive summary requests | Rate limited; cost/resource boundaries respected |

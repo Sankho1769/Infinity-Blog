@@ -36,6 +36,7 @@ use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
+use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Posts\PostNotFoundException;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Posts\PostValidationException;
@@ -292,6 +293,40 @@ $run('API error envelope includes a safe request ID and hides internal details',
     $validation = ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', ['title' => 'Title is required.'], 'req-12345678');
     $expect($validation['request_id'] === 'req-12345678');
     $expect($validation['error']['fields']['title'] === 'Title is required.');
+});
+
+$run('same-origin request policy rejects foreign or malformed state-changing browser requests', static function () use ($expect): void {
+    $baseUrl = 'https://blog.example.test/Infinity_Blog';
+    $sameOrigin = Request::fromValues('POST', '/author/posts', '192.0.2.70', [
+        'Origin' => 'https://BLOG.example.test:443',
+        'Sec-Fetch-Site' => 'same-origin',
+    ]);
+    $expect(RequestOriginPolicy::allows($sameOrigin, $baseUrl));
+    $wrongPort = Request::fromValues('POST', '/author/posts', '192.0.2.70', [
+        'Origin' => 'https://blog.example.test:8443',
+    ]);
+    $expect(!RequestOriginPolicy::allows($wrongPort, $baseUrl));
+
+    $sameSiteSibling = Request::fromValues('PATCH', '/author/posts/1', '192.0.2.70', [
+        'Origin' => 'https://other.example.test',
+        'Sec-Fetch-Site' => 'same-site',
+    ]);
+    $expect(!RequestOriginPolicy::allows($sameSiteSibling, $baseUrl));
+
+    $crossSite = Request::fromValues('DELETE', '/author/posts/1', '192.0.2.70', [
+        'Sec-Fetch-Site' => 'cross-site',
+    ]);
+    $expect(!RequestOriginPolicy::allows($crossSite, $baseUrl));
+
+    foreach (['null', '', 'https://blog.example.test.evil.invalid', 'https://user@blog.example.test', 'https://blog.example.test/path'] as $origin) {
+        $request = Request::fromValues('POST', '/auth/login', '192.0.2.70', ['Origin' => $origin]);
+        $expect(!RequestOriginPolicy::allows($request, $baseUrl), 'Malformed or non-matching Origin values must fail closed.');
+    }
+
+    $legacyClient = Request::fromValues('POST', '/author/posts', '192.0.2.70');
+    $expect(RequestOriginPolicy::allows($legacyClient, $baseUrl), 'Missing browser metadata is left to the mandatory CSRF check.');
+    $safeCrossOriginRead = Request::fromValues('GET', '/posts', '192.0.2.70', ['Origin' => 'https://reader.example.test']);
+    $expect(RequestOriginPolicy::allows($safeCrossOriginRead, $baseUrl));
 });
 
 $createUserDatabase = static function (): PDO {

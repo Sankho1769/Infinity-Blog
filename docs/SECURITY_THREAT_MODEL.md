@@ -76,6 +76,7 @@ Prompt wording is not a complete defense against prompt injection. Privilege iso
 - Session ID regeneration on login.
 - Server-side session expiry and logout invalidation.
 - CSRF tokens on state-changing browser operations.
+- Same-origin validation for supplied `Origin` headers and rejection of `Sec-Fetch-Site: cross-site` on state-changing requests; CSRF remains mandatory.
 - Prepared SQL statements.
 - Strict server-side input validation.
 - Contextual output encoding.
@@ -115,3 +116,5 @@ Implemented authentication routes are limited to `/auth/csrf`, `/auth/login`, `/
 The default PHP session handler is local to a host. Multi-node deployments need a configured secure shared session handler before they can provide consistent login behavior; the database version check revokes sessions but does not distribute session contents across hosts. When behind a reverse proxy, `REMOTE_ADDR` must be normalized only by trusted web-server configuration; the app deliberately ignores caller-supplied forwarding headers, so multiple users may share the proxy address limit. Atomic SQL increments limit races, but requests already in flight can exceed a threshold by the concurrent batch size. Unit checks do not replace Oracle MySQL integration; MySQL migrations and limiter behavior remain unverified until tested on MySQL 8.0.16+.
 
 The revocation check runs on each guarded request, without a version cache, so credential rotation rejects subsequent requests for that account. A request already authorized before a concurrent rotation may finish. Deploy the additive migration before code that reads `auth_version`; existing sessions created before the migration do not have a version and will be asked to authenticate again. The guarded rollback removes the version state, so do not roll it back independently of the application and session policy.
+
+The router rejects a malformed or non-matching `Origin` on state-changing requests and rejects cross-site Fetch Metadata before starting a session or opening a database connection. Requests without these browser headers still pass through the existing session-bound CSRF checks.
