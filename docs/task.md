@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, author/admin post counts, admin post management, author-account administration, and safe admin audit-log reads are implemented with SQLite coverage and MySQL integration tests that have not yet run. Current checks for this checkpoint: 27 passed, 0 failed; PHP lint passed for 45 files including the root autoloader; `git diff --check` passed. MySQL integration is unverified: the test environment variables are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. AI summarization and frontend pages remain later work.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 31 passed, 0 failed; PHP lint passed for 59 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
 
 ---
 
@@ -89,7 +89,7 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-055** Require an active category before publication and before a new category assignment.
 - [x] **T-056** Implement permanent deletion with API confirmation, server-side ownership, and CSRF; no trash/restore.
 - [x] **T-057** Write post audit events in the same transaction without retaining article bodies.
-- [x] **T-058** Mark stored summaries stale when title/body changes; AI generation remains planned.
+- [x] **T-058** Mark stored summaries stale when title/body changes; authorized AI generation, storage, and current-summary reuse are implemented in Phase 8.
 
 ## Phase 6 - Public blog
 
@@ -109,16 +109,16 @@ Authentication and authorization include database-backed session revocation afte
 
 ## Phase 8 - AI article summarization
 
-- [ ] **T-080** Define provider interface and provider-specific adapter.
-- [ ] **T-081** Load provider credentials from server-side environment/configuration.
-- [ ] **T-082** Build fixed summarization instruction with source article explicitly marked as untrusted text.
-- [ ] **T-083** Add source length limits, timeout, output length limits, and summary-generation rate limits.
-- [ ] **T-084** Load article content from the database after ownership/role verification.
-- [ ] **T-085** Validate model response as plain text; do not accept executable HTML/instructions.
-- [ ] **T-086** Persist summary, status, timestamp, and source hash.
-- [ ] **T-087** Ensure public reads reuse the current summary stored in MySQL and never call the provider.
-- [ ] **T-088** Ensure provider failure does not break post creation, editing, or publishing; provider adapter has no database credentials or application tools/privileges.
-- [ ] **T-089** Test prompt-injection content, malformed output, timeout, and repeated requests.
+- [x] **T-080** Define the summary-provider interface and initial fixed-endpoint OpenAI Responses API adapter.
+- [x] **T-081** Load provider/model/key and bounds from optional server-side environment configuration; invalid or missing settings disable summaries safely.
+- [x] **T-082** Use fixed instructions and pass the JSON-encoded source article as untrusted text without tools.
+- [x] **T-083** Enforce input/output character limits, provider timeout, and database-backed user/post/source/global request limits.
+- [x] **T-084** Load canonical article content after author ownership or admin role verification; client text is rejected.
+- [x] **T-085** Validate provider output as bounded UTF-8 plain text and reject HTML-like markup and control characters.
+- [x] **T-086** Persist summary status, generation time, and SHA-256 source hash; audit success/failure without storing article or provider payloads.
+- [x] **T-087** Public reads reuse only a current stored summary and never call the provider.
+- [x] **T-088** Provider failure does not break post operations; the adapter receives bounded text only and has no PDO handle, tools, or application API access.
+- [x] **T-089** Add deterministic tests for prompt injection, malformed/oversized output, timeout/upstream failure, stale-source races, authorization, and repeated requests. MySQL persistence/rate-limit tests are present but remain unverified until run against Oracle MySQL.
 
 ## Phase 9 - Frontend integration
 
@@ -133,14 +133,14 @@ Authentication and authorization include database-backed session revocation afte
 ## Phase 10 - Security and quality verification
 
 - [-] **T-100** Automate valid/invalid login, password-hash verification, session ID regeneration, logout destruction, expiry, inactive-account tests, and credential-rotation session revocation. Isolated tests cover target-session revocation and unrelated-session preservation; MySQL-backed integration remains unverified.
-- [ ] **T-101** Automate author/admin role boundaries, admin-only category access, cross-author private-post denial, and rejection of public admin-role assignment.
+- [x] **T-101** Automate author/admin role boundaries, admin-only category access, cross-author private-post denial, and rejection of public admin-role assignment. Isolated route tests pass; MySQL integration remains unverified.
 - [x] **T-102** Run CSRF tests for missing, invalid, and valid tokens on the implemented login/logout operations.
 - [x] **T-103** Review authentication/provisioning SQL for prepared statement usage; migration SQL contains no request-controlled values.
 - [ ] **T-104** Test stored/reflected XSS cases and summary rendering.
 - [x] **T-105** Automate login rate-limit behavior and authentication input validation tests using isolated doubles.
 - [x] **T-106** Test category validation, deactivation, audit events, and referential deletion rules with SQLite; MySQL-specific tests are present but not yet run.
-- [ ] **T-107** Review headers, CORS, cookie flags, configuration, logs, and secret handling.
-- [-] **T-108** PHP lint passed for 43 files, the available test suite passed (26/0), and `git diff --check` passed. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
+- [x] **T-107** Review API headers (`no-store`, `nosniff`, same-origin referrer policy), absent cross-origin allow headers, session cookie flags, production configuration, generic public errors, and secret handling. Deployment-level HTTPS, PHP logging, and session-storage permissions still require operator verification.
+- [-] **T-108** Current local checks pass: `php tests/run.php` (31 passed, 0 failed), PHP lint (59 files), and `git diff --check`. No static-analysis tool is configured; Oracle MySQL integration remains unverified because no supported server/test database is available.
 - [x] **T-109** Record remaining known limitations; do not claim complete security.
 
 ## Phase 11 - Release and documentation

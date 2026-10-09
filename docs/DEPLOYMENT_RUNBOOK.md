@@ -44,7 +44,7 @@ AI_MAX_OUTPUT_CHARS
 AI_SUMMARY_RATE_LIMIT
 ```
 
-The current application requires `APP_ENV`, `APP_DEBUG`, `APP_BASE_URL`, `SESSION_SECURE_COOKIE`, a unique 32-byte `APP_KEY` encoded as 64 hexadecimal characters, and the `DB_*` connection values. Generate a key with `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`; keep it in protected environment configuration and do not reuse the example placeholder. It HMACs rate-limit identifiers and source addresses. The migration CLI accepts optional `MIGRATION_DB_*` overrides, including `MIGRATION_DB_SSL_CA`. AI and CORS values remain future-phase settings. Login rate thresholds are currently fixed in code (5 failures per identifier and 20 per source address in 15 minutes). Do not commit a real `.env` file.
+The current application requires `APP_ENV`, `APP_DEBUG`, `APP_BASE_URL`, `SESSION_SECURE_COOKIE`, a unique 32-byte `APP_KEY` encoded as 64 hexadecimal characters, and the `DB_*` connection values. Generate a key with `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`; keep it in protected environment configuration and do not reuse the example placeholder. It HMACs login and summary rate-limit identifiers and source addresses. The migration CLI accepts optional `MIGRATION_DB_*` overrides, including `MIGRATION_DB_SSL_CA`. AI settings are optional; unset them to disable summary generation. Do not commit a real `.env` file.
 
 ## 2.1 Database TLS
 
@@ -60,11 +60,11 @@ The AI endpoint must come from trusted deployment configuration/provider adapter
 
 1. Install PHP 8.0+ with `pdo_mysql` and Oracle MySQL 8.0.16+; MariaDB is not the supported target.
 2. Copy `.env.example` to `.env` and set local values.
-3. Create a dedicated MySQL database and separate runtime/migration users through an interactive database administration session. The runtime user requires DML access to `users` and `login_rate_limits`; the migration account is used only by `bin/migrate.php`.
-4. Apply migrations with `php bin/migrate.php up`; inspect them with `php bin/migrate.php status`. Apply `202610090003_add_auth_version_to_users` before deploying code that reads `users.auth_version`; sessions created before that migration are rejected and require users to sign in again.
+3. Create a dedicated MySQL database and separate runtime/migration users through an interactive database administration session. The runtime user requires DML access to application tables, `login_rate_limits`, and `summary_rate_limits`; the migration account is used only by `bin/migrate.php` and owns schema DDL rights.
+4. Apply migrations with `php bin/migrate.php up`; inspect them with `php bin/migrate.php status`. Apply `202610090003_add_auth_version_to_users` before deploying code that reads `users.auth_version`; sessions created before that migration are rejected and require users to sign in again. Migration `202610090004_create_summary_rate_limits` adds only transient summary-throttle counters.
 5. Run `php tests/run.php`. For MySQL integration, configure a fresh, empty, dedicated database named `*_test` and the explicit `TEST_DB_*` settings described in `TEST_PLAN.md`; the suite refuses nonempty databases and runs a confirmed rollback only on that disposable schema.
 
-To serve the implemented API, configure Apache's virtual host document root to the repository's `public/` directory and enable `mod_rewrite`/`.htaccess`. Set `APP_BASE_URL` to the origin used by that virtual host. Never expose the repository root as the document root. The router exposes authentication, category, author post lifecycle, public published-post reads, admin post/author-account management, and admin audit-log reads documented in `API_SPEC.md`; AI routes remain unimplemented.
+To serve the implemented API, configure Apache's virtual host document root to the repository's `public/` directory and enable `mod_rewrite`/`.htaccess`. Set `APP_BASE_URL` to the origin used by that virtual host. Never expose the repository root as the document root. The router exposes authentication, category, author post lifecycle, public published-post reads, admin post/author-account management, admin audit-log reads, and authorized summary operations documented in `API_SPEC.md`.
 
 ## 4. Administrator provisioning and rotation
 
@@ -118,10 +118,13 @@ Sessions use server-side PHP storage, `HttpOnly`, `SameSite=Lax`, `Secure` on HT
 
 ## 8. AI provider operations
 
-- Set per-request timeout and input/output limits.
-- Establish rate and cost limits with the provider where available.
-- Monitor summary success/failure counts and latency without logging full article text or API keys.
-- Ensure failure does not stop normal CMS features.
+- The initial adapter supports only `AI_PROVIDER=openai` and sends HTTPS requests to the fixed OpenAI Responses API endpoint. It does not support a deployment-supplied base URL, and requests do not expose tools or function calling.
+- Configure `AI_MODEL` and `AI_API_KEY` in protected server-side environment settings. Do not put keys in frontend code, URLs, logs, sample files, or Git.
+- Optional bounds default to a 20-second timeout, 12,000 input characters, 1,000 output characters, and 10 summaries per user per hour. `AI_TIMEOUT_SECONDS` accepts 2–60; input accepts 100–50,000; output accepts 50–4,000; per-user hourly limit accepts 1–1,000.
+- Additional fixed limits are 3 requests per post per hour, 30 per socket source per hour, and 10,000 across the application per hour. These are stored as HMAC identifiers in `summary_rate_limits`; grant the runtime account DML access to that table.
+- Leave all AI settings unset to disable summaries. Missing, incomplete, or unsupported provider configuration returns a safe `503` only when a summary is requested; ordinary post and public operations continue.
+- Monitor summary success/failure counts and latency without logging article text, prompts, provider responses, API keys, or source addresses.
+- Provider failures are bounded and do not stop normal CMS features. No automatic retry is made because it could create duplicate provider costs.
 - Rotate exposed keys immediately; updating the current config is not enough if the secret entered Git history or logs.
 - Disable summarization through configuration if abuse or provider compromise is suspected; post CRUD and public reading should continue.
 

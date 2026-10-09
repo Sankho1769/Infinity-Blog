@@ -14,9 +14,9 @@ AI summarization is a limited text-transformation feature. The authorized backen
 
 ## Current implementation status
 
-The Phase 1 configuration, PDO, and versioned migration foundation is in place. Authentication includes PHP sessions, logout, `/auth/me`, session-bound CSRF, MySQL-backed login limiting, reusable author/admin guards, database-backed session revocation, and a restricted CLI workflow for the two initial administrators. Admin-only category management, author-owned post lifecycle routes, public published-post reads, pagination/search, system-wide admin post management, admin author-account management, and safe admin audit-log reads are implemented. The API entry point is `public/index.php`; AI integration and frontend pages remain unimplemented.
+The Phase 1 configuration, PDO, and versioned migration foundation is in place. Authentication includes PHP sessions, logout, `/auth/me`, session-bound CSRF, MySQL-backed login limiting, reusable author/admin guards, database-backed session revocation, and a restricted CLI workflow for the two initial administrators. Admin-only category management, author-owned post lifecycle routes, public published-post reads, pagination/search, system-wide admin post management, admin author-account management, safe admin audit-log reads, and authorized summary generation are implemented. The API entry point is `public/index.php`; frontend pages remain unimplemented. Oracle MySQL integration is unverified.
 
-The initial database migration creates `users`, `categories`, `posts`, and `audit_logs`. The additive second migration creates `login_rate_limits`; the third adds `users.auth_version` for session revocation. Category references use `ON DELETE RESTRICT`; deactivating a category leaves existing post links intact, and an unreferenced category may be deleted by an admin. Drafts can have no category, while a published post must have an active category and publication timestamp. Post create/update, ownership-scoped lists/details, publish/unpublish, confirmed deletion, public published-only reads, and database-derived author counts are implemented. Post/category SQL integration remains unverified until run against Oracle MySQL 8.0.16 or newer.
+The initial database migration creates `users`, `categories`, `posts`, and `audit_logs`. Additive migrations create `login_rate_limits`, add `users.auth_version`, and create `summary_rate_limits`. Category references use `ON DELETE RESTRICT`; deactivating a category leaves existing post links intact, and an unreferenced category may be deleted by an admin. Drafts can have no category, while a published post must have an active category and publication timestamp. Post create/update, ownership-scoped lists/details, publish/unpublish, confirmed deletion, public published-only reads, database-derived author counts, summary persistence/source hashes, and safe failure handling are implemented. MySQL SQL integration remains unverified until run against Oracle MySQL 8.0.16 or newer.
 
 ## Requirements
 
@@ -68,7 +68,7 @@ The `.env.example` file contains placeholders only. `.gitignore` excludes `.env`
 
 ## Authentication setup
 
-After applying all three migrations and configuring the database runtime account with DML access, use the secure PowerShell prompt to provision administrators:
+After applying all four migrations and configuring the database runtime account with DML access, use the secure PowerShell prompt to provision administrators:
 
 ```powershell
 .\bin\admin-credentials.ps1 -Mode provision

@@ -3,7 +3,7 @@
 ## Infinity Blog - REST JSON Contract
 
 **Version:** `/api/v1`  
-**Status:** Authentication, category management, author post lifecycle, public post reads, admin post management, admin author-account management, and safe admin audit-log queries are implemented. AI summary generation remains planned and is not yet exposed by the current router.
+**Status:** Authentication, category management, author post lifecycle, public post reads, admin post management, admin author-account management, safe admin audit-log queries, and authorized article-summary generation are implemented. Oracle MySQL integration remains unverified.
 
 ---
 
@@ -47,7 +47,7 @@
 
 For `/author/posts`, counts include only posts owned by the authenticated author. For `/admin/posts`, counts cover all posts system-wide. `meta.total` is the number matching the list filters; `dashboard_counts` is the full unfiltered count within the caller's authorized scope. Public post lists expose only published posts and do not expose management or private counts. The schema has no view tracking, so no view count is returned.
 
-The SRS also keeps a Should requirement for displaying admin user and category totals where existing admin-list data provides them. The planned `/admin/users` and `/admin/categories` list operations may return a database-derived `meta.total` for that use. These optional totals do not replace the required post buckets and do not require a dashboard endpoint.
+The SRS also keeps a Should requirement for displaying admin user and category totals. The implemented `/admin/users` and `/admin/categories` lists return database-derived `meta.total` values. These optional totals do not replace the required post buckets and do not require a dashboard endpoint.
 
 ### Standard error response
 
@@ -119,7 +119,7 @@ All endpoints require an active authenticated author or admin, as appropriate. T
 
 ### `GET /author/posts`
 
-Implemented. Requires the `author` role and returns that author's posts only, with scoped database-derived `dashboard_counts`. Other authors' post IDs are concealed with `404`. Admins use the planned `/admin/posts` route for system-wide listings. Optional status/category/search filters and pagination are validated; `dashboard_counts` is independent of these filters.
+Implemented. Requires the `author` role and returns that author's posts only, with scoped database-derived `dashboard_counts`. Other authors' post IDs are concealed with `404`. Admins use the implemented `/admin/posts` route for system-wide listings. Optional status/category/search filters and pagination are validated; `dashboard_counts` is independent of these filters.
 
 ### `POST /author/posts`
 
@@ -158,7 +158,13 @@ Implemented for the owning author. Requires JSON `{"confirm":true}`, server-side
 
 ### `POST /author/posts/{id}/summary`
 
-Generates or regenerates a summary for a post that the requester may manage. Requires an active authenticated author who owns the post or an admin with permission, plus CSRF, rate limiting, and size limits. The server loads canonical title/content from MySQL after authorization; it does not trust client-submitted article text. The backend operation stores the validated plain-text result and summary metadata in MySQL, which public reads reuse when current. The provider adapter receives bounded text only and has no database credentials, tools, or application privileges. Provider errors return a safe error and must not break post creation, editing, publication, or reading; the post itself remains usable.
+**Implemented for the owning author.** Requires an active author session, CSRF token, and an empty JSON object. The server loads canonical title/content from MySQL after ownership authorization; no client article fields are accepted. `AI_PROVIDER=openai`, `AI_MODEL`, and `AI_API_KEY` enable the fixed OpenAI Responses API adapter. `AI_TIMEOUT_SECONDS`, `AI_MAX_INPUT_CHARS`, `AI_MAX_OUTPUT_CHARS`, and `AI_SUMMARY_RATE_LIMIT` set bounded runtime limits. Missing or invalid provider configuration returns a safe `503` after authorization and does not block ordinary post operations.
+
+The backend passes bounded title/body text to the provider as untrusted source material, with no tools or database handle. It validates bounded plain-text output, persists summary/status/source hash/timestamp in MySQL, and writes a minimal outcome audit event. Public reads reuse a stored summary only if its status is ready and its source hash matches the current title/body; public reads never call the provider. Provider errors mark a summary failed (or stale if an earlier summary exists), return a safe error, and do not interrupt post creation, editing, or publication. Output for a changed source revision is discarded and returns `409 SUMMARY_SOURCE_CHANGED`.
+
+### `POST /admin/posts/{id}/summary`
+
+**Implemented for admins.** Uses the same body, CSRF, rate-limit, source validation, persistence, and error contract as the author summary operation, with system-wide post access after the admin role check.
 
 ## 5. Admin post endpoints
 
@@ -169,6 +175,7 @@ All require an active admin role.
 - `PATCH /admin/posts/{id}` - **Implemented.** Edit title, body, or category; ownership cannot be changed through this route.
 - `POST /admin/posts/{id}/publish` - **Implemented.** Publish only after validating title, body, and active category.
 - `POST /admin/posts/{id}/unpublish` - **Implemented.** Remove from public visibility.
+- `POST /admin/posts/{id}/summary` - **Implemented.** Generate a stored summary for any post after admin authorization.
 - `DELETE /admin/posts/{id}` - **Implemented.** Requires explicit `{"confirm":true}`, admin authorization, CSRF, and an audit event.
 
 The implementation may reuse application services with explicit permission policy instead of duplicating post logic.
@@ -222,7 +229,7 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 | 422 | Valid JSON but validation failed |
 | 429 | Rate limit exceeded |
 | 500 | Generic unexpected server failure |
-| 502/503/504 | Safe AI-provider upstream/service failure, where appropriate |
+| 503 | AI summary provider is disabled, unavailable, or returned an invalid result |
 
 ## 10. API security checklist
 
@@ -231,15 +238,15 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 - [x] CSRF is checked for login/logout and all implemented category, author-post, admin-post, and admin-user mutations.
 - [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
 - [x] Admin post and author-account operations require the admin role; state changes require CSRF.
-- [ ] CORS is restricted to known origins if required.
+- [x] The API emits no `Access-Control-Allow-Origin` header; browser use is same-origin only. If a separate frontend origin is introduced, configure an explicit origin allowlist before enabling credentialed CORS.
 - [x] Implemented login request size and field lengths are bounded.
 - [x] IDs and status values are validated for implemented category/post routes.
 - [x] Query parameters are validated and parameterized for implemented post lists.
 - [x] Authentication responses omit secrets and password hashes.
 - [x] Public post endpoints return published content only; draft/unpublished IDs are concealed.
-- [ ] Summary requests are rate-limited and never run on public views.
+- [x] Summary requests are authorized, CSRF-protected, bounded, rate-limited in MySQL, and never run on public views.
 - [x] Author post lists/counts are owner-scoped; admin post lists/counts span database records.
 - [x] Admin author management never returns password hashes, only creates `author` roles, and increments `auth_version` on password/status changes.
 - [x] Admin audit-log reads require the admin role, use parameterized filters, and omit metadata from responses.
 - [x] Category slugs are generated server-side and protected by the database unique constraint.
-- [ ] The provider adapter has no database credentials or application tools/privileges.
+- [x] The provider adapter receives bounded article text only and has no database handle, tools, or application API access.

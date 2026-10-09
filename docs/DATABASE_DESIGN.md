@@ -119,16 +119,31 @@ Implemented by additive migration `202610090002_create_login_rate_limits`. It st
 | `expires_at` | DATETIME | End of the 15-minute fixed window; indexed for pruning |
 | `updated_at` | DATETIME | Last atomic increment time (UTC) |
 
-The MySQL implementation allows 5 failures per normalized identifier and 20 failures per socket source address in 15 minutes, with a global cap of 100,000 failures per 15 minutes. The global cap bounds the rate at which new HMAC buckets can accumulate and fails closed with `429` until expiry. It ignores proxy forwarding headers. MySQL upserts increment counters atomically; concurrent requests that pass a check before recording may exceed a threshold by the size of that in-flight batch. Expired buckets are pruned during login checks and before inserts. Key rotation makes old hashes unreachable; expired rows are pruned normally. The runtime account needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on this table. Summary rate limiting remains a later feature and does not use this login table.
+The MySQL implementation allows 5 failures per normalized identifier and 20 failures per socket source address in 15 minutes, with a global cap of 100,000 failures per 15 minutes. The global cap bounds the rate at which new HMAC buckets can accumulate and fails closed with `429` until expiry. It ignores proxy forwarding headers. MySQL upserts increment counters atomically; concurrent requests that pass a check before recording may exceed a threshold by the size of that in-flight batch. Expired buckets are pruned during login checks and before inserts. Key rotation makes old hashes unreachable; expired rows are pruned normally. The runtime account needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on this table.
 
-## 8. Foreign-key behavior
+## 8. Summary rate limits
+
+Implemented by additive migration `202610090004_create_summary_rate_limits`; it is separate from login throttling. It stores only HMAC-SHA-256 bucket hashes, bucket type, request count, and UTC fixed-window timestamps. Raw user IDs, post IDs, and source addresses are not stored in this table.
+
+| Column | Type | Rules / purpose |
+|---|---|---|
+| `bucket_hash` | CHAR(64) ASCII binary | Primary key; HMAC of bucket type and user/post/source key, or a global key, using `APP_KEY` |
+| `bucket_type` | VARCHAR(16) | Enforced values: `user`, `post`, `source`, `global` |
+| `request_count` | INT UNSIGNED | Number of accepted summary attempts in the fixed window |
+| `window_started_at` | DATETIME | UTC start of the current one-hour window |
+| `expires_at` | DATETIME | UTC window end; indexed for pruning |
+| `updated_at` | DATETIME | UTC last update |
+
+The default account limit is 10 requests per hour and is configurable with `AI_SUMMARY_RATE_LIMIT` (1–1000). Resource, source, and system limits are 3 requests per post per hour, 30 per socket source per hour, and 10,000 total per hour. All four counters are incremented in one transaction before contacting the provider; any exceeded threshold rolls the reservation back and returns `429`. MySQL upserts serialize counters. Source addresses are taken from the socket only; forwarding headers are ignored. Expired rows are pruned on requests. The runtime database account requires `SELECT`, `INSERT`, `UPDATE`, and `DELETE` privileges on this table.
+
+## 9. Foreign-key behavior
 
 - Posts reference users; user deactivation is safer than deleting a user with posts.
 - Posts reference categories; use restrictive delete behavior and prefer category deactivation.
 - Audit actors can become null if an account is removed, preserving event history according to policy.
 - Do not cascade-delete posts simply because a category is deleted.
 
-## 9. Migration and backup rules
+## 10. Migration and backup rules
 
 - Use versioned migration/schema files.
 - Apply schema changes in a controlled order.
@@ -147,11 +162,12 @@ The MySQL implementation allows 5 failures per normalized identifier and 20 fail
 - The existing `categories.slug` unique constraint supports server-generated slugs; this decision needs no schema change. Dashboard counts are query results and need no persisted aggregate or schema change.
 - The initial migration has a guarded down operation. It drops all four tables and permanently deletes their data; require a backup and a disposable database before invoking it.
 - The second migration adds only the transient login limiter table. Its guarded rollback drops that table and its ephemeral counters; it does not alter the CMS entity schema.
-- The third migration adds `users.auth_version` for server-side session revocation after credential rotation/reset. Its guarded rollback drops the column and therefore removes revocation state; coordinate rollback with code deployment and invalidate sessions. All three migrations still require verification against Oracle MySQL 8.0.16 or newer; MariaDB is not an accepted substitute.
+- The third migration adds `users.auth_version` for server-side session revocation after credential rotation/reset. Its guarded rollback drops the column and therefore removes revocation state; coordinate rollback with code deployment and invalidate sessions.
+- The fourth migration adds only transient summary throttling state in `summary_rate_limits`; rollback deletes those counters after explicit confirmation. All four migrations require verification against Oracle MySQL 8.0.16 or newer; MariaDB is not an accepted substitute.
 
 The migration runner uses `DB_*` settings by default. Deployments should provide a separate, short-lived migration account with `MIGRATION_DB_*` overrides; the application runtime account should not have DDL or `DROP` privileges. Production database connections require a trusted `DB_SSL_CA` certificate and PDO server-certificate verification; remote database hosts require the CA in all environments. Loopback development may omit TLS. Configure MySQL `require_secure_transport=ON` for production so the server also rejects plaintext connections.
 
-## 10. Data lifecycle and privacy
+## 11. Data lifecycle and privacy
 
 - Collect only account data required for authentication/operation.
 - Avoid collecting email unless the feature needs it.

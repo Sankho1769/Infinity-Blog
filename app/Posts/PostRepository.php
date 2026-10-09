@@ -226,6 +226,96 @@ final class PostRepository
         $this->deleteAuthorized($postId, null, $adminId);
     }
 
+    /**
+     * Store a generated summary only if the article source still matches the hash used by the provider.
+     *
+     * @return array{summary: string, summary_status: string, summary_generated_at: string}|null
+     */
+    public function saveSummaryIfCurrent(int $postId, ?int $ownerId, int $actorId, string $sourceHash, string $summary): ?array
+    {
+        $this->begin();
+        try {
+            $current = $this->find($postId, $ownerId, true);
+            if ($current === null) {
+                throw new PostNotFoundException();
+            }
+            $currentHash = self::sourceHash($current['title'], $current['content']);
+            if (!hash_equals($sourceHash, $currentHash)) {
+                $this->writeAudit('post.summary_superseded', $postId, $actorId, [
+                    'requested_source_hash' => $sourceHash,
+                    'current_source_hash' => $currentHash,
+                ]);
+                $this->pdo->commit();
+                return null;
+            }
+            $generatedAt = gmdate('Y-m-d H:i:s');
+            $updateSql =
+                "UPDATE posts SET summary = :summary, summary_status = 'ready', summary_source_hash = :source_hash, " .
+                'summary_generated_at = :generated_at, updated_at = :updated_at WHERE id = :id';
+            $parameters = [
+                'summary' => $summary,
+                'source_hash' => $sourceHash,
+                'generated_at' => $generatedAt,
+                'updated_at' => $generatedAt,
+                'id' => $postId,
+            ];
+            if ($ownerId !== null) {
+                $updateSql .= ' AND author_id = :owner_id';
+                $parameters['owner_id'] = $ownerId;
+            }
+            $update = $this->pdo->prepare($updateSql);
+            $update->execute($parameters);
+            $this->writeAudit('post.summary_generated', $postId, $actorId, [
+                'source_hash' => $sourceHash,
+                'summary_characters' => self::characterCount($summary),
+            ]);
+            $this->pdo->commit();
+            return ['summary' => $summary, 'summary_status' => 'ready', 'summary_generated_at' => $generatedAt];
+        } catch (Throwable $exception) {
+            $this->rollback();
+            throw $exception;
+        }
+    }
+
+    /** Mark a failed result only if the same source revision is still present. */
+    public function markSummaryFailureIfCurrent(int $postId, ?int $ownerId, int $actorId, string $sourceHash): ?string
+    {
+        $this->begin();
+        try {
+            $current = $this->find($postId, $ownerId, true);
+            if ($current === null) {
+                throw new PostNotFoundException();
+            }
+            $currentHash = self::sourceHash($current['title'], $current['content']);
+            if (!hash_equals($sourceHash, $currentHash)) {
+                $this->writeAudit('post.summary_superseded', $postId, $actorId, [
+                    'requested_source_hash' => $sourceHash,
+                    'current_source_hash' => $currentHash,
+                ]);
+                $this->pdo->commit();
+                return null;
+            }
+            $status = $current['summary'] === null ? 'failed' : 'stale';
+            $updateSql = 'UPDATE posts SET summary_status = :status, updated_at = :updated_at WHERE id = :id';
+            $parameters = ['status' => $status, 'updated_at' => gmdate('Y-m-d H:i:s'), 'id' => $postId];
+            if ($ownerId !== null) {
+                $updateSql .= ' AND author_id = :owner_id';
+                $parameters['owner_id'] = $ownerId;
+            }
+            $update = $this->pdo->prepare($updateSql);
+            $update->execute($parameters);
+            $this->writeAudit('post.summary_failed', $postId, $actorId, [
+                'source_hash' => $sourceHash,
+                'retained_prior_summary' => $current['summary'] !== null,
+            ]);
+            $this->pdo->commit();
+            return $status;
+        } catch (Throwable $exception) {
+            $this->rollback();
+            throw $exception;
+        }
+    }
+
     /** @param array{title?: string, content?: string, category_id?: ?int} $changes
      *  @return array<string, mixed>
      */
@@ -541,5 +631,11 @@ final class PostRepository
             return $matches[0];
         }
         return substr($preview, 0, 220);
+    }
+
+    private static function characterCount(string $value): int
+    {
+        $count = preg_match_all('/./us', $value);
+        return $count === false ? strlen($value) : $count;
     }
 }

@@ -51,7 +51,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership-scoped reads/summary invalidation, MySQL author-account creation/password changes/status revocation, administrator provisioning/credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all four migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership scopes, author-account creation/password/session revocation, MySQL summary persistence/source-race handling and HMAC rate limits, administrator provisioning, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all four migrations to leave the schema reproducible.
 5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
 
 ## 3. Functional tests
@@ -73,7 +73,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
 | AU-011 | Five failures for one identifier or 20 for one source in 15 minutes | Subsequent login is limited; changing identifier does not bypass the source bucket |
 | AU-012 | Rotate a user's credentials through trusted provisioning | The old session is rejected on its next guarded request; old password fails; new login succeeds; another user's session remains valid |
 
-MySQL limiter state and all three migrations require the MySQL integration run. The suite also repeats credential rotation and session-revocation checks with MySQL-backed user records when enabled. Unit tests use SQLite for account/version behavior and a test double for the limiter; these are not evidence of MySQL integration success.
+MySQL login and summary limiter state and all four migrations require the MySQL integration run. The suite also exercises MySQL-backed author accounts, audit queries, summary persistence/source hashes, and session revocation when enabled. Unit tests use SQLite for application behavior and HMAC rate-limit persistence plus provider/test doubles; these are not evidence of MySQL integration success.
 
 | ID | Scenario | Expected result |
 |---|---|---|
@@ -109,6 +109,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | F-030 | Admin creates/manages author accounts | Only author roles can be created; hashes are stored, secret fields are never returned or audited, and credential/status changes revoke sessions |
 | F-031 | Admin manages all posts | Admin list and counts span all records; moderation actions require admin role and CSRF and write audit events |
 | F-032 | Admin reviews audit events | Only admins may read; filters and pagination work; response omits metadata and any secret/article content |
+| F-033 | Author/admin requests a summary | Canonical database text is summarized only after permission checks; a ready summary/hash/time is stored and audited |
+| F-034 | Provider fails, output is invalid, or article changes while provider runs | Safe error; no stale result is stored as current; post operations remain usable |
 
 ## 4. Authorization tests
 
@@ -127,6 +129,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | A-011 | Author or anonymous visitor calls admin post/user routes | 403 or 401; no data or account/post mutation |
 | A-012 | Request supplies `role=admin` to author-account creation or update | 422; no role change or administrator account is created |
 | A-013 | Anonymous user or author requests audit logs | 401 or 403; no audit data is returned |
+| A-014 | Author requests a summary for another author's post | 404 before any limiter reservation or provider call |
+| A-015 | Admin requests an authorized summary for any post | Allowed only through the admin route with a valid CSRF token |
 
 ## 5. Injection and request-security tests
 

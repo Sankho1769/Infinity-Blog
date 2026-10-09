@@ -21,7 +21,12 @@ use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestException;
+use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Summaries\AiProviderConfig;
+use InfinityBlog\Summaries\DatabaseSummaryRateLimiter;
+use InfinityBlog\Summaries\OpenAiResponsesProvider;
+use InfinityBlog\Summaries\SummaryService;
 use InfinityBlog\Users\AdminUserRepository;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -44,6 +49,23 @@ try {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
+    } elseif (preg_match('#^/(author|admin)/posts/[0-9]+/summary$#D', $request->path) === 1) {
+        try {
+            $aiConfig = AiProviderConfig::fromEnvironment();
+        } catch (Throwable) {
+            $aiConfig = null;
+        }
+        $provider = $aiConfig === null ? null : new OpenAiResponsesProvider($aiConfig);
+        $limiter = new DatabaseSummaryRateLimiter(
+            $pdo,
+            $config->applicationKey(),
+            $aiConfig?->userRateLimit ?? 10
+        );
+        $controller = new SummaryController(
+            new SummaryService(new PostRepository($pdo), $limiter, $aiConfig, $provider),
+            $guard,
+            $sessions
+        );
     } elseif ($request->path === '/admin/posts' || str_starts_with($request->path, '/admin/posts/')) {
         $controller = new AdminPostController(new PostRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/audit-logs') {

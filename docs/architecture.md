@@ -119,6 +119,8 @@ Current implementation is in `app/Auth/`: `AuthenticationService` coordinates ve
 - Validate plain-text output, bound length, store summary metadata, and handle failure without failing the article operation.
 - Give the provider adapter only bounded text input and access to the configured provider. It receives no database credentials, tools, shell execution, filesystem access, arbitrary URL access, or other application privileges.
 - Treat provider failure as an isolated summary failure; post creation, editing, publication, and public reading continue to work.
+- The initial adapter uses the fixed OpenAI Responses API endpoint; disable summary requests when its server-side provider configuration is missing or invalid.
+- Store HMAC-only fixed-window counters in `summary_rate_limits`, separate from login limiter state; count provider failures against the quota.
 
 ### Data access layer
 
@@ -150,7 +152,7 @@ Preferred production arrangement:
 - Request origin validation is an additional layer, not a replacement for CSRF tokens.
 - Role and resource authorization are checked for every protected route.
 
-The current HTTP entry point is `public/index.php`; it exposes authentication, admin-only category management, author post lifecycle, public published-post reads, system-wide admin post management, admin author-account management, and safe admin audit-log reads. Summary routes remain later work. `AuthGuard` is the reusable role boundary; author post operations enforce ownership in parameterized repository queries, while admin operations use separate guarded routes.
+The current HTTP entry point is `public/index.php`; it exposes authentication, admin-only category management, author post lifecycle, public published-post reads, system-wide admin post management, admin author-account management, safe admin audit-log reads, and authorized author/admin summary operations. `AuthGuard` is the reusable role boundary; author post operations enforce ownership in parameterized repository queries, while admin operations use separate guarded routes.
 
 ## 7. Data flow: create post
 
