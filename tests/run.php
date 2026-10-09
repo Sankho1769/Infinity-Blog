@@ -27,6 +27,7 @@ use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Database\DatabaseUnavailableException;
 use InfinityBlog\Database\MigrationRunner;
 use InfinityBlog\Http\ApiErrorResponder;
+use InfinityBlog\Http\ApiErrorLogger;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\AdminUserController;
@@ -293,6 +294,28 @@ $run('API error envelope includes a safe request ID and hides internal details',
     $validation = ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', ['title' => 'Title is required.'], 'req-12345678');
     $expect($validation['request_id'] === 'req-12345678');
     $expect($validation['error']['fields']['title'] === 'Title is required.');
+});
+
+$run('private API error log correlates by request ID without recording exception messages', static function () use ($expect): void {
+    $entries = [];
+    $logger = new ApiErrorLogger(static function (string $line) use (&$entries): void {
+        $entries[] = $line;
+    });
+    $requestId = '0123456789abcdef0123456789abcdef';
+    $logger->log(new RuntimeException('SQL detail and provider-secret must stay private.'), $requestId);
+    $expect(count($entries) === 1);
+    $record = json_decode($entries[0], true, 16, JSON_THROW_ON_ERROR);
+    $expect($record === [
+        'event' => 'api.unhandled_exception',
+        'request_id' => $requestId,
+        'exception_type' => RuntimeException::class,
+    ]);
+    $expect(!str_contains($entries[0], 'SQL detail') && !str_contains($entries[0], 'provider-secret'));
+
+    $unavailableSink = new ApiErrorLogger(static function (): void {
+        throw new RuntimeException('private log sink failure');
+    });
+    $unavailableSink->log(new RuntimeException('private diagnostic'), 'valid-request-id');
 });
 
 $run('same-origin request policy rejects foreign or malformed state-changing browser requests', static function () use ($expect): void {

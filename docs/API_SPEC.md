@@ -65,7 +65,7 @@ The SRS also keeps a Should requirement for displaying admin user and category t
 }
 ```
 
-Messages must not contain stack traces, SQL details, filesystem paths, API keys, provider responses, or other internal data.
+Messages must not contain stack traces, SQL details, filesystem paths, API keys, provider responses, or other internal data. Unexpected server failures are written to the protected PHP error log as a JSON record containing the event name, response request ID, and exception class only; exception messages and request/article contents are omitted.
 
 ## 2. Authentication and CSRF
 

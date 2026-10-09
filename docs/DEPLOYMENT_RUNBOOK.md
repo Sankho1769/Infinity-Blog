@@ -86,7 +86,7 @@ Sessions use server-side PHP storage, `HttpOnly`, `SameSite=Lax`, `Secure` on HT
 ## 5. Production settings
 
 - `APP_DEBUG=false`.
-- PHP `display_errors=Off` and `log_errors=On`; keep protected server logs outside the public document root.
+- PHP `display_errors=Off` and `log_errors=On`; keep protected server logs outside the public document root. Unexpected API failures are logged as JSON with the response request ID and exception class only; exception messages and request/article contents are not logged.
 - HTTPS enabled.
 - Unique `APP_KEY` of 32 cryptographically random bytes, supplied as 64 hexadecimal characters; protect it as a secret.
 - Session cookie `Secure`, `HttpOnly`, and appropriate `SameSite` setting.
@@ -103,7 +103,7 @@ Sessions use server-side PHP storage, `HttpOnly`, `SameSite=Lax`, `Secure` on HT
 1. Back up database and relevant configuration securely.
 2. Deploy the reviewed source version.
 3. Apply migrations in the planned order.
-4. For the current implementation, smoke-test CSRF-token retrieval, login, `/auth/me`, logout, expiry, rate-limit responses, category routes, author ownership on post routes, public published-only reads, and admin-only post/author management. AI checks remain a future release gate.
+4. For the current implementation, smoke-test CSRF-token retrieval, login, `/auth/me`, logout, expiry, rate-limit responses, same-origin rejection, category routes, author ownership on post routes, public published-only reads, admin-only post/author management, and authorized summary generation/current-summary reuse/provider failure behavior.
 5. Confirm drafts and unpublished posts are not publicly visible through list or detail routes.
 6. Confirm logs and responses contain no secrets.
 7. Monitor error/rate-limit logs after release.

@@ -14,6 +14,7 @@ use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AdminPostController;
 use InfinityBlog\Http\AdminAuditLogController;
 use InfinityBlog\Http\AdminUserController;
+use InfinityBlog\Http\ApiErrorLogger;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\JsonResponse;
@@ -32,11 +33,19 @@ use InfinityBlog\Users\AdminUserRepository;
 
 require dirname(__DIR__) . '/autoload.php';
 
+$requestId = bin2hex(random_bytes(16));
+$errorLogger = new ApiErrorLogger();
+
 try {
     $config = AppConfig::fromEnvironment();
     $request = Request::fromGlobals($config->baseUrl);
     if (!RequestOriginPolicy::allows($request, $config->baseUrl)) {
-        JsonResponse::send(403, ApiErrorResponder::build('ORIGIN_FORBIDDEN', 'The request origin is not permitted.'));
+        JsonResponse::send(403, ApiErrorResponder::build(
+            'ORIGIN_FORBIDDEN',
+            'The request origin is not permitted.',
+            [],
+            $requestId
+        ));
         return;
     }
 
@@ -91,7 +100,13 @@ try {
     $result = $controller->handle($request);
     JsonResponse::send($result['status'], $result['body']);
 } catch (RequestException $exception) {
-    JsonResponse::send($exception->httpStatus, ApiErrorResponder::build($exception->errorCode, $exception->getMessage()));
-} catch (Throwable) {
-    JsonResponse::send(500, ApiErrorResponder::internalFailure());
+    JsonResponse::send($exception->httpStatus, ApiErrorResponder::build(
+        $exception->errorCode,
+        $exception->getMessage(),
+        [],
+        $requestId
+    ));
+} catch (Throwable $exception) {
+    $errorLogger->log($exception, $requestId);
+    JsonResponse::send(500, ApiErrorResponder::internalFailure($requestId));
 }

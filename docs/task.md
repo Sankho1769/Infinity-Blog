@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after credential or author-account status changes, same-origin validation for state-changing browser requests, and CSRF protection. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 32 passed, 0 failed; PHP lint passed for 60 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes, same-origin validation for state-changing browser requests, CSRF protection, and request-correlated private error logging. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 33 passed, 0 failed; PHP lint passed for 61 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
 
 ---
 
@@ -45,7 +45,7 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-011** Centralize configuration and environment variable loading.
 - [x] **T-012** Create database connection module with safe error handling.
 - [x] **T-013** Add development and production configuration instructions.
-- [x] **T-014** Add the documented generic API error envelope and generated/sanitized request IDs. Authentication and category routing are implemented; private diagnostic logging and remaining product routes are later work.
+- [x] **T-014** Add the generic API error envelope, generated request IDs, and private structured logging for unexpected failures. Logs include only the request ID and exception class, not exception messages or request/article data.
 
 ## Phase 2 - Database schema
 
