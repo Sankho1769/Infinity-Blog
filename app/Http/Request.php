@@ -14,17 +14,21 @@ final class Request
     /** @var array<string, string> */
     private array $headers;
 
+    /** @var array<string, mixed> */
+    private array $query;
+
     /** @var array<string, mixed>|null */
     private ?array $json = null;
     private bool $jsonRead = false;
 
     /** @param array<string, string> $headers */
-    private function __construct(string $method, string $path, string $sourceAddress, array $headers)
+    private function __construct(string $method, string $path, string $sourceAddress, array $headers, array $query)
     {
         $this->method = strtoupper($method);
         $this->path = $path;
         $this->sourceAddress = filter_var($sourceAddress, FILTER_VALIDATE_IP) ? $sourceAddress : 'unknown';
         $this->headers = array_change_key_case($headers, CASE_LOWER);
+        $this->query = $query;
     }
 
     public static function fromGlobals(string $baseUrl): self
@@ -70,7 +74,8 @@ final class Request
             (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),
             '/' . trim($requestPath, '/'),
             (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown'),
-            $headers
+            $headers,
+            is_array($_GET ?? null) ? $_GET : []
         );
     }
 
@@ -82,13 +87,25 @@ final class Request
         string $path,
         string $sourceAddress,
         array $headers = [],
-        array $json = []
+        array $json = [],
+        array $query = []
     ): self {
-        $request = new self($method, $path, $sourceAddress, $headers);
+        $request = new self($method, $path, $sourceAddress, $headers, $query);
         $request->json = $json;
         $request->jsonRead = true;
 
         return $request;
+    }
+
+    public function query(string $name): mixed
+    {
+        return $this->query[$name] ?? null;
+    }
+
+    /** @return array<string, mixed> */
+    public function queryParameters(): array
+    {
+        return $this->query;
     }
 
     public function header(string $name): ?string
@@ -99,8 +116,11 @@ final class Request
     }
 
     /** @return array<string, mixed> */
-    public function jsonObject(): array
+    public function jsonObject(int $maxBytes = 16384): array
     {
+        if ($maxBytes < 1 || $maxBytes > 1048576) {
+            throw new \InvalidArgumentException('The request size limit is invalid.');
+        }
         if ($this->jsonRead) {
             return $this->json ?? [];
         }
@@ -111,7 +131,7 @@ final class Request
         }
 
         $contentLength = filter_var($_SERVER['CONTENT_LENGTH'] ?? null, FILTER_VALIDATE_INT);
-        if ($contentLength !== false && $contentLength > 16384) {
+        if ($contentLength !== false && $contentLength > $maxBytes) {
             throw new RequestException(413, 'REQUEST_TOO_LARGE', 'The request is too large.');
         }
 
@@ -120,8 +140,8 @@ final class Request
             throw new RequestException(415, 'UNSUPPORTED_MEDIA_TYPE', 'A JSON request is required.');
         }
 
-        $body = file_get_contents('php://input', false, null, 0, 16385);
-        if (!is_string($body) || strlen($body) > 16384) {
+        $body = file_get_contents('php://input', false, null, 0, $maxBytes + 1);
+        if (!is_string($body) || strlen($body) > $maxBytes) {
             throw new RequestException(413, 'REQUEST_TOO_LARGE', 'The request is too large.');
         }
         if (trim($body) === '') {

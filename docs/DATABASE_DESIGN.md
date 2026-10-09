@@ -87,7 +87,7 @@ Rules:
 - `author_id` comes from the authenticated session, never from client authority.
 - Publish requires required fields and an active category.
 - Public queries filter `status = 'published'` at database/query level.
-- Title/body changes mark an existing summary stale.
+- Title/body changes mark an existing summary stale. The application source hash is lowercase SHA-256 of the exact title, a single LF byte, and the exact content (`title + "\n" + content`); public reads require a ready summary whose stored hash matches that value.
 - Public views should not show a stale summary as if current.
 - Use appropriate indexes, including `(status, published_at)`, `author_id`, `category_id`, and combinations proven by query patterns.
 - Dashboard counts are derived with aggregate queries over `posts`: author counts filter by the authenticated `author_id`, while admin counts span all posts. The current `draft` and `published` statuses define the count buckets. No view-count field/table is part of Version 1.0.
@@ -143,7 +143,7 @@ The MySQL implementation allows 5 failures per normalized identifier and 20 fail
 - Tables use InnoDB, `utf8mb4`, and `utf8mb4_unicode_ci`. Usernames, category names, and slugs therefore have case-insensitive and accent-insensitive uniqueness at the database layer. Application validation should normalize category slugs to lowercase URL-safe values before persistence.
 - Role, account status, post status, and summary status are allowlisted with enforced `CHECK` constraints. The supported MySQL baseline is 8.0.16 or newer so these checks are enforced.
 - The migration runner checks the connected server version before applying schema changes and rejects versions older than MySQL 8.0.16.
-- Category deactivation changes only `is_active`; it preserves all post references. Category deletion is restricted while referenced. Publishing and new active-category assignment checks remain application-service responsibilities in later phases.
+- Category deactivation changes only `is_active`; it preserves all post references. Category deletion is restricted while referenced. The author post service requires an active category for publication and new category assignments; the database checks publication fields and enforces restrictive foreign keys.
 - The existing `categories.slug` unique constraint supports server-generated slugs; this decision needs no schema change. Dashboard counts are query results and need no persisted aggregate or schema change.
 - The initial migration has a guarded down operation. It drops all four tables and permanently deletes their data; require a backup and a disposable database before invoking it.
 - The second migration adds only the transient login limiter table. Its guarded rollback drops that table and its ephemeral counters; it does not alter the CMS entity schema.

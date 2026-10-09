@@ -150,7 +150,7 @@ Preferred production arrangement:
 - Request origin validation is an additional layer, not a replacement for CSRF tokens.
 - Role and resource authorization are checked for every protected route.
 
-The current HTTP entry point is `public/index.php`; it exposes only `/api/v1/auth/csrf`, `/auth/login`, `/auth/logout`, and `/auth/me`. Post, category, public-content, and Admin Panel routes remain later phases. `AuthGuard` is the reusable role boundary for those future modules; resource ownership checks will be added with post operations.
+The current HTTP entry point is `public/index.php`; it exposes authentication, category, author post lifecycle, and public published-post routes. Admin post/user management, audit queries, and summary routes remain later phases. `AuthGuard` is the reusable role boundary; implemented author post operations also enforce ownership in parameterized repository queries.
 
 ## 7. Data flow: create post
 

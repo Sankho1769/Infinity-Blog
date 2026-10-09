@@ -14,15 +14,15 @@ AI summarization is a limited text-transformation feature. The authorized backen
 
 ## Current implementation status
 
-The Phase 1 configuration, PDO, and versioned migration foundation is in place. Phase 2 implements PHP session authentication, logout, `/auth/me`, session-bound CSRF, MySQL-backed login limiting, reusable author/admin guards, database-backed session revocation after trusted credential rotation, and a restricted CLI workflow for the two initial administrators. Admin-only category management and active public category reads are also implemented. The API entry point is `public/index.php`; post CRUD, public article endpoints, Admin Panel, and AI routes remain unimplemented.
+The Phase 1 configuration, PDO, and versioned migration foundation is in place. Phase 2 implements PHP session authentication, logout, `/auth/me`, session-bound CSRF, MySQL-backed login limiting, reusable author/admin guards, database-backed session revocation after trusted credential rotation, and a restricted CLI workflow for the two initial administrators. Admin-only category management, author-owned post lifecycle routes, public published-post listing/detail, pagination, and search are also implemented. The API entry point is `public/index.php`; admin post/account management, audit queries, AI integration, and frontend pages remain unimplemented.
 
-The initial database migration creates `users`, `categories`, `posts`, and `audit_logs`. The additive second migration creates `login_rate_limits`; the third adds `users.auth_version` for session revocation. Category references use `ON DELETE RESTRICT`; deactivating a category leaves existing post links intact, and an unreferenced category may be deleted by an admin. Drafts can have no category, while a published post must have a category and publication timestamp. Post lifecycle and public article application features remain future work. Category SQL integration remains unverified until run against Oracle MySQL 8.0.16 or newer.
+The initial database migration creates `users`, `categories`, `posts`, and `audit_logs`. The additive second migration creates `login_rate_limits`; the third adds `users.auth_version` for session revocation. Category references use `ON DELETE RESTRICT`; deactivating a category leaves existing post links intact, and an unreferenced category may be deleted by an admin. Drafts can have no category, while a published post must have an active category and publication timestamp. Post create/update, ownership-scoped lists/details, publish/unpublish, confirmed deletion, public published-only reads, and database-derived author counts are implemented. Post/category SQL integration remains unverified until run against Oracle MySQL 8.0.16 or newer.
 
 ## Requirements
 
 - PHP 8.0 or newer with `pdo_mysql`/`mysqlnd` enabled (the TLS verification option requires mysqlnd).
 - MySQL 8.0.16 or newer. The schema uses enforced `CHECK` constraints, which MySQL began enforcing in 8.0.16.
-- Apache/XAMPP with `mod_rewrite` is needed to serve the authentication and category APIs; configure the document root to `public/`.
+- Apache/XAMPP with `mod_rewrite` is needed to serve the authentication, category, post, and public-read APIs; configure the document root to `public/`.
 - No Composer packages are required. The project uses a small PSR-4-style autoloader in `autoload.php`.
 
 The available XAMPP database binary reports MariaDB 10.4.32, which is not the specified MySQL target. No Oracle MySQL server is available here, so MySQL integration remains unverified; the migration and database limiter must still be tested against a dedicated Oracle MySQL 8.0.16+ `_test` database.

@@ -3,7 +3,7 @@
 ## Infinity Blog - REST JSON Contract
 
 **Version:** `/api/v1`  
-**Status:** The four authentication routes in Section 2 and category routes in Section 6 are implemented. Post, user-management, audit, and summary routes remain planned and are not exposed by the current router.
+**Status:** Authentication, category management, author post lifecycle, and public post read routes are implemented. Admin post/user management, audit queries, and summary generation remain planned and are not exposed by the current router.
 
 ---
 
@@ -100,18 +100,18 @@ Implemented. Returns `data.csrf_token` bound to the current server session. Resp
 
 ### `GET /posts`
 
-Public. Returns published posts only. Optional query parameters:
+Implemented. Public and read-only. Returns published posts only. Optional query parameters:
 
 - `q`: keyword, length-limited and safely parameterized.
 - `category_id`: valid category ID; only active public categories are selectable for new filtering.
 - `page`: integer >= 1.
 - `per_page`: bounded integer, default 10, maximum 50.
 
-Each list item may include `id`, `title`, `slug` if implemented, author display name, category summary, `summary` only when current, safe excerpt, `published_at`, and timestamps suitable for public display.
+Each list item returns `id`, `title`, author display name, category summary, current stored `summary` when its source hash matches, a safe text excerpt, `published_at`, and `created_at`. It omits the full body, author account ID, management fields, and private counts. Search text is at most 100 bytes; page size defaults to 10 and is capped at 50. Category filters accept active categories only. The query is parameterized and searches title/body text literally.
 
 ### `GET /posts/{id}`
 
-Public. Returns the requested published post only. Draft, deleted, missing, or otherwise unpublished posts must not be exposed. It may return the current stored summary, full article body, category, author display name, and publication metadata.
+Implemented. Returns the requested published post only. Draft, deleted, missing, or otherwise unpublished posts return the same `404`. It returns the full article text, category, author display name, and publication metadata; a summary is returned only when its stored source hash matches the current title/body. Public reads never call the AI provider.
 
 ## 4. Author post endpoints
 
@@ -119,11 +119,11 @@ All endpoints require an active authenticated author or admin, as appropriate. T
 
 ### `GET /author/posts`
 
-Returns the authenticated author's own posts with scoped `dashboard_counts`. This route does not grant an author access to another author's posts. Admins use `/admin/posts` for system-wide listings. Optional status/category/search filters and pagination are validated; `dashboard_counts` is independent of these filters.
+Implemented. Requires the `author` role and returns that author's posts only, with scoped database-derived `dashboard_counts`. Other authors' post IDs are concealed with `404`. Admins use the planned `/admin/posts` route for system-wide listings. Optional status/category/search filters and pagination are validated; `dashboard_counts` is independent of these filters.
 
 ### `POST /author/posts`
 
-Creates a post. Example request:
+Implemented. Creates a draft. The request accepts `title`, `content`, and optional nullable `category_id`; an optional status must be `draft`. The server ignores no privileged author ID: supplying `author_id` is rejected. Article request bodies are capped at 1 MiB, and content at 512 KiB. Example request:
 
 ```json
 {
@@ -134,7 +134,7 @@ Creates a post. Example request:
 }
 ```
 
-The server validates title/content and status. Drafts may have a missing category only if the product implementation allows it; publication requires a valid active category. The server sets `author_id` from session.
+The server validates title/content and category assignment. Drafts may be uncategorized. A supplied category must be active. The server sets `author_id` from the authenticated session. Create and update require CSRF.
 
 ### `GET /author/posts/{id}`
 
@@ -142,19 +142,19 @@ Returns a post only if the requester owns it or is an authorized admin.
 
 ### `PATCH /author/posts/{id}`
 
-Updates allowed fields after ownership/role check. On title/body changes, mark an existing summary stale. Category assignment must validate that the category exists and is active under the applicable rule.
+Implemented for the owning author. Updates only accept `title`, `content`, and `category_id`; status changes use the explicit publish/unpublish routes. On title/body changes, an existing summary is marked stale. A new category assignment must reference an active category; existing historical assignments can be retained after deactivation.
 
 ### `POST /author/posts/{id}/publish`
 
-Publishes the authorized post only when required fields and an active category are valid. Sets `published_at` according to the implementation policy and records an audit event.
+Implemented for the owning author. Publishes only after title, content, and an active category are present. Sets `published_at` and records an audit event.
 
 ### `POST /author/posts/{id}/unpublish`
 
-Moves a post out of public visibility. CSRF required.
+Implemented for the owning author. Moves a post to draft, clears `published_at`, and records an audit event. CSRF required.
 
 ### `DELETE /author/posts/{id}`
 
-Deletes the authorized post after UI confirmation. Server-side authorization and CSRF validation are mandatory. Audit logging must not rely on a surviving post foreign key.
+Implemented for the owning author. Requires JSON `{"confirm":true}`, server-side ownership validation, and CSRF. The delete and audit event are committed in one transaction; the audit record does not depend on the post surviving.
 
 ### `POST /author/posts/{id}/summary`
 
@@ -224,17 +224,17 @@ Bootstrap the two requested admin accounts through a trusted CLI/setup command, 
 
 ## 10. API security checklist
 
-- [x] Implemented authentication routes check active server-side sessions where required; future protected routes remain to be implemented.
-- [x] Implemented authentication derives identity and role from the MySQL user record; future resource ownership checks remain to be implemented.
-- [x] CSRF is checked for implemented login/logout operations; future state-changing routes must also check it.
+- [x] Implemented authentication and author routes check active server-side sessions; future protected routes remain to be implemented.
+- [x] Implemented identity/role derives from the MySQL user record; author post queries enforce owner scope.
+- [x] CSRF is checked for implemented login/logout, category mutations, and author post mutations.
 - [x] Category mutations require the admin role and session-bound CSRF; public category reads expose active categories only.
 - [ ] CORS is restricted to known origins if required.
 - [x] Implemented login request size and field lengths are bounded.
-- [ ] IDs and status values are validated.
-- [ ] Query parameters are parameterized.
+- [x] IDs and status values are validated for implemented category/post routes.
+- [x] Query parameters are validated and parameterized for implemented post lists.
 - [x] Authentication responses omit secrets and password hashes.
-- [ ] Public endpoints return published content only.
+- [x] Public post endpoints return published content only; draft/unpublished IDs are concealed.
 - [ ] Summary requests are rate-limited and never run on public views.
-- [ ] Author post lists and dashboard counts are scoped to that author's records; admin counts are system-wide and database-derived.
+- [x] Author post lists and dashboard counts are scoped to that author's records; admin post endpoints and counts remain planned.
 - [x] Category slugs are generated server-side and protected by the database unique constraint.
 - [ ] The provider adapter has no database credentials or application tools/privileges.

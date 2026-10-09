@@ -19,7 +19,12 @@ use InfinityBlog\Database\MigrationRunner;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
+use InfinityBlog\Http\PostController;
+use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
+use InfinityBlog\Posts\PostNotFoundException;
+use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Posts\PostValidationException;
 
 require dirname(__DIR__) . '/autoload.php';
 ob_start();
@@ -278,6 +283,38 @@ $createCategoryDatabase = static function () use ($createUserDatabase): PDO {
     return $pdo;
 };
 
+$createPostDatabase = static function () use ($createUserDatabase): PDO {
+    $pdo = $createUserDatabase();
+    $pdo->exec('PRAGMA foreign_keys = ON');
+    $pdo->exec("INSERT INTO users (username, display_name, password_hash, role, status) VALUES ('author two', 'Author Two', 'test-hash', 'author', 'active')");
+    $pdo->exec(
+        'CREATE TABLE categories (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
+        'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
+        'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, ' .
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    $pdo->exec(
+        'CREATE TABLE posts (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, ' .
+        'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, title TEXT NOT NULL, content TEXT NOT NULL, ' .
+        'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
+        'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
+        'published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
+        'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
+        "CHECK (status <> 'published' OR (category_id IS NOT NULL AND published_at IS NOT NULL)), " .
+        "CHECK (summary_status <> 'ready' OR (summary IS NOT NULL AND summary_source_hash IS NOT NULL AND summary_generated_at IS NOT NULL)))"
+    );
+    $pdo->exec(
+        'CREATE TABLE audit_logs (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL, ' .
+        'action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NULL, metadata TEXT NULL, ' .
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    return $pdo;
+};
+
 $run('authentication verifies known credentials and records only safe identity data', static function () use ($createUserDatabase, $expect): void {
     $pdo = $createUserDatabase();
     $limiter = new TestLoginAttemptLimiter();
@@ -461,6 +498,192 @@ $run('category API enforces admin role, CSRF, validation, deactivation, deletion
         $expect((int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'category'")->fetchColumn() === 5);
         $expect($controller->handle(Request::fromValues('GET', '/categories', '192.0.2.50'))['body']['data']['categories'] === []);
     });
+});
+
+$run('author post API enforces ownership, validation, publication, CSRF, summary staleness and deletion confirmation', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $pdo = $createPostDatabase();
+        $users = new UserRepository($pdo);
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $repository = new PostRepository($pdo);
+        $controller = new PostController($repository, new AuthGuard($sessions, $users), $sessions);
+
+        $anonymous = $controller->handle(Request::fromValues('GET', '/author/posts', '192.0.2.51'));
+        $expect($anonymous['status'] === 401);
+        $author = $users->findByIdentifier('author one');
+        $otherAuthor = $users->findByIdentifier('author two');
+        $admin = $users->findByIdentifier('admin one');
+        if ($author === null || $otherAuthor === null || $admin === null) {
+            throw new RuntimeException('Post API test accounts were not created.');
+        }
+
+        $sessions->establish($author);
+        $token = $sessions->csrfToken();
+        $noCsrf = $controller->handle(Request::fromValues(
+            'POST', '/author/posts', '192.0.2.51', [], ['title' => 'No token', 'content' => 'Body']
+        ));
+        $expect($noCsrf['status'] === 403);
+        $clientOwner = $controller->handle(Request::fromValues(
+            'POST', '/author/posts', '192.0.2.51', ['X-CSRF-Token' => $token],
+            ['title' => 'Impersonation', 'content' => 'Body', 'author_id' => $otherAuthor->id]
+        ));
+        $expect($clientOwner['status'] === 422);
+
+        $category = (new CategoryRepository($pdo))->create('PHP', null, $admin->id);
+        $firstCreated = $controller->handle(Request::fromValues(
+            'POST', '/author/posts', '192.0.2.51', ['X-CSRF-Token' => $token],
+            ['title' => 'Draft One', 'content' => "First article body.\nMore text.", 'category_id' => $category['id']]
+        ));
+        $expect($firstCreated['status'] === 201);
+        $first = $firstCreated['body']['data']['post'];
+        $expect($first['author_id'] === $author->id && $first['status'] === 'draft');
+        $expect(!array_key_exists('summary_source_hash', $first));
+
+        $other = $repository->createDraft($otherAuthor->id, [
+            'title' => 'Private Author Two', 'content' => 'Private body.', 'category_id' => null,
+        ]);
+        $foreignRead = $controller->handle(Request::fromValues('GET', '/author/posts/' . $other['id'], '192.0.2.51'));
+        $expect($foreignRead['status'] === 404);
+        $foreignUpdate = $controller->handle(Request::fromValues(
+            'PATCH', '/author/posts/' . $other['id'], '192.0.2.51', ['X-CSRF-Token' => $token], ['title' => 'Stolen']
+        ));
+        $expect($foreignUpdate['status'] === 404);
+        $foreignDelete = $controller->handle(Request::fromValues(
+            'DELETE', '/author/posts/' . $other['id'], '192.0.2.51', ['X-CSRF-Token' => $token], ['confirm' => true]
+        ));
+        $expect($foreignDelete['status'] === 404);
+        $expect($repository->findForAuthor($other['id'], $otherAuthor->id)['title'] === 'Private Author Two');
+
+        $list = $controller->handle(Request::fromValues(
+            'GET', '/author/posts', '192.0.2.51', [], [], ['status' => 'draft', 'page' => '1', 'per_page' => '1']
+        ));
+        $expect($list['status'] === 200 && $list['body']['meta']['total'] === 1);
+        $expect($list['body']['meta']['dashboard_counts'] === ['total' => 1, 'draft' => 1, 'published' => 0]);
+        $expect(count($list['body']['data']['posts']) === 1);
+
+        $uncategorized = $repository->createDraft($author->id, [
+            'title' => 'Needs a category', 'content' => 'Cannot publish yet.', 'category_id' => null,
+        ]);
+        $missingCategory = $controller->handle(Request::fromValues(
+            'POST', '/author/posts/' . $uncategorized['id'] . '/publish', '192.0.2.51', ['X-CSRF-Token' => $token]
+        ));
+        $expect($missingCategory['status'] === 422 && $missingCategory['body']['error']['fields']['category_id'] !== '');
+
+        $publish = $controller->handle(Request::fromValues(
+            'POST', '/author/posts/' . $first['id'] . '/publish', '192.0.2.51', ['X-CSRF-Token' => $token]
+        ));
+        $expect($publish['status'] === 200 && $publish['body']['data']['post']['status'] === 'published');
+        $expect(is_string($publish['body']['data']['post']['published_at']));
+        $pdo->prepare("UPDATE posts SET summary = 'Old summary', summary_status = 'ready', summary_source_hash = :hash, summary_generated_at = :generated WHERE id = :id")
+            ->execute(['hash' => str_repeat('a', 64), 'generated' => gmdate('Y-m-d H:i:s'), 'id' => $first['id']]);
+        $updated = $controller->handle(Request::fromValues(
+            'PATCH', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token], ['content' => 'Changed article body.']
+        ));
+        $expect($updated['status'] === 200 && $updated['body']['data']['post']['summary_status'] === 'stale');
+
+        $missingConfirmation = $controller->handle(Request::fromValues(
+            'DELETE', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token]
+        ));
+        $expect($missingConfirmation['status'] === 422);
+        $delete = $controller->handle(Request::fromValues(
+            'DELETE', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token], ['confirm' => true]
+        ));
+        $expect($delete['status'] === 200);
+
+        $sessions->establish($admin);
+        $adminAuthorRoute = $controller->handle(Request::fromValues('GET', '/author/posts', '192.0.2.51'));
+        $expect($adminAuthorRoute['status'] === 403);
+        $adminCanReadForeignPost = $controller->handle(Request::fromValues(
+            'GET', '/author/posts/' . $other['id'], '192.0.2.51'
+        ));
+        $expect($adminCanReadForeignPost['status'] === 200);
+        $audit = (int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'post'")->fetchColumn();
+        $expect($audit >= 5);
+    });
+});
+
+$run('public post API returns published records only with safe filters and current stored summaries', static function () use ($createPostDatabase, $expect): void {
+    $pdo = $createPostDatabase();
+    $users = new UserRepository($pdo);
+    $author = $users->findByIdentifier('author one');
+    $admin = $users->findByIdentifier('admin one');
+    if ($author === null || $admin === null) {
+        throw new RuntimeException('Public post test accounts were not created.');
+    }
+    $category = (new CategoryRepository($pdo))->create('Public Category', null, $admin->id);
+    $posts = new PostRepository($pdo);
+    $draft = $posts->createDraft($author->id, [
+        'title' => 'A private draft', 'content' => 'Never public.', 'category_id' => $category['id'],
+    ]);
+    $controller = new PublicPostController($posts);
+
+    $draftDetail = $controller->handle(Request::fromValues('GET', '/posts/' . $draft['id'], '192.0.2.52'));
+    $expect($draftDetail['status'] === 404);
+    $draftList = $controller->handle(Request::fromValues('GET', '/posts', '192.0.2.52'));
+    $expect($draftList['status'] === 200 && $draftList['body']['data']['posts'] === []);
+
+    $published = $posts->publishForAuthor($draft['id'], $author->id);
+    $summary = 'A stored, safe summary.';
+    $sourceHash = PostRepository::sourceHash($published['title'], $published['content']);
+    $pdo->prepare(
+        "UPDATE posts SET summary = :summary, summary_status = 'ready', summary_source_hash = :source_hash, summary_generated_at = :generated WHERE id = :id"
+    )->execute([
+        'summary' => $summary,
+        'source_hash' => $sourceHash,
+        'generated' => gmdate('Y-m-d H:i:s'),
+        'id' => $published['id'],
+    ]);
+
+    $filtered = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['q' => 'PRIVATE', 'category_id' => (string) $category['id'], 'page' => '1', 'per_page' => '2']
+    ));
+    $expect($filtered['status'] === 200 && $filtered['body']['meta']['total'] === 1);
+    $publicRow = $filtered['body']['data']['posts'][0];
+    $expect($publicRow['summary'] === $summary);
+    $expect(!array_key_exists('author_id', $publicRow) && !array_key_exists('content', $publicRow));
+
+    $detail = $controller->handle(Request::fromValues('GET', '/posts/' . $published['id'], '192.0.2.52'));
+    $expect($detail['status'] === 200 && $detail['body']['data']['post']['summary'] === $summary);
+    $expect($detail['body']['data']['post']['content'] === 'Never public.');
+    $expect(!array_key_exists('summary_source_hash', $detail['body']['data']['post']));
+
+    $inactiveCategory = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['category_id' => (string) $category['id']]
+    ));
+    $expect($inactiveCategory['status'] === 200);
+    $expect((new CategoryRepository($pdo))->setActive($category['id'], false, $admin->id)['is_active'] === false);
+    $inactiveFilter = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['category_id' => (string) $category['id']]
+    ));
+    $expect($inactiveFilter['status'] === 422);
+    $inactiveAssignmentRejected = false;
+    try {
+        $posts->createDraft($author->id, [
+            'title' => 'Inactive category', 'content' => 'Must be rejected.', 'category_id' => $category['id'],
+        ]);
+    } catch (PostValidationException) {
+        $inactiveAssignmentRejected = true;
+    }
+    $expect($inactiveAssignmentRejected);
+    $historicalDetail = $controller->handle(Request::fromValues('GET', '/posts/' . $published['id'], '192.0.2.52'));
+    $expect($historicalDetail['status'] === 200);
+    $injectionQuery = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['q' => "' OR 1=1 --"]
+    ));
+    $expect($injectionQuery['status'] === 200 && $injectionQuery['body']['meta']['total'] === 0);
+    $oversizedQuery = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['q' => str_repeat('a', 101)]
+    ));
+    $expect($oversizedQuery['status'] === 422);
+
+    $posts->unpublishForAuthor($published['id'], $author->id);
+    $unpublishedDetail = $controller->handle(Request::fromValues('GET', '/posts/' . $published['id'], '192.0.2.52'));
+    $expect($unpublishedDetail['status'] === 404);
+    $invalidQuery = $controller->handle(Request::fromValues(
+        'GET', '/posts', '192.0.2.52', [], [], ['status' => 'draft']
+    ));
+    $expect($invalidQuery['status'] === 422);
 });
 
 $exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $validConfiguration, $expect): void {
@@ -1084,6 +1307,78 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 foreach ($categoryIds as $categoryId) {
                     $pdo->prepare('DELETE FROM posts WHERE category_id = :id')->execute(['id' => $categoryId]);
                     $pdo->prepare('DELETE FROM categories WHERE id = :id')->execute(['id' => $categoryId]);
+                }
+                if ($adminId !== null) {
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $adminId]);
+                    $pdo->prepare('DELETE FROM users WHERE username = :username')->execute(['username' => 'sounak sikdar']);
+                }
+            }
+        });
+
+        $run('MySQL post repository enforces storage, transitions, ownership scopes and summary invalidation', static function () use ($pdo, $expect): void {
+            $token = bin2hex(random_bytes(6));
+            $adminId = null;
+            $authorId = null;
+            $categoryId = null;
+            $postIds = [];
+            try {
+                (new AdminProvisioner($pdo))->provision('mysql-post-admin-one-' . $token, 'mysql-post-admin-two-' . $token);
+                $admin = (new UserRepository($pdo))->findByIdentifier('shubham banerjee');
+                if ($admin === null) {
+                    throw new RuntimeException('The MySQL post test admin was not created.');
+                }
+                $adminId = $admin->id;
+                $insertAuthor = $pdo->prepare(
+                    "INSERT INTO users (username, display_name, password_hash, role) VALUES (:username, 'Post Integration Author', :hash, 'author')"
+                );
+                $insertAuthor->execute([
+                    'username' => 'post-integration-' . $token,
+                    'hash' => password_hash('synthetic-post-integration-password', PASSWORD_DEFAULT),
+                ]);
+                $authorId = (int) $pdo->lastInsertId();
+                $category = (new CategoryRepository($pdo))->create('Post Integration ' . $token, null, $adminId);
+                $categoryId = $category['id'];
+                $posts = new PostRepository($pdo);
+                $post = $posts->createDraft($authorId, [
+                    'title' => 'Database Post ' . $token,
+                    'content' => 'Synthetic integration article body.',
+                    'category_id' => $categoryId,
+                ]);
+                $postIds[] = $post['id'];
+                $expect($post['status'] === 'draft' && $post['author_id'] === $authorId);
+                $expect($posts->findForAuthor($post['id'], $authorId) !== null);
+
+                $published = $posts->publishForAuthor($post['id'], $authorId);
+                $expect($published['status'] === 'published' && $published['published_at'] !== null);
+                $sourceHash = PostRepository::sourceHash($published['title'], $published['content']);
+                $pdo->prepare(
+                    "UPDATE posts SET summary = 'Integration summary', summary_status = 'ready', summary_source_hash = :hash, summary_generated_at = UTC_TIMESTAMP() WHERE id = :id"
+                )->execute(['hash' => $sourceHash, 'id' => $post['id']]);
+                $publicPost = $posts->findPublished($post['id']);
+                $expect(is_array($publicPost) && PostRepository::isSummaryCurrent($publicPost));
+                $publicList = $posts->listPublic(['q' => 'integration'], 1, 10);
+                $expect($publicList['total'] >= 1 && count($publicList['posts']) >= 1);
+
+                $updated = $posts->updateForAuthor($post['id'], $authorId, ['title' => 'Updated Post ' . $token]);
+                $expect($updated['summary_status'] === 'stale');
+                $expect($posts->dashboardCounts($authorId) === ['total' => 1, 'draft' => 0, 'published' => 1]);
+                $expect($posts->findForAuthor($post['id'], $authorId) !== null);
+                $expect($posts->findForAuthor($post['id'], $adminId) === null, 'An author scope must not return another account\'s posts.');
+
+                $unpublished = $posts->unpublishForAuthor($post['id'], $authorId);
+                $expect($unpublished['status'] === 'draft' && $posts->findPublished($post['id']) === null);
+                $posts->deleteForAuthor($post['id'], $authorId);
+                $postIds = [];
+                $expect($posts->findForAuthor($post['id'], $authorId) === null);
+            } finally {
+                foreach ($postIds as $postId) {
+                    $pdo->prepare('DELETE FROM posts WHERE id = :id')->execute(['id' => $postId]);
+                }
+                if ($categoryId !== null) {
+                    $pdo->prepare('DELETE FROM categories WHERE id = :id')->execute(['id' => $categoryId]);
+                }
+                if ($authorId !== null) {
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $authorId]);
                 }
                 if ($adminId !== null) {
                     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $adminId]);

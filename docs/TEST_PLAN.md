@@ -51,7 +51,7 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL-backed administrator provisioning and credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all three migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership-scoped reads/summary invalidation, MySQL-backed administrator provisioning and credential-rotation/session-revocation, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all three migrations to leave the schema reproducible.
 5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
 
 ## 3. Functional tests
@@ -80,15 +80,15 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | F-001 | Valid author login | Session established; author dashboard allowed |
 | F-002 | Invalid password | Login denied with generic message |
 | F-003 | Logout | Session invalidated; protected route denied |
-| F-004 | Author creates draft | Post stored with current author ID and draft status |
-| F-005 | Author edits own post | Changes saved to the same post |
+| F-004 | Author creates draft | Post stored with current author ID, draft status, and optional active category |
+| F-005 | Author edits own post | Allowed fields save to the same post; an existing summary becomes stale on title/body change |
 | F-006 | Author publishes valid post with active category | Status becomes published; public post is visible |
 | F-007 | Author tries to publish without required category | Request rejected with validation error |
-| F-008 | Author confirms deletion of own post | Post is permanently removed according to policy and is no longer public; no restore path exists |
-| F-009 | Public lists posts | Published posts only are returned |
-| F-010 | Public requests draft post ID | No draft content is returned |
-| F-011 | Public filters by category | Only published posts matching that category are returned |
-| F-012 | Public searches keyword | Matching published posts returned; malformed query safely rejected/normalized |
+| F-008 | Author confirms deletion of own post | API requires `{"confirm":true}`; post is permanently removed and no restore path exists |
+| F-009 | Public lists posts | Published posts only are returned with bounded pagination |
+| F-010 | Public requests draft/unpublished post ID | Same `404`; no private content is returned |
+| F-011 | Public filters by category | Only published posts for an active category are returned |
+| F-012 | Public searches keyword | Matching published title/body returned; malformed or unsupported query safely rejected |
 | F-013 | Admin creates category | Category appears as active in author selector |
 | F-014 | Author attempts category mutation | Request denied |
 | F-015 | Author requests another author's private post by changing its ID | Denied or concealed; no post content or private metadata is returned |
@@ -104,6 +104,8 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | F-025 | Public/admin category list | Public list contains active categories only and omits private counts; admin list includes active and inactive categories with associated post counts |
 | F-026 | Admin category create/update | Names and descriptions are bounded and validated; clients cannot choose slugs; name duplicates are rejected and slug collisions get unique numeric suffixes |
 | F-027 | Admin category state/delete | Deactivation preserves post references, hides the category from public/author selection, and deletion is blocked while posts reference it |
+| F-028 | Author post list and counts | Filters affect list `meta.total`; `dashboard_counts` still cover all of the authenticated author's posts only |
+| F-029 | Public summary display | Only a stored summary with a matching current source hash is returned; public reads do not call the provider |
 
 ## 4. Authorization tests
 
@@ -118,6 +120,7 @@ MySQL limiter state and all three migrations require the MySQL integration run. 
 | A-007 | Request body includes `role=admin` | Ignored/rejected unless performed through an explicitly authorized admin operation |
 | A-008 | Inactive account uses existing session | Protected actions denied according to active-account policy |
 | A-009 | Unauthenticated user or author calls admin category routes | 401 or 403; no category mutation; state changes without valid CSRF are rejected |
+| A-010 | Author A requests, edits, publishes, or deletes Author B's post ID | 404; no private data or mutation; B's post remains unchanged |
 
 ## 5. Injection and request-security tests
 

@@ -13,8 +13,11 @@ use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AuthController;
 use InfinityBlog\Http\CategoryController;
 use InfinityBlog\Http\JsonResponse;
+use InfinityBlog\Http\PostController;
+use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestException;
+use InfinityBlog\Posts\PostRepository;
 
 require dirname(__DIR__) . '/autoload.php';
 
@@ -34,6 +37,10 @@ try {
     $guard = new AuthGuard($sessions, $users);
     if ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
+    } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
+        $controller = new PostController(new PostRepository($pdo), $guard, $sessions);
+    } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
+        $controller = new PublicPostController(new PostRepository($pdo));
     } else {
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
