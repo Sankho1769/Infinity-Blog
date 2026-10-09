@@ -7,7 +7,7 @@
 
 ## Current implementation checkpoint
 
-Authentication and authorization include database-backed session revocation after credential or author-account status changes, same-origin validation for state-changing browser requests, CSRF protection, and request-correlated private error logging. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 33 passed, 0 failed; PHP lint passed for 61 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
+Authentication and authorization include database-backed session revocation after credential or author-account status changes, same-origin validation for state-changing browser requests, CSRF protection, and request-correlated private error logging. Admin-only category management, author-owned post lifecycle, public published-post reads, database-derived author/admin post counts, admin post and author-account management, safe admin audit-log reads, and authorized AI summaries are implemented. Current local checks: 34 passed, 0 failed; PHP lint passed for 61 files including the root autoloader; `git diff --check` passed. MySQL integration remains unverified: `TEST_DB_*` settings are unset, no local server answers on TCP 3306 or 33060, and the available XAMPP server binary is MariaDB 10.4.32. The Oracle MySQL gate remains open; do not treat SQLite/test-double checks as MySQL verification. Frontend pages and final release verification remain.
 
 ---
 
@@ -149,7 +149,7 @@ Authentication and authorization include database-backed session revocation afte
 - [x] **T-111** Confirm `.env` and real credentials remain excluded from Git.
 - [x] **T-112** Review SRS, PRD, architecture, API, database, and test plan consistency for Version 1.0 scope.
 - [ ] **T-113** Create a clean database setup/migration package.
-- [ ] **T-114** Test the complete flow: login -> create -> category -> publish -> public view -> summary -> edit -> delete.
+- [-] **T-114** Application-level SQLite workflow test now composes login, admin category setup, draft creation, publication, public visibility, summary generation/reuse, edit/stale handling, and deletion. Full Oracle MySQL flow remains unverified.
 - [ ] **T-115** Prepare release notes and a list of verified features/known gaps.
 
 ## Phase 12 - Wireframe and frontend contract follow-up

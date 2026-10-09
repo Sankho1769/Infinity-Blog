@@ -1036,6 +1036,102 @@ $run('summary API authorizes before provider access, stores current text, hides 
     });
 });
 
+$run('application workflow composes admin category setup with author login, publish, summary, edit and delete', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $pdo = $createPostDatabase();
+        $users = new UserRepository($pdo);
+        $admin = $users->findByIdentifier('admin one');
+        if ($admin === null) {
+            throw new RuntimeException('The workflow test admin account is missing.');
+        }
+
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $sessions->establish($admin);
+        $categoryController = new CategoryController(
+            new CategoryRepository($pdo),
+            new AuthGuard($sessions, $users),
+            $sessions
+        );
+        $categoryResponse = $categoryController->handle(Request::fromValues(
+            'POST', '/admin/categories', '192.0.2.91', ['X-CSRF-Token' => $sessions->csrfToken()],
+            ['name' => 'Workflow Category', 'description' => 'Created for the full application flow.']
+        ));
+        $expect($categoryResponse['status'] === 201);
+        $categoryId = (int) $categoryResponse['body']['data']['category']['id'];
+
+        $sessions->clearAuthentication();
+        $loginToken = $sessions->csrfToken();
+        $auth = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            new AuthGuard($sessions, $users),
+            $sessions
+        );
+        $oldSessionId = session_id();
+        $login = $auth->login(Request::fromValues(
+            'POST', '/auth/login', '192.0.2.91', ['X-CSRF-Token' => $loginToken],
+            ['identifier' => 'author one', 'password' => 'author-pass-1234']
+        ));
+        $expect($login['status'] === 200 && $login['body']['data']['user']['role'] === 'author');
+        $expect(session_id() !== $oldSessionId, 'Successful login must rotate the session in the composed flow.');
+        $csrfToken = $login['body']['data']['csrf_token'];
+
+        $posts = new PostRepository($pdo);
+        $postController = new PostController($posts, new AuthGuard($sessions, $users), $sessions);
+        $created = $postController->handle(Request::fromValues(
+            'POST', '/author/posts', '192.0.2.91', ['X-CSRF-Token' => $csrfToken],
+            ['title' => 'Workflow Article', 'content' => 'Original article body.', 'category_id' => $categoryId]
+        ));
+        $expect($created['status'] === 201);
+        $postId = (int) $created['body']['data']['post']['id'];
+
+        $publicController = new PublicPostController($posts);
+        $beforePublish = $publicController->handle(Request::fromValues('GET', '/posts/' . $postId, '192.0.2.91'));
+        $expect($beforePublish['status'] === 404, 'Draft content must remain private before publication.');
+        $published = $postController->handle(Request::fromValues(
+            'POST', '/author/posts/' . $postId . '/publish', '192.0.2.91', ['X-CSRF-Token' => $csrfToken]
+        ));
+        $expect($published['status'] === 200 && $published['body']['data']['post']['status'] === 'published');
+        $publicPost = $publicController->handle(Request::fromValues('GET', '/posts/' . $postId, '192.0.2.91'));
+        $expect($publicPost['status'] === 200 && $publicPost['body']['data']['post']['summary'] === null);
+
+        $aiConfig = AiProviderConfig::fromArray([
+            'AI_PROVIDER' => 'openai', 'AI_MODEL' => 'workflow-test-model', 'AI_API_KEY' => 'synthetic-workflow-key',
+        ]);
+        if (!$aiConfig instanceof AiProviderConfig) {
+            throw new RuntimeException('The workflow summary config was not created.');
+        }
+        $summaryController = new SummaryController(
+            new SummaryService($posts, new TestSummaryRateLimiter(), $aiConfig, new TestSummaryProvider()),
+            new AuthGuard($sessions, $users),
+            $sessions
+        );
+        $summary = $summaryController->handle(Request::fromValues(
+            'POST', '/author/posts/' . $postId . '/summary', '192.0.2.91', ['X-CSRF-Token' => $csrfToken]
+        ));
+        $expect($summary['status'] === 200 && $summary['body']['data']['summary_status'] === 'ready');
+        $publicWithSummary = $publicController->handle(Request::fromValues('GET', '/posts/' . $postId, '192.0.2.91'));
+        $expect($publicWithSummary['status'] === 200
+            && $publicWithSummary['body']['data']['post']['summary'] === 'A concise test summary.');
+
+        $edited = $postController->handle(Request::fromValues(
+            'PATCH', '/author/posts/' . $postId, '192.0.2.91', ['X-CSRF-Token' => $csrfToken],
+            ['content' => 'Updated article body.']
+        ));
+        $expect($edited['status'] === 200 && $edited['body']['data']['post']['summary_status'] === 'stale');
+        $publicAfterEdit = $publicController->handle(Request::fromValues('GET', '/posts/' . $postId, '192.0.2.91'));
+        $expect($publicAfterEdit['status'] === 200 && $publicAfterEdit['body']['data']['post']['summary'] === null);
+
+        $deleted = $postController->handle(Request::fromValues(
+            'DELETE', '/author/posts/' . $postId, '192.0.2.91', ['X-CSRF-Token' => $csrfToken], ['confirm' => true]
+        ));
+        $expect($deleted['status'] === 200);
+        $afterDelete = $publicController->handle(Request::fromValues('GET', '/posts/' . $postId, '192.0.2.91'));
+        $expect($afterDelete['status'] === 404);
+        $expect((int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'post'")->fetchColumn() === 5);
+    });
+});
+
 $run('admin author management is role-bound, hashes passwords, and revokes sessions on password/status changes', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
     $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
         $pdo = $createPostDatabase();
