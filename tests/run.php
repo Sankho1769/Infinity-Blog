@@ -678,9 +678,13 @@ $run('author post API enforces ownership, validation, publication, CSRF, summary
         $expect($list['body']['meta']['dashboard_counts'] === ['total' => 1, 'draft' => 1, 'published' => 0]);
         $expect(count($list['body']['data']['posts']) === 1);
 
-        $uncategorized = $repository->createDraft($author->id, [
-            'title' => 'Needs a category', 'content' => 'Cannot publish yet.', 'category_id' => null,
-        ]);
+        $uncategorizedResponse = $controller->handle(Request::fromValues(
+            'POST', '/author/posts', '192.0.2.51', ['X-CSRF-Token' => $token],
+            ['title' => 'Needs a category', 'content' => 'Cannot publish yet.']
+        ));
+        $expect($uncategorizedResponse['status'] === 201);
+        $uncategorized = $uncategorizedResponse['body']['data']['post'];
+        $expect($uncategorized['category_id'] === null);
         $missingCategory = $controller->handle(Request::fromValues(
             'POST', '/author/posts/' . $uncategorized['id'] . '/publish', '192.0.2.51', ['X-CSRF-Token' => $token]
         ));
@@ -697,6 +701,12 @@ $run('author post API enforces ownership, validation, publication, CSRF, summary
             'PATCH', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token], ['content' => 'Changed article body.']
         ));
         $expect($updated['status'] === 200 && $updated['body']['data']['post']['summary_status'] === 'stale');
+        $statusThroughUpdate = $controller->handle(Request::fromValues(
+            'PATCH', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token],
+            ['title' => 'Must not update', 'status' => 'draft']
+        ));
+        $expect($statusThroughUpdate['status'] === 422);
+        $expect($repository->findForAuthor($first['id'], $author->id)['title'] === 'Draft One');
 
         $missingConfirmation = $controller->handle(Request::fromValues(
             'DELETE', '/author/posts/' . $first['id'], '192.0.2.51', ['X-CSRF-Token' => $token]
@@ -1239,7 +1249,7 @@ $run('admin author management is role-bound, hashes passwords, and revokes sessi
     });
 });
 
-$run('admin post API lists all posts, derives system counts, and enforces CSRF on moderation actions', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+$run('admin post API creates own-account drafts and enforces system-wide moderation permissions', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
     $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
         $pdo = $createPostDatabase();
         $users = new UserRepository($pdo);
@@ -1264,10 +1274,19 @@ $run('admin post API lists all posts, derives system counts, and enforces CSRF o
         $controller = new AdminPostController($repository, new AuthGuard($sessions, $users), $sessions);
         $unauthenticated = $controller->handle(Request::fromValues('GET', '/admin/posts', '192.0.2.54'));
         $expect($unauthenticated['status'] === 401);
+        $anonymousCreate = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', [], ['title' => 'Unauthenticated', 'content' => 'Body']
+        ));
+        $expect($anonymousCreate['status'] === 401);
 
         $sessions->establish($authorOne);
         $authorList = $controller->handle(Request::fromValues('GET', '/admin/posts', '192.0.2.54'));
         $expect($authorList['status'] === 403);
+        $authorCreate = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', ['X-CSRF-Token' => $sessions->csrfToken()],
+            ['title' => 'Author Cannot Create Here', 'content' => 'Body']
+        ));
+        $expect($authorCreate['status'] === 403);
         $authorAction = $controller->handle(Request::fromValues(
             'POST', '/admin/posts/' . $second['id'] . '/unpublish', '192.0.2.54', ['X-CSRF-Token' => $sessions->csrfToken()]
         ));
@@ -1313,6 +1332,31 @@ $run('admin post API lists all posts, derives system counts, and enforces CSRF o
             'DELETE', '/admin/posts/' . $first['id'], '192.0.2.54', ['X-CSRF-Token' => $adminToken], ['confirm' => true]
         ));
         $expect($confirmed['status'] === 200 && $repository->findForAdmin($first['id']) === null);
+
+        $missingCreateCsrf = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', [], ['title' => 'No token', 'content' => 'Body']
+        ));
+        $expect($missingCreateCsrf['status'] === 403);
+        $ownerAssignment = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', ['X-CSRF-Token' => $adminToken],
+            ['title' => 'Forged owner', 'content' => 'Body', 'author_id' => $authorOne->id]
+        ));
+        $expect($ownerAssignment['status'] === 422);
+        $publishedAtCreation = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', ['X-CSRF-Token' => $adminToken],
+            ['title' => 'Direct publication', 'content' => 'Body', 'status' => 'published']
+        ));
+        $expect($publishedAtCreation['status'] === 422);
+        $adminCreated = $controller->handle(Request::fromValues(
+            'POST', '/admin/posts', '192.0.2.54', ['X-CSRF-Token' => $adminToken],
+            ['title' => 'Admin Draft', 'content' => 'Created by an administrator.', 'category_id' => $category['id']]
+        ));
+        $expect($adminCreated['status'] === 201);
+        $adminPost = $adminCreated['body']['data']['post'];
+        $expect($adminPost['author_id'] === $admin->id && $adminPost['category_id'] === $category['id'] && $adminPost['status'] === 'draft');
+        $expect(!array_key_exists('summary_source_hash', $adminPost));
+        $storedAdminPost = $repository->findForAdmin($adminPost['id']);
+        $expect($storedAdminPost !== null && $storedAdminPost['author_id'] === $admin->id);
         $audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_type = 'post'");
         $audit->execute(['actor' => $admin->id]);
         $expect((int) $audit->fetchColumn() >= 4);

@@ -50,7 +50,7 @@ The frontend may present these links differently. It must not rely on navigation
 | Create Post | Author | Title, content, active category, draft/publish intent | Save Draft, Publish, Cancel, Generate Summary after save | `POST /api/v1/author/posts` and summary endpoint |
 | Edit Post | Author owner or Admin | Existing fields, status, summary status | Save, Publish/Unpublish, Generate/Regenerate Summary, Delete | `GET/PATCH/POST/DELETE /api/v1/...` |
 | Admin Dashboard | Admin | Database-derived system-wide post total/draft/published counts, user/category totals where available, and recent events | Open posts/users/categories/activity | Existing admin post/user/category lists and audit endpoint |
-| Admin Posts | Admin | All posts, author, status, category | Edit, publish/unpublish, delete, view | `/api/v1/admin/posts` |
+| Admin Posts | Admin | All posts, author, status, category | Create own-account draft, edit, publish/unpublish, delete, view | `/api/v1/admin/posts` |
 | Admin Users | Admin | User name, role, active state, timestamps | Create/deactivate, role actions if authorized | `/api/v1/admin/users` |
 | Admin Categories | Admin | Name, server-generated slug, active state, post count | Create, edit, activate/deactivate | `/api/v1/admin/categories` |
 | Admin Activity | Admin | Timestamp, actor, action, entity | Filter/view details within policy | `/api/v1/admin/audit-logs` |

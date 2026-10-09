@@ -7,6 +7,7 @@ use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserAccount;
 use InfinityBlog\Posts\PostNotFoundException;
+use InfinityBlog\Posts\PostInputValidator;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Posts\PostValidationException;
 
@@ -27,10 +28,13 @@ final class AdminPostController
     public function handle(Request $request): array
     {
         if ($request->path === '/admin/posts') {
-            if ($request->method !== 'GET') {
-                return $this->methodNotAllowed();
+            if ($request->method === 'GET') {
+                return $this->list($request);
             }
-            return $this->list($request);
+            if ($request->method === 'POST') {
+                return $this->create($request);
+            }
+            return $this->methodNotAllowed();
         }
         if (preg_match('#^/admin/posts/([0-9]+)$#D', $request->path, $matches) === 1) {
             if ($request->method === 'GET') {
@@ -51,6 +55,26 @@ final class AdminPostController
             return $this->changePublication($request, $matches[1], $matches[2] === 'publish');
         }
         return $this->error(404, 'NOT_FOUND', 'The requested resource was not found.');
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    private function create(Request $request): array
+    {
+        $admin = $this->requireAdmin($request, true);
+        if (is_array($admin)) {
+            return $admin;
+        }
+        [$fields, $errors] = PostInputValidator::validate($request->jsonObject(1048576), true);
+        if ($errors !== []) {
+            return $this->validationError($errors);
+        }
+        try {
+            $post = $this->posts->createDraft($admin->id, $fields);
+            unset($post['summary_source_hash']);
+            return ['status' => 201, 'body' => ['data' => ['post' => $post]]];
+        } catch (PostValidationException $exception) {
+            return $this->validationError($exception->fields);
+        }
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -110,7 +134,7 @@ final class AdminPostController
         if ($postId === null) {
             return $this->error(422, 'VALIDATION_ERROR', 'The post ID is invalid.', ['id' => 'Use a positive integer post ID.']);
         }
-        [$fields, $errors] = self::validatedFields($request->jsonObject(1048576));
+        [$fields, $errors] = PostInputValidator::validate($request->jsonObject(1048576), false);
         if ($errors !== []) {
             return $this->validationError($errors);
         }
@@ -185,59 +209,6 @@ final class AdminPostController
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
         }
         return $account;
-    }
-
-    /** @return array{array{title?: string, content?: string, category_id?: ?int}, array<string, string>} */
-    private static function validatedFields(array $input): array
-    {
-        $fields = [];
-        $errors = [];
-        foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['title', 'content', 'category_id'], true)) {
-                $errors[$key === 'author_id' ? 'author_id' : '_request'] = $key === 'author_id'
-                    ? 'Post ownership cannot be changed through this operation.'
-                    : 'Only title, content, and category_id may be updated.';
-            }
-        }
-        if (array_key_exists('title', $input)) {
-            $title = $input['title'];
-            if (!is_string($title) || preg_match('//u', $title) !== 1 || preg_match('/\p{Cc}/u', $title) === 1) {
-                $errors['title'] = 'Enter a valid post title.';
-            } else {
-                $title = trim($title);
-                $length = preg_match_all('/./us', $title);
-                if ($title === '' || $length === false || $length > 255) {
-                    $errors['title'] = 'Titles must contain 1 to 255 characters.';
-                } else {
-                    $fields['title'] = $title;
-                }
-            }
-        }
-        if (array_key_exists('content', $input)) {
-            $content = $input['content'];
-            if (!is_string($content) || preg_match('//u', $content) !== 1
-                || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $content) === 1) {
-                $errors['content'] = 'Enter valid UTF-8 article content.';
-            } elseif (trim($content) === '') {
-                $errors['content'] = 'Article content cannot be empty.';
-            } elseif (strlen($content) > 524288) {
-                $errors['content'] = 'Article content may not exceed 512 KiB.';
-            } else {
-                $fields['content'] = $content;
-            }
-        }
-        if (array_key_exists('category_id', $input)) {
-            $category = $input['category_id'];
-            if ($category !== null && (!is_int($category) || $category < 1)) {
-                $errors['category_id'] = 'Use a positive integer category ID or null.';
-            } else {
-                $fields['category_id'] = $category;
-            }
-        }
-        if ($fields === [] && $errors === []) {
-            $errors['_request'] = 'Provide at least one post field to update.';
-        }
-        return [$fields, $errors];
     }
 
     /** @return array{array<string, mixed>, int, int, array<string, string>} */

@@ -51,7 +51,7 @@ Needs a separate protected panel to review system-wide posts, manage author acco
 | Read published posts | Yes | Yes | Yes |
 | Search/filter published posts | Yes | Yes | Yes |
 | Read drafts | No | Own drafts only in management area | Yes, in admin area |
-| Create post | No | Yes | Yes, where needed for administration |
+| Create post | No | Yes | Yes, attributed to the authenticated admin account; admin cannot assign another author |
 | Edit/delete own post | No | Yes | Yes |
 | Edit/delete another author's post | No | No | Yes |
 | Request summary for a post | No | Own post | Any permitted post |

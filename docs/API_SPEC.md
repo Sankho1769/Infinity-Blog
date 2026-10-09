@@ -171,6 +171,7 @@ The backend passes bounded title/body text to the provider as untrusted source m
 
 All require an active admin role.
 
+- `POST /admin/posts` - **Implemented.** Creates a draft attributed to the authenticated admin account. `author_id` is session-derived and cannot be supplied by the client. Category is optional; a supplied category must be active. Publication requires the separate publish operation. Requires CSRF.
 - `GET /admin/posts` - **Implemented.** System-wide list, filterable and paginated; includes database-derived system-wide `dashboard_counts` in response metadata.
 - `GET /admin/posts/{id}` - **Implemented.** View a post for moderation/management.
 - `PATCH /admin/posts/{id}` - **Implemented.** Edit title, body, or category; ownership cannot be changed through this route.

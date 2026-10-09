@@ -111,6 +111,7 @@ MySQL login and summary limiter state and all four migrations require the MySQL 
 | F-032 | Admin reviews audit events | Only admins may read; filters and pagination work; response omits metadata and any secret/article content |
 | F-033 | Author/admin requests a summary | Canonical database text is summarized only after permission checks; a ready summary/hash/time is stored and audited |
 | F-034 | Provider fails, output is invalid, or article changes while provider runs | Safe error; no stale result is stored as current; post operations remain usable |
+| F-035 | Admin creates a post | Active admin with CSRF can create an uncategorized draft owned by the admin account; client-supplied `author_id` and direct publication are rejected |
 
 ## 4. Authorization tests
 
@@ -131,6 +132,7 @@ MySQL login and summary limiter state and all four migrations require the MySQL 
 | A-013 | Anonymous user or author requests audit logs | 401 or 403; no audit data is returned |
 | A-014 | Author requests a summary for another author's post | 404 before any limiter reservation or provider call |
 | A-015 | Admin requests an authorized summary for any post | Allowed only through the admin route with a valid CSRF token |
+| A-016 | Anonymous user or author calls `POST /admin/posts` | 401 or 403; no post is created. Admin requests without valid CSRF or with client-supplied `author_id` are rejected |
 
 ## 5. Injection and request-security tests
 
