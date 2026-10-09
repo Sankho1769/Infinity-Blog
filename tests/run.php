@@ -21,6 +21,7 @@ use InfinityBlog\Summaries\SummaryRateLimitException;
 use InfinityBlog\Summaries\SummaryRateLimiter;
 use InfinityBlog\Summaries\SummaryService;
 use InfinityBlog\Summaries\SummarySourceChangedException;
+use InfinityBlog\Summaries\SummaryUnavailableException;
 use InfinityBlog\Categories\CategoryConflictException;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Database\ConnectionFactory;
@@ -116,6 +117,45 @@ final class TestSummaryProvider implements SummaryProvider
     }
 }
 
+/** Format only exception types and database codes; never include messages. */
+function safeExceptionChainDiagnostic(Throwable $exception): string
+{
+    $details = [];
+    for ($current = $exception; $current !== null && count($details) < 8; $current = $current->getPrevious()) {
+        $entry = get_class($current);
+        $sqlState = null;
+        $driverCode = null;
+        if ($current instanceof PDOException) {
+            $errorInfo = $current->errorInfo ?? null;
+            if (is_array($errorInfo)) {
+                $candidateState = $errorInfo[0] ?? null;
+                if (is_string($candidateState) && preg_match('/^[A-Z0-9]{5}$/', $candidateState) === 1) {
+                    $sqlState = $candidateState;
+                }
+                $candidateDriverCode = $errorInfo[1] ?? null;
+                if ((is_int($candidateDriverCode) || is_string($candidateDriverCode))
+                    && preg_match('/^[0-9]+$/', (string) $candidateDriverCode) === 1) {
+                    $driverCode = (int) $candidateDriverCode;
+                }
+            }
+        }
+        if ($sqlState === null) {
+            $candidateState = (string) $current->getCode();
+            if (preg_match('/^[A-Z0-9]{5}$/', $candidateState) === 1) {
+                $sqlState = $candidateState;
+            }
+        }
+        if ($sqlState !== null) {
+            $entry .= ' SQLSTATE=' . $sqlState;
+        }
+        if ($driverCode !== null) {
+            $entry .= ' driver=' . $driverCode;
+        }
+        $details[] = $entry;
+    }
+    return implode(' <- ', $details);
+}
+
 $passed = 0;
 $failed = 0;
 
@@ -126,7 +166,11 @@ $run = static function (string $name, callable $test) use (&$passed, &$failed): 
         echo "PASS {$name}\n";
     } catch (Throwable $exception) {
         $failed++;
-        echo "FAIL {$name}: {$exception->getMessage()}\n";
+        $message = $exception->getMessage();
+        if ($message === '') {
+            $message = '[' . get_class($exception) . ' with an empty message]';
+        }
+        echo "FAIL {$name}: {$message}\n";
     }
 };
 
@@ -884,6 +928,15 @@ $run('OpenAI Responses adapter uses a fixed endpoint, untrusted text instruction
     $expect(false, 'Upstream and timeout failures must fail without exposing provider details.');
 });
 
+$run('summary test diagnostics report exception classes and database codes without messages', static function () use ($expect): void {
+    $databaseFailure = new PDOException('private SQL and connection details');
+    $databaseFailure->errorInfo = ['HY000', 1442, 'private SQL and connection details'];
+    $exception = new RuntimeException('private wrapper details', 0, $databaseFailure);
+    $diagnostic = safeExceptionChainDiagnostic($exception);
+    $expect($diagnostic === 'RuntimeException <- PDOException SQLSTATE=HY000 driver=1442');
+    $expect(!str_contains($diagnostic, 'private') && !str_contains($diagnostic, 'Synthetic'));
+});
+
 $run('database summary limiter stores HMAC buckets and atomically enforces its window in SQLite tests', static function () use ($expect): void {
     $pdo = new PDO('sqlite::memory:');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -986,7 +1039,8 @@ $run('summary API authorizes before provider access, stores current text, hides 
         $posts->updateForAuthor($post['id'], $author->id, ['title' => 'Edited source']);
         $publicStale = (new PublicPostController($posts))->handle(Request::fromValues('GET', '/posts/' . $post['id'], '192.0.2.80'));
         $expect($publicStale['status'] === 200 && $publicStale['body']['data']['post']['summary'] === null);
-        $provider->failure = new SummaryProviderException();
+        $providerFailure = new RuntimeException('private provider failure marker');
+        $provider->failure = $providerFailure;
         $failed = $controller->handle(Request::fromValues(
             'POST', '/author/posts/' . $post['id'] . '/summary', '192.0.2.80', ['X-CSRF-Token' => $token]
         ));
@@ -994,6 +1048,15 @@ $run('summary API authorizes before provider access, stores current text, hides 
         $storedStatus->execute(['id' => $post['id']]);
         $expect($failed['status'] === 503 && $storedStatus->fetchColumn() === 'stale');
         $expect(!str_contains(json_encode($failed), 'synthetic-secret'));
+        $expect(!str_contains(json_encode($failed), 'private provider failure marker'));
+        $preservedCause = false;
+        try {
+            $service->generate($post['id'], $author, '192.0.2.80');
+        } catch (SummaryUnavailableException $exception) {
+            $preservedCause = $exception->getPrevious() === $providerFailure;
+            $expect($exception->getMessage() === 'Summary generation is temporarily unavailable.');
+        }
+        $expect($preservedCause, 'Summary unavailability must retain its internal provider cause.');
 
         $provider->failure = null;
         $provider->response = '<script>alert(1)</script>';
@@ -1774,6 +1837,12 @@ if ($runDatabaseTests && $testDatabaseError === null) {
     if ($testDatabaseError === null) {
         try {
             $testConfig = DatabaseConfig::fromArray(array_map('strval', $testDatabaseValues), 'TEST_DB_');
+            if ($testConfig->host !== '127.0.0.1'
+                || $testConfig->port !== 3307
+                || strcasecmp($testConfig->database, 'infinity_blog_test') !== 0
+                || $testConfig->username !== 'blog_test') {
+                $testDatabaseError = 'MySQL integration tests are restricted to blog_test on 127.0.0.1:3307/infinity_blog_test.';
+            }
         } catch (Throwable) {
             $testDatabaseError = 'TEST_DB_* settings are invalid or remote TLS certificate configuration is missing.';
         }
@@ -1790,12 +1859,61 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
     $migrationRunner = null;
     $migrationReady = false;
 
-    $run('MySQL clean test database accepts connection and versioned migrations rerun safely', static function () use ($testConfig, &$pdo, &$migrationRunner, &$migrationReady, $expect): void {
+    $run('MySQL isolated test database accepts a fresh or clean migrated schema and reruns migrations safely', static function () use ($testConfig, &$pdo, &$migrationRunner, &$migrationReady, $expect): void {
         $pdo = ConnectionFactory::create($testConfig);
-        $tableCount = (int) $pdo->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()')->fetchColumn();
-        $expect($tableCount === 0, 'The dedicated *_test database must be empty before destructive rollback integration tests.');
+        $existingTables = array_map('strval', $pdo->query(
+            'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name'
+        )->fetchAll(PDO::FETCH_COLUMN));
+        $tableCount = count($existingTables);
+        echo "INFO MySQL test database currently contains {$tableCount} table(s).\n";
+        $freshSchema = $existingTables === [];
+        $knownSchemaTables = [
+            'audit_logs',
+            'categories',
+            'login_rate_limits',
+            'posts',
+            'schema_migrations',
+            'summary_rate_limits',
+            'users',
+        ];
+        $expect(
+            $freshSchema || $existingTables === $knownSchemaTables,
+            'The test database has an unexpected object set; it was left untouched.'
+        );
+        $identity = $pdo->query(
+            'SELECT DATABASE() AS database_name, @@port AS server_port, CURRENT_USER() AS authenticated_user'
+        )->fetch(PDO::FETCH_ASSOC);
+        $expect(
+            is_array($identity)
+                && strcasecmp((string) $identity['database_name'], 'infinity_blog_test') === 0
+                && (int) $identity['server_port'] === 3307
+                && $identity['authenticated_user'] === 'blog_test@127.0.0.1',
+            'MySQL integration must use blog_test on 127.0.0.1:3307/infinity_blog_test.'
+        );
 
         $migrationRunner = new MigrationRunner($pdo, dirname(__DIR__) . '/database/migrations');
+        $expectedMigrations = [
+            '202610090001_create_cms_schema',
+            '202610090002_create_login_rate_limits',
+            '202610090003_add_auth_version_to_users',
+            '202610090004_create_summary_rate_limits',
+        ];
+        if (!$freshSchema) {
+            $expect(
+                $migrationRunner->appliedMigrations() === $expectedMigrations,
+                'The existing test schema has an incomplete or unexpected migration history; it was left untouched.'
+            );
+            $nonEmptyTables = [];
+            foreach (['users', 'categories', 'posts', 'audit_logs', 'login_rate_limits', 'summary_rate_limits'] as $table) {
+                if ((int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() !== 0) {
+                    $nonEmptyTables[] = $table;
+                }
+            }
+            $expect(
+                $nonEmptyTables === [],
+                'The existing test schema contains rows in ' . implode(', ', $nonEmptyTables) . '; it was left untouched.'
+            );
+        }
         $migrationRunner->migrate();
         $expect($migrationRunner->migrate() === [], 'Rerunning applied migrations must be a no-op.');
         $expect(in_array('202610090001_create_cms_schema', $migrationRunner->appliedMigrations(), true));
@@ -2232,9 +2350,16 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                     'AI_API_KEY' => 'synthetic-integration-only-key',
                     'AI_SUMMARY_RATE_LIMIT' => '10',
                 ]);
-                $limiter = new DatabaseSummaryRateLimiter($pdo, str_repeat('f', 64), 10);
+                $limiter = new DatabaseSummaryRateLimiter($pdo, bin2hex(random_bytes(32)), 10);
                 $service = new SummaryService($posts, $limiter, $config, $provider);
-                $result = $service->generate($postId, $admin, '198.51.100.90');
+                try {
+                    $result = $service->generate($postId, $admin, '198.51.100.90');
+                } catch (SummaryUnavailableException $exception) {
+                    throw new RuntimeException(
+                        'Initial current-summary generation was unavailable; safe provider exception chain: ' .
+                        safeExceptionChainDiagnostic($exception) . '.'
+                    );
+                }
                 $expect($result['summary_status'] === 'ready');
                 $public = $posts->findPublished($postId);
                 $expect(is_array($public) && PostRepository::isSummaryCurrent($public));
@@ -2244,8 +2369,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $providerFailureHandled = false;
                 try {
                     $service->generate($postId, $admin, '198.51.100.90');
-                } catch (SummaryUnavailableException) {
+                } catch (SummaryUnavailableException $exception) {
                     $providerFailureHandled = true;
+                    $expect($exception->getPrevious() instanceof SummaryProviderException);
                     $failedPost = $posts->findForAdmin($postId);
                     $expect(is_array($failedPost) && $failedPost['summary_status'] === 'stale');
                 }
@@ -2259,14 +2385,27 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                     $service->generate($postId, $admin, '198.51.100.90');
                 } catch (SummarySourceChangedException) {
                     $superseded = true;
+                } catch (SummaryUnavailableException $exception) {
+                    throw new RuntimeException(
+                        'Summary generation became unavailable before the source-change check; safe provider exception chain: ' .
+                        safeExceptionChainDiagnostic($exception) . '.'
+                    );
                 }
                 $expect($superseded, 'A provider result for an obsolete source revision must not be persisted.');
                 $provider->beforeResponse(null);
+                $latest = $posts->findForAdmin($postId);
+                $expect(is_array($latest) && $latest['summary_status'] === 'stale');
+                $expect(!PostRepository::isSummaryCurrent($latest));
                 $audit = $pdo->prepare(
                     "SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_type = 'post' AND action IN ('post.summary_generated', 'post.summary_failed')"
                 );
                 $audit->execute(['actor' => $adminId]);
                 $expect((int) $audit->fetchColumn() >= 2, 'Summary outcomes must be audited without provider payloads.');
+                $supersededAudit = $pdo->prepare(
+                    "SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :actor AND entity_type = 'post' AND entity_id = :post AND action = 'post.summary_superseded'"
+                );
+                $supersededAudit->execute(['actor' => $adminId, 'post' => $postId]);
+                $expect((int) $supersededAudit->fetchColumn() === 1, 'A result rejected for changed source text must be audited.');
             } finally {
                 if ($postId !== null) {
                     $pdo->prepare('DELETE FROM posts WHERE id = :id')->execute(['id' => $postId]);
@@ -2286,7 +2425,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         });
 
         $run('MySQL-backed login limiter enforces account and source limits and clears successful accounts', static function () use ($pdo, $expect): void {
-            $key = str_repeat('b', 64);
+            $key = bin2hex(random_bytes(32));
             $limiter = new \InfinityBlog\Auth\DatabaseLoginAttemptLimiter($pdo, $key);
             $identifier = 'integration-user-' . bin2hex(random_bytes(6));
             $source = '198.51.100.41';
@@ -2311,18 +2450,31 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             $expect((int) $left->fetchColumn() === 0, 'Expired MySQL limiter state should be pruned.');
 
             $globalHash = hash_hmac('sha256', "global\0all", $key);
-            $global = $pdo->prepare(
-                'INSERT INTO login_rate_limits (bucket_hash, bucket_type, failed_attempts, window_started_at, expires_at, updated_at) ' .
-                'VALUES (:hash, \'global\', 100000, UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE), UTC_TIMESTAMP())'
+            $globalState = $pdo->prepare(
+                'SELECT bucket_type, failed_attempts FROM login_rate_limits WHERE bucket_hash = :hash'
             );
-            $global->execute(['hash' => $globalHash]);
+            $globalState->execute(['hash' => $globalHash]);
+            $globalBucket = $globalState->fetch(PDO::FETCH_ASSOC);
+            $expect(
+                is_array($globalBucket)
+                    && $globalBucket['bucket_type'] === 'global'
+                    && (int) $globalBucket['failed_attempts'] === 25,
+                'Every failed login must update the shared global bucket.'
+            );
+            $global = $pdo->prepare(
+                'UPDATE login_rate_limits SET failed_attempts = :failed_attempts, ' .
+                'expires_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE) ' .
+                'WHERE bucket_hash = :hash AND bucket_type = \'global\''
+            );
+            $global->execute(['failed_attempts' => 100000, 'hash' => $globalHash]);
+            $expect($global->rowCount() === 1, 'The existing global bucket must be raised to its lockout threshold.');
             $expect($limiter->isLimited('any-user', '198.51.100.44'));
             $expire->execute(['hash' => $globalHash]);
             $expect(!$limiter->isLimited('any-user', '198.51.100.44'));
         });
 
         $run('MySQL summary limiter persists only HMAC buckets and enforces user and post windows', static function () use ($pdo, $expect): void {
-            $key = str_repeat('d', 64);
+            $key = bin2hex(random_bytes(32));
             $limiter = new DatabaseSummaryRateLimiter($pdo, $key, 2);
             $actorId = 810001;
             $limiter->consume($actorId, 820001, '198.51.100.51');

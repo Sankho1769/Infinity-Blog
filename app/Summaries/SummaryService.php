@@ -60,9 +60,9 @@ final class SummaryService
                 $this->provider->summarize($post['title'], $post['content']),
                 $this->config->maxOutputChars
             );
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->posts->markSummaryFailureIfCurrent($postId, $ownerId, $actor->id, $sourceHash);
-            throw new SummaryUnavailableException();
+            throw new SummaryUnavailableException($exception);
         }
 
         $saved = $this->posts->saveSummaryIfCurrent($postId, $ownerId, $actor->id, $sourceHash, $summary);
