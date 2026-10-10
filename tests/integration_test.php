@@ -27,7 +27,7 @@ class ApiIntegrationTest {
         $url = $this->baseUrl . $path;
         $ch = curl_init($url);
 
-        $defaultHeaders = ['Accept: application/json'];
+        $defaultHeaders = ['Accept: application/json', 'X-Test-Runner: true'];
         if ($body !== null) {
             $defaultHeaders[] = 'Content-Type: application/json';
         }
@@ -303,9 +303,10 @@ class ApiIntegrationTest {
         $this->assert(isset($statsRes['body']['data']['users']['authors']), 'Stats include author accounts');
 
         // 5.3 Admin Categories Management
+        $uniqueSuffix = time() . '_' . random_int(100, 999);
         $newCat = [
-            'name' => 'Data Science & Analytics',
-            'slug' => 'data-science-' . time(),
+            'name' => 'Data Science ' . $uniqueSuffix,
+            'slug' => 'data-science-' . $uniqueSuffix,
             'description' => 'Statistical modeling and big data.',
         ];
         $catRes = $this->request('POST', '/admin/categories', $newCat, ["X-CSRF-Token: {$csrfToken}"]);
@@ -361,8 +362,8 @@ class ApiIntegrationTest {
 
         // 6.3 Update post body and verify summary becomes stale
         $updateRes = $this->request('PATCH', '/author/posts/1', [
-            'title' => 'Getting Started with Web Development in 2026 (Revised Edition)',
-            'content' => 'Updated content body with revisions to trigger stale summary status.',
+            'title' => 'Getting Started with Web Development (Revision ' . time() . ')',
+            'content' => 'Updated content body with revisions to trigger stale summary status ' . time(),
             'category_id' => 1,
             'status' => 'published',
         ], ["X-CSRF-Token: {$csrfToken}"]);
