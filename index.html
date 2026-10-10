@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infinity Blog — Discover Insightful Articles</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/public.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu">
+          <!-- Dynamically populated by main.js -->
+        </ul>
+      </nav>
+      <div class="header-actions">
+        <!-- Dynamically populated by main.js -->
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <!-- Hero Banner -->
+    <section class="hero-banner">
+      <h1 class="hero-title">Welcome to Infinity Blog</h1>
+      <p class="hero-tagline">Discover insightful articles on technology, lifestyle, education, and modern software design.</p>
+      
+      <!-- Search & Filters -->
+      <form id="search-form" class="search-filter-bar">
+        <div class="search-input-wrapper">
+          <input type="text" id="search-input" class="form-control" placeholder="Search published articles...">
+        </div>
+        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="button" id="clear-search-btn" class="btn btn-secondary" style="display:none;">Clear</button>
+      </form>
+
+      <!-- Category Filter Chips -->
+      <div class="category-chips" id="category-chips-container">
+        <button type="button" class="category-chip active" data-id="">All Categories</button>
+        <!-- Category chips dynamically injected here -->
+      </div>
+    </section>
+
+    <!-- Articles Section -->
+    <section>
+      <div class="articles-section-header">
+        <h2 class="section-title">Latest Articles</h2>
+        <span id="articles-count-label" style="color:var(--color-text-muted);font-size:0.9rem;"></span>
+      </div>
+
+      <!-- Loading State -->
+      <div id="articles-loading" class="loading-container">
+        <div class="spinner"></div>
+        <p>Loading published articles from backend...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="articles-error" class="alert alert-danger" style="display:none;"></div>
+
+      <!-- Articles Grid -->
+      <div class="articles-grid" id="articles-grid" style="display:none;"></div>
+
+      <!-- Empty State -->
+      <div id="articles-empty" class="empty-state" style="display:none;">
+        <div class="empty-state-icon">📖</div>
+        <h3 class="empty-state-title">No Articles Found</h3>
+        <p class="empty-state-desc">There are no published articles matching your criteria right now. Check back soon or try another search.</p>
+      </div>
+
+      <!-- Pagination -->
+      <nav id="pagination-nav" class="pagination" style="display:none;"></nav>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Developed for BCA CMS Project.</p>
+      <p>Clean PHP &amp; MySQL Architecture &bull; Session Auth &bull; CSRF Protected</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { escapeHtml } from './assets/js/main.js';
+
+    let currentCategoryId = null;
+    let currentSearchQuery = '';
+    let currentPage = 1;
+
+    async function loadCategories() {
+      const container = document.getElementById('category-chips-container');
+      try {
+        const response = await publicBlogService.getCategories();
+        const categories = response?.data || [];
+        
+        categories.forEach(cat => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'category-chip';
+          btn.dataset.id = cat.id;
+          btn.textContent = cat.name;
+          btn.onclick = () => {
+            document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            currentCategoryId = cat.id;
+            currentPage = 1;
+            loadArticles();
+          };
+          container.appendChild(btn);
+        });
+
+        // "All" chip click handler
+        const allBtn = container.querySelector('[data-id=""]');
+        if (allBtn) {
+          allBtn.onclick = () => {
+            document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
+            allBtn.classList.add('active');
+            currentCategoryId = null;
+            currentPage = 1;
+            loadArticles();
+          };
+        }
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      }
+    }
+
+    async function loadArticles() {
+      const loadingEl = document.getElementById('articles-loading');
+      const gridEl = document.getElementById('articles-grid');
+      const emptyEl = document.getElementById('articles-empty');
+      const errorEl = document.getElementById('articles-error');
+      const paginationEl = document.getElementById('pagination-nav');
+      const countLabel = document.getElementById('articles-count-label');
+
+      loadingEl.style.display = 'flex';
+      gridEl.style.display = 'none';
+      emptyEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      paginationEl.style.display = 'none';
+
+      try {
+        const response = await publicBlogService.getPosts({
+          q: currentSearchQuery,
+          category_id: currentCategoryId,
+          page: currentPage,
+          per_page: 6,
+        });
+
+        const posts = response?.data || [];
+        const meta = response?.meta || {};
+
+        loadingEl.style.display = 'none';
+
+        if (posts.length === 0) {
+          emptyEl.style.display = 'block';
+          countLabel.textContent = '0 articles';
+          return;
+        }
+
+        countLabel.textContent = `${meta.total || posts.length} published article${meta.total === 1 ? '' : 's'}`;
+        gridEl.innerHTML = '';
+
+        posts.forEach(post => {
+          const card = document.createElement('article');
+          card.className = 'article-card';
+          
+          const pubDate = post.published_at 
+            ? new Date(post.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'Recent';
+
+          const categoryName = post.category_name || 'General';
+          const authorInitial = (post.author_name || 'A').charAt(0).toUpperCase();
+
+          card.innerHTML = `
+            <div class="article-card-thumb">
+              <span>📄</span>
+            </div>
+            <div class="article-card-body">
+              <div class="article-card-meta">
+                <span class="badge badge-category">${escapeHtml(categoryName)}</span>
+                <time datetime="${escapeHtml(post.published_at || '')}">${escapeHtml(pubDate)}</time>
+              </div>
+              <h3 class="article-card-title">
+                <a href="post.html?id=${post.id}">${escapeHtml(post.title)}</a>
+              </h3>
+              <p class="article-card-excerpt">${escapeHtml(post.excerpt || post.summary || 'Read the full story...')}</p>
+              <div class="article-card-footer">
+                <div class="author-byline">
+                  <div class="author-avatar-sm">${escapeHtml(authorInitial)}</div>
+                  <span>${escapeHtml(post.author_name || 'Author')}</span>
+                </div>
+                <a href="post.html?id=${post.id}" class="btn btn-outline btn-sm">Read More &rarr;</a>
+              </div>
+            </div>
+          `;
+          gridEl.appendChild(card);
+        });
+
+        gridEl.style.display = 'grid';
+
+        // Render Pagination
+        if (meta.total_pages && meta.total_pages > 1) {
+          renderPagination(meta.page, meta.total_pages);
+          paginationEl.style.display = 'flex';
+        }
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        errorEl.textContent = err.message || 'Failed to connect to the backend server.';
+        errorEl.style.display = 'block';
+      }
+    }
+
+    function renderPagination(current, total) {
+      const container = document.getElementById('pagination-nav');
+      container.innerHTML = '';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'page-btn';
+      prevBtn.innerHTML = '&larr; Prev';
+      prevBtn.disabled = current <= 1;
+      prevBtn.onclick = () => { currentPage--; loadArticles(); window.scrollTo({ top: 400, behavior: 'smooth' }); };
+      container.appendChild(prevBtn);
+
+      for (let i = 1; i <= total; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.className = `page-btn ${i === current ? 'active' : ''}`;
+        pageBtn.textContent = i;
+        pageBtn.onclick = () => { currentPage = i; loadArticles(); window.scrollTo({ top: 400, behavior: 'smooth' }); };
+        container.appendChild(pageBtn);
+      }
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'page-btn';
+      nextBtn.innerHTML = 'Next &rarr;';
+      nextBtn.disabled = current >= total;
+      nextBtn.onclick = () => { currentPage++; loadArticles(); window.scrollTo({ top: 400, behavior: 'smooth' }); };
+      container.appendChild(nextBtn);
+    }
+
+    // Search handlers
+    document.getElementById('search-form').onsubmit = (e) => {
+      e.preventDefault();
+      currentSearchQuery = document.getElementById('search-input').value.trim();
+      document.getElementById('clear-search-btn').style.display = currentSearchQuery ? 'inline-block' : 'none';
+      currentPage = 1;
+      loadArticles();
+    };
+
+    document.getElementById('clear-search-btn').onclick = () => {
+      document.getElementById('search-input').value = '';
+      currentSearchQuery = '';
+      document.getElementById('clear-search-btn').style.display = 'none';
+      currentPage = 1;
+      loadArticles();
+    };
+
+    // Initialize
+    loadCategories();
+    loadArticles();
+  </script>
+</body>
+</html>

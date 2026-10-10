@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Article — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/public.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <!-- Back Action -->
+    <div style="margin-bottom: var(--space-4);">
+      <a href="index.html" class="btn btn-secondary btn-sm">&larr; Back to Articles</a>
+    </div>
+
+    <!-- Loading State -->
+    <div id="article-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading article content...</p>
+    </div>
+
+    <!-- Error / Not Found State -->
+    <div id="article-error" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">🔍</div>
+      <h3 class="empty-state-title" id="article-error-title">Article Not Available</h3>
+      <p class="empty-state-desc" id="article-error-desc">The requested article could not be loaded. It may be a draft, removed, or unavailable.</p>
+      <a href="index.html" class="btn btn-primary">Return to Homepage</a>
+    </div>
+
+    <!-- Article Reading Container -->
+    <article class="article-reading-container" id="article-container" style="display:none;">
+      <header class="article-header">
+        <div class="article-header-meta">
+          <span class="badge badge-category" id="article-category">Category</span>
+          <span id="article-read-time" style="color:var(--color-text-muted);">3 min read</span>
+        </div>
+        <h1 class="article-full-title" id="article-title">Article Title</h1>
+        <div class="article-author-row">
+          <div class="author-avatar-sm" id="article-author-avatar">A</div>
+          <div>
+            <strong id="article-author-name">Author Name</strong>
+            <span style="margin: 0 4px;">&bull;</span>
+            <time id="article-date">Date</time>
+          </div>
+        </div>
+      </header>
+
+      <!-- Stored AI Summary Box (Displayed ONLY when current stored summary exists) -->
+      <div class="ai-summary-card" id="article-summary-card" style="display:none;">
+        <div class="ai-summary-header">
+          <span>✨</span>
+          <span>AI Article Summary</span>
+        </div>
+        <p class="ai-summary-text" id="article-summary-text"></p>
+      </div>
+
+      <!-- Full Body Content -->
+      <div class="article-content" id="article-content"></div>
+
+      <!-- Article Footer -->
+      <footer class="article-footer-nav">
+        <a href="index.html" class="btn btn-secondary">&larr; Back to All Posts</a>
+        <button type="button" class="btn btn-outline btn-sm" onclick="window.scrollTo({top:0, behavior:'smooth'})">&uarr; Back to Top</button>
+      </footer>
+    </article>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Developed for BCA CMS Project.</p>
+      <p>Session Auth &bull; CSRF Protected &bull; Role Enforced</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { escapeHtml } from './assets/js/main.js';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const postId = urlParams.get('id');
+
+    async function loadArticle() {
+      const loadingEl = document.getElementById('article-loading');
+      const containerEl = document.getElementById('article-container');
+      const errorEl = document.getElementById('article-error');
+      const errorTitle = document.getElementById('article-error-title');
+      const errorDesc = document.getElementById('article-error-desc');
+
+      if (!postId) {
+        loadingEl.style.display = 'none';
+        errorTitle.textContent = 'No Article Specified';
+        errorDesc.textContent = 'Please choose an article from the homepage list.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const response = await publicBlogService.getPost(postId);
+        const post = response?.data;
+
+        if (!post) {
+          throw new Error('Article data was not returned by the server.');
+        }
+
+        loadingEl.style.display = 'none';
+
+        // Set Page Title
+        document.title = `${post.title} — Infinity Blog`;
+
+        // Fill Details
+        document.getElementById('article-title').textContent = post.title;
+        document.getElementById('article-category').textContent = post.category_name || 'General';
+        document.getElementById('article-author-name').textContent = post.author_name || 'Author';
+        document.getElementById('article-author-avatar').textContent = (post.author_name || 'A').charAt(0).toUpperCase();
+
+        if (post.published_at) {
+          const pubDate = new Date(post.published_at).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric'
+          });
+          document.getElementById('article-date').textContent = pubDate;
+        }
+
+        // Reading time estimate (approx 200 words / minute)
+        const words = (post.content || '').trim().split(/\s+/).length;
+        const readMinutes = Math.max(1, Math.ceil(words / 200));
+        document.getElementById('article-read-time').textContent = `${readMinutes} min read`;
+
+        // Render Stored AI Summary only if valid and ready
+        if (post.summary && post.summary_status === 'ready') {
+          const summaryCard = document.getElementById('article-summary-card');
+          const summaryText = document.getElementById('article-summary-text');
+          summaryText.textContent = post.summary;
+          summaryCard.style.display = 'block';
+        }
+
+        // Render Content Paragraphs Safely
+        const contentContainer = document.getElementById('article-content');
+        contentContainer.innerHTML = '';
+        const paragraphs = (post.content || '').split(/\n\s*\n/);
+        paragraphs.forEach(para => {
+          if (para.trim()) {
+            const p = document.createElement('p');
+            p.textContent = para.trim();
+            contentContainer.appendChild(p);
+          }
+        });
+
+        containerEl.style.display = 'block';
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        errorTitle.textContent = err.status === 404 ? 'Article Not Found' : 'Error Loading Article';
+        errorDesc.textContent = err.message || 'The article is either unpublished, missing, or the server failed to respond.';
+        errorEl.style.display = 'block';
+      }
+    }
+
+    loadArticle();
+  </script>
+</body>
+</html>
