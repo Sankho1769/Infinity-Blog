@@ -94,9 +94,10 @@
     import { publicBlogService } from './assets/js/public-blog.js';
     import { escapeHtml } from './assets/js/main.js';
 
-    let currentCategoryId = null;
-    let currentSearchQuery = '';
-    let currentPage = 1;
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentCategoryId = urlParams.get('category_id') ? parseInt(urlParams.get('category_id'), 10) : null;
+    let currentSearchQuery = urlParams.get('q') || '';
+    let currentPage = urlParams.get('page') ? parseInt(urlParams.get('page'), 10) : 1;
 
     async function loadCategories() {
       const container = document.getElementById('category-chips-container');
@@ -104,10 +105,16 @@
         const response = await publicBlogService.getCategories();
         const categories = response?.data || [];
         
+        const allBtn = container.querySelector('[data-id=""]');
+        if (currentCategoryId && allBtn) {
+          allBtn.classList.remove('active');
+        }
+
         categories.forEach(cat => {
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = 'category-chip';
+          const isSelected = currentCategoryId === parseInt(cat.id, 10);
+          btn.className = `category-chip ${isSelected ? 'active' : ''}`;
           btn.dataset.id = cat.id;
           btn.textContent = cat.name;
           btn.onclick = () => {
@@ -121,7 +128,6 @@
         });
 
         // "All" chip click handler
-        const allBtn = container.querySelector('[data-id=""]');
         if (allBtn) {
           allBtn.onclick = () => {
             document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
@@ -265,6 +271,12 @@
       currentPage = 1;
       loadArticles();
     };
+
+    // Prepopulate search input if present in URL
+    if (currentSearchQuery) {
+      document.getElementById('search-input').value = currentSearchQuery;
+      document.getElementById('clear-search-btn').style.display = 'inline-block';
+    }
 
     // Initialize
     loadCategories();

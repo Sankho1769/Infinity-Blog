@@ -47,7 +47,7 @@
     <article class="article-reading-container" id="article-container" style="display:none;">
       <header class="article-header">
         <div class="article-header-meta">
-          <span class="badge badge-category" id="article-category">Category</span>
+          <a href="#" class="badge badge-category" id="article-category" style="text-decoration:none;">Category</a>
           <span id="article-read-time" style="color:var(--color-text-muted);">3 min read</span>
         </div>
         <h1 class="article-full-title" id="article-title">Article Title</h1>
@@ -127,8 +127,11 @@
         document.title = `${post.title} — Infinity Blog`;
 
         // Fill Details
-        document.getElementById('article-title').textContent = post.title;
-        document.getElementById('article-category').textContent = post.category_name || 'General';
+        const catBadge = document.getElementById('article-category');
+        catBadge.textContent = post.category_name || 'General';
+        if (post.category_id) {
+          catBadge.href = `index.html?category_id=${post.category_id}`;
+        }
         document.getElementById('article-author-name').textContent = post.author_name || 'Author';
         document.getElementById('article-author-avatar').textContent = (post.author_name || 'A').charAt(0).toUpperCase();
 
