@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Categories — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <div class="dashboard-header">
+      <div>
+        <h1 style="font-size:1.75rem;font-weight:700;">Categories</h1>
+        <p style="color:var(--color-text-muted);">Browse topics or manage content categories across the blog system.</p>
+      </div>
+      <div id="admin-category-actions" style="display:none;">
+        <button type="button" class="btn btn-primary" id="open-add-category-btn">+ Add Category</button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="cat-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading categories...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="cat-error-alert" class="alert alert-danger" style="display:none;"></div>
+
+    <!-- Categories Table Card -->
+    <div class="card" id="cat-card" style="display:none;padding:0;overflow:hidden;">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Category Name</th>
+              <th>Slug</th>
+              <th>Description</th>
+              <th id="th-status" style="display:none;">Status</th>
+              <th id="th-posts">Posts</th>
+              <th id="th-actions" style="display:none;text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cat-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add / Edit Category Modal -->
+    <div class="modal-overlay" id="category-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title" id="cat-modal-title">Add New Category</h3>
+          <button type="button" class="modal-close" id="cat-modal-close">&times;</button>
+        </div>
+
+        <form id="category-form" novalidate>
+          <input type="hidden" id="cat-id" value="">
+
+          <div class="form-group">
+            <label for="cat-name" class="form-label">Category Name *</label>
+            <input type="text" id="cat-name" class="form-control" placeholder="e.g. Cloud Computing" required maxlength="120">
+            <div class="form-error" id="cat-name-error"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="cat-slug" class="form-label">URL Slug *</label>
+            <input type="text" id="cat-slug" class="form-control" placeholder="e.g. cloud-computing" required maxlength="140">
+            <div class="form-help">Unique URL-friendly identifier. Auto-generated if left blank.</div>
+            <div class="form-error" id="cat-slug-error"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="cat-desc" class="form-label">Description</label>
+            <textarea id="cat-desc" class="form-control" rows="3" placeholder="Brief explanation of topics in this category..."></textarea>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="cat-modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="cat-modal-submit">Save Category</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Category Classification.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { authService } from './assets/js/auth.js';
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { adminService } from './assets/js/admin.js';
+    import { escapeHtml, showToast, showConfirmModal } from './assets/js/main.js';
+
+    let currentUser = null;
+
+    async function initCategories() {
+      currentUser = await authService.getCurrentUser();
+      const isAdmin = currentUser?.role === 'admin';
+
+      if (isAdmin) {
+        document.getElementById('admin-category-actions').style.display = 'block';
+        document.getElementById('th-status').style.display = 'table-cell';
+        document.getElementById('th-actions').style.display = 'table-cell';
+      }
+
+      await loadCategories(isAdmin);
+      setupModalHandlers();
+    }
+
+    async function loadCategories(isAdmin) {
+      const loadingEl = document.getElementById('cat-loading');
+      const cardEl = document.getElementById('cat-card');
+      const tbody = document.getElementById('cat-tbody');
+
+      loadingEl.style.display = 'flex';
+      cardEl.style.display = 'none';
+
+      try {
+        let categories = [];
+        if (isAdmin) {
+          const res = await adminService.getCategories();
+          categories = res?.data || [];
+        } else {
+          const res = await publicBlogService.getCategories();
+          categories = res?.data || [];
+        }
+
+        loadingEl.style.display = 'none';
+        tbody.innerHTML = '';
+
+        if (categories.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="${isAdmin ? 7 : 5}" style="text-align:center;padding:2rem;color:var(--color-text-muted);">No categories available.</td></tr>`;
+          cardEl.style.display = 'block';
+          return;
+        }
+
+        categories.forEach((c, idx) => {
+          const tr = document.createElement('tr');
+          const isActive = c.is_active !== undefined ? Boolean(parseInt(c.is_active, 10)) : true;
+
+          tr.innerHTML = `
+            <td>${idx + 1}</td>
+            <td>
+              <strong>${escapeHtml(c.name)}</strong>
+            </td>
+            <td><code>${escapeHtml(c.slug)}</code></td>
+            <td style="color:var(--color-text-muted);font-size:0.875rem;">${escapeHtml(c.description || '—')}</td>
+            ${isAdmin ? `
+              <td>
+                <span class="badge ${isActive ? 'badge-published' : 'badge-draft'}">
+                  ${isActive ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+            ` : ''}
+            <td>
+              <a href="index.html?category_id=${c.id}" class="badge badge-category" style="text-decoration:none;">
+                ${c.post_count !== undefined ? `${c.post_count} posts` : 'Browse &rarr;'}
+              </a>
+            </td>
+            ${isAdmin ? `
+              <td style="text-align:right;">
+                <div style="display:inline-flex;gap:6px;">
+                  <button type="button" class="btn btn-secondary btn-sm edit-cat-btn" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-slug="${escapeHtml(c.slug)}" data-desc="${escapeHtml(c.description || '')}">Edit</button>
+                  ${isActive 
+                    ? `<button type="button" class="btn btn-outline btn-sm deactivate-cat-btn" data-id="${c.id}" data-name="${escapeHtml(c.name)}">Deactivate</button>`
+                    : `<button type="button" class="btn btn-success btn-sm activate-cat-btn" data-id="${c.id}" data-name="${escapeHtml(c.name)}">Activate</button>`
+                  }
+                </div>
+              </td>
+            ` : ''}
+          `;
+          tbody.appendChild(tr);
+        });
+
+        if (isAdmin) {
+          attachAdminActions();
+        }
+
+        cardEl.style.display = 'block';
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        showToast('Failed to load categories: ' + err.message, 'danger');
+      }
+    }
+
+    function attachAdminActions() {
+      // Edit
+      document.querySelectorAll('.edit-cat-btn').forEach(btn => {
+        btn.onclick = () => {
+          document.getElementById('cat-id').value = btn.dataset.id;
+          document.getElementById('cat-name').value = btn.dataset.name;
+          document.getElementById('cat-slug').value = btn.dataset.slug;
+          document.getElementById('cat-desc').value = btn.dataset.desc;
+          document.getElementById('cat-modal-title').textContent = 'Edit Category';
+          document.getElementById('category-modal').classList.add('active');
+        };
+      });
+
+      // Deactivate
+      document.querySelectorAll('.deactivate-cat-btn').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.id;
+          const name = btn.dataset.name;
+          showConfirmModal(
+            'Deactivate Category?',
+            `Deactivating "${name}" prevents new articles from being assigned to it. Existing articles will retain their association.`,
+            'Deactivate',
+            async () => {
+              try {
+                await adminService.deactivateCategory(id);
+                showToast('Category deactivated.', 'info');
+                await loadCategories(true);
+              } catch (err) {
+                showToast('Deactivation failed: ' + err.message, 'danger');
+              }
+            }
+          );
+        };
+      });
+
+      // Activate
+      document.querySelectorAll('.activate-cat-btn').forEach(btn => {
+        btn.onclick = async () => {
+          try {
+            await adminService.activateCategory(btn.dataset.id);
+            showToast('Category activated.', 'success');
+            await loadCategories(true);
+          } catch (err) {
+            showToast('Activation failed: ' + err.message, 'danger');
+          }
+        };
+      });
+    }
+
+    function setupModalHandlers() {
+      const modal = document.getElementById('category-modal');
+      const openBtn = document.getElementById('open-add-category-btn');
+      const closeBtn = document.getElementById('cat-modal-close');
+      const cancelBtn = document.getElementById('cat-modal-cancel');
+      const form = document.getElementById('category-form');
+
+      if (openBtn) {
+        openBtn.onclick = () => {
+          document.getElementById('cat-id').value = '';
+          form.reset();
+          document.getElementById('cat-modal-title').textContent = 'Add New Category';
+          modal.classList.add('active');
+        };
+      }
+
+      const closeModal = () => {
+        modal.classList.remove('active');
+        document.getElementById('cat-name-error').textContent = '';
+        document.getElementById('cat-slug-error').textContent = '';
+      };
+
+      closeBtn.onclick = closeModal;
+      cancelBtn.onclick = closeModal;
+
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        document.getElementById('cat-name-error').textContent = '';
+        document.getElementById('cat-slug-error').textContent = '';
+
+        const id = document.getElementById('cat-id').value;
+        const name = document.getElementById('cat-name').value.trim();
+        const slug = document.getElementById('cat-slug').value.trim();
+        const description = document.getElementById('cat-desc').value.trim();
+
+        if (!name) {
+          document.getElementById('cat-name-error').textContent = 'Category name is required.';
+          return;
+        }
+
+        const payload = { name, slug, description };
+        const submitBtn = document.getElementById('cat-modal-submit');
+        submitBtn.disabled = true;
+
+        try {
+          if (id) {
+            await adminService.updateCategory(id, payload);
+            showToast('Category updated successfully.', 'success');
+          } else {
+            await adminService.createCategory(payload);
+            showToast('Category created successfully.', 'success');
+          }
+          closeModal();
+          await loadCategories(true);
+        } catch (err) {
+          if (err.fields) {
+            if (err.fields.name) document.getElementById('cat-name-error').textContent = err.fields.name;
+            if (err.fields.slug) document.getElementById('cat-slug-error').textContent = err.fields.slug;
+          }
+          showToast(err.message || 'Failed to save category.', 'danger');
+        } finally {
+          submitBtn.disabled = false;
+        }
+      };
+    }
+
+    initCategories();
+  </script>
+</body>
+</html>

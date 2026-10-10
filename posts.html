@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Posts — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <div class="dashboard-header">
+      <div>
+        <h1 style="font-size:1.75rem;font-weight:700;">Manage Posts</h1>
+        <p style="color:var(--color-text-muted);">View, edit, filter, publish, or remove your blog articles.</p>
+      </div>
+      <div>
+        <a href="create-post.html" class="btn btn-primary">+ Create New Post</a>
+      </div>
+    </div>
+
+    <!-- Filters & Tabs Toolbar -->
+    <div class="manage-posts-toolbar">
+      <!-- Status Tabs -->
+      <div class="status-tabs">
+        <button type="button" class="status-tab active" data-status="">All Posts</button>
+        <button type="button" class="status-tab" data-status="published">Published</button>
+        <button type="button" class="status-tab" data-status="draft">Drafts</button>
+      </div>
+
+      <!-- Filters Row -->
+      <div class="filters-row">
+        <div class="filter-input">
+          <input type="text" id="post-search-input" class="form-control" placeholder="Search by title...">
+        </div>
+        <div style="min-width:180px;">
+          <select id="category-filter-select" class="form-control">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+        <button type="button" id="apply-filter-btn" class="btn btn-secondary">Filter</button>
+        <button type="button" id="reset-filter-btn" class="btn btn-outline">Reset</button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="posts-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading posts...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="posts-empty" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">📄</div>
+      <h3 class="empty-state-title">No Posts Found</h3>
+      <p class="empty-state-desc">No posts matched your current search or status filter.</p>
+      <a href="create-post.html" class="btn btn-primary btn-sm">Create New Post</a>
+    </div>
+
+    <!-- Posts Table -->
+    <div class="card" id="posts-card" style="display:none;padding:0;overflow:hidden;">
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Category</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="posts-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <nav id="posts-pagination" class="pagination" style="display:none;"></nav>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Author Management Center.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { authService } from './assets/js/auth.js';
+    import { authorPostService } from './assets/js/author-posts.js';
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { escapeHtml, showToast, showConfirmModal } from './assets/js/main.js';
+
+    let currentStatus = '';
+    let currentCategoryId = '';
+    let currentSearch = '';
+    let currentPage = 1;
+
+    async function initPage() {
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      await loadCategories();
+      await loadPosts();
+      setupEventListeners();
+    }
+
+    async function loadCategories() {
+      try {
+        const res = await publicBlogService.getCategories();
+        const cats = res?.data || [];
+        const select = document.getElementById('category-filter-select');
+        cats.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load categories:', err);
+      }
+    }
+
+    async function loadPosts() {
+      const loadingEl = document.getElementById('posts-loading');
+      const emptyEl = document.getElementById('posts-empty');
+      const cardEl = document.getElementById('posts-card');
+      const tbody = document.getElementById('posts-tbody');
+      const paginationEl = document.getElementById('posts-pagination');
+
+      loadingEl.style.display = 'flex';
+      emptyEl.style.display = 'none';
+      cardEl.style.display = 'none';
+      paginationEl.style.display = 'none';
+
+      try {
+        const response = await authorPostService.getAuthorPosts({
+          status: currentStatus,
+          category_id: currentCategoryId,
+          q: currentSearch,
+          page: currentPage,
+          per_page: 10,
+        });
+
+        const posts = response?.data || [];
+        const meta = response?.meta || {};
+
+        loadingEl.style.display = 'none';
+
+        if (posts.length === 0) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        tbody.innerHTML = '';
+        posts.forEach(p => {
+          const tr = document.createElement('tr');
+          const isPublished = p.status === 'published';
+          const badgeClass = isPublished ? 'badge-published' : 'badge-draft';
+          const dateStr = p.updated_at || p.created_at || '';
+          const formattedDate = dateStr ? new Date(dateStr).toLocaleDateString() : 'N/A';
+
+          tr.innerHTML = `
+            <td>
+              <strong style="display:block;font-size:0.95rem;">${escapeHtml(p.title)}</strong>
+              ${p.summary_status === 'stale' ? '<span class="badge badge-draft" style="font-size:0.7rem;">Summary Stale</span>' : ''}
+            </td>
+            <td>
+              <span class="badge badge-category">${escapeHtml(p.category_name || 'None')}</span>
+            </td>
+            <td>
+              <span class="badge ${badgeClass}">${escapeHtml(p.status)}</span>
+            </td>
+            <td style="color:var(--color-text-muted);font-size:0.85rem;">
+              ${escapeHtml(formattedDate)}
+            </td>
+            <td style="text-align:right;">
+              <div style="display:inline-flex;gap:6px;">
+                ${isPublished ? `<a href="post.html?id=${p.id}" class="btn btn-outline btn-sm" target="_blank" title="View Public Article">👁️ View</a>` : ''}
+                <a href="edit-post.html?id=${p.id}" class="btn btn-secondary btn-sm" title="Edit Article">✏️ Edit</a>
+                <button type="button" class="btn btn-danger btn-sm delete-btn" data-id="${p.id}" data-title="${escapeHtml(p.title)}" title="Delete Article">🗑️</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Attach delete actions
+        tbody.querySelectorAll('.delete-btn').forEach(btn => {
+          btn.onclick = () => {
+            const id = btn.dataset.id;
+            const title = btn.dataset.title;
+            showConfirmModal(
+              'Delete Article?',
+              `Are you sure you want to permanently delete "${title}"? This action cannot be undone.`,
+              'Delete Permanently',
+              async () => {
+                try {
+                  await authorPostService.deletePost(id);
+                  showToast('Article deleted successfully.', 'success');
+                  await loadPosts();
+                } catch (err) {
+                  showToast('Failed to delete post: ' + err.message, 'danger');
+                }
+              }
+            );
+          };
+        });
+
+        cardEl.style.display = 'block';
+
+        if (meta.total_pages && meta.total_pages > 1) {
+          renderPagination(meta.page, meta.total_pages);
+          paginationEl.style.display = 'flex';
+        }
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        showToast('Error loading posts: ' + err.message, 'danger');
+      }
+    }
+
+    function renderPagination(current, total) {
+      const container = document.getElementById('posts-pagination');
+      container.innerHTML = '';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'page-btn';
+      prevBtn.innerHTML = '&larr; Prev';
+      prevBtn.disabled = current <= 1;
+      prevBtn.onclick = () => { currentPage--; loadPosts(); };
+      container.appendChild(prevBtn);
+
+      for (let i = 1; i <= total; i++) {
+        const pageBtn = document.createElement('button');
+        pageBtn.className = `page-btn ${i === current ? 'active' : ''}`;
+        pageBtn.textContent = i;
+        pageBtn.onclick = () => { currentPage = i; loadPosts(); };
+        container.appendChild(pageBtn);
+      }
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'page-btn';
+      nextBtn.innerHTML = 'Next &rarr;';
+      nextBtn.disabled = current >= total;
+      nextBtn.onclick = () => { currentPage++; loadPosts(); };
+      container.appendChild(nextBtn);
+    }
+
+    function setupEventListeners() {
+      // Status Tabs
+      document.querySelectorAll('.status-tab').forEach(tab => {
+        tab.onclick = () => {
+          document.querySelectorAll('.status-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          currentStatus = tab.dataset.status;
+          currentPage = 1;
+          loadPosts();
+        };
+      });
+
+      // Filter Button
+      document.getElementById('apply-filter-btn').onclick = () => {
+        currentSearch = document.getElementById('post-search-input').value.trim();
+        currentCategoryId = document.getElementById('category-filter-select').value;
+        currentPage = 1;
+        loadPosts();
+      };
+
+      // Reset Button
+      document.getElementById('reset-filter-btn').onclick = () => {
+        document.getElementById('post-search-input').value = '';
+        document.getElementById('category-filter-select').value = '';
+        currentSearch = '';
+        currentCategoryId = '';
+        currentPage = 1;
+        loadPosts();
+      };
+
+      // Enter key in search input
+      document.getElementById('post-search-input').onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          document.getElementById('apply-filter-btn').click();
+        }
+      };
+    }
+
+    initPage();
+  </script>
+</body>
+</html>
