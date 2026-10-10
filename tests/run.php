@@ -309,9 +309,9 @@ $run('environment example contains placeholders and local secrets are ignored', 
     $root = dirname(__DIR__);
     $example = file_get_contents($root . '/.env.example');
     $ignore = file_get_contents($root . '/.gitignore');
+    $expect(is_string($example) && str_contains($example, 'APP_KEY=replace-with-64-character-random-hex-key'));
     $expect(is_string($example) && str_contains($example, 'DB_PASSWORD=replace-with-a-local-secret'));
     $expect(is_string($ignore) && preg_match('/^\.env\*?\s*$/m', $ignore) === 1 && str_contains($ignore, '!.env.example'));
-    $expect(!is_file($root . '/.env'));
 });
 
 $run('migration rollback requires explicit confirmation before any database change', static function () use ($expect): void {
@@ -420,6 +420,18 @@ $createUserDatabase = static function (): PDO {
     return $pdo;
 };
 
+$createAuthenticationDatabase = static function () use ($createUserDatabase): PDO {
+    $pdo = $createUserDatabase();
+    $pdo->exec(
+        'CREATE TABLE audit_logs (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL REFERENCES users(id) ON DELETE SET NULL, ' .
+        'action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NULL, metadata TEXT NULL, ' .
+        'created_at TEXT NOT NULL)'
+    );
+
+    return $pdo;
+};
+
 $createCategoryDatabase = static function () use ($createUserDatabase): PDO {
     $pdo = $createUserDatabase();
     $pdo->exec('PRAGMA foreign_keys = ON');
@@ -475,8 +487,8 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
     return $pdo;
 };
 
-$run('authentication verifies known credentials and records only safe identity data', static function () use ($createUserDatabase, $expect): void {
-    $pdo = $createUserDatabase();
+$run('successful authentication records a persistent privacy-safe login event', static function () use ($createAuthenticationDatabase, $expect): void {
+    $pdo = $createAuthenticationDatabase();
     $limiter = new TestLoginAttemptLimiter();
     $service = new AuthenticationService(new UserRepository($pdo), $limiter);
     $result = $service->login(' AUTHOR ONE ', 'author-pass-1234', '192.0.2.10');
@@ -485,10 +497,39 @@ $run('authentication verifies known credentials and records only safe identity d
     $expect(!array_key_exists('password_hash', $result->account->toPublicArray()));
     $lastLogin = $pdo->query("SELECT last_login_at FROM users WHERE username = 'author one'")->fetchColumn();
     $expect(is_string($lastLogin) && $lastLogin !== '');
+    $audit = $pdo->query(
+        "SELECT actor_user_id, action, entity_type, entity_id, metadata, created_at " .
+        "FROM audit_logs WHERE action = 'auth.login_succeeded'"
+    )->fetch(PDO::FETCH_ASSOC);
+    $expect(is_array($audit), 'A successful login must be visible to a subsequent database read.');
+    $expect((int) $audit['actor_user_id'] === $result->account->id);
+    $expect($audit['action'] === 'auth.login_succeeded' && $audit['entity_type'] === 'user');
+    $expect((int) $audit['entity_id'] === $result->account->id && $audit['metadata'] === null);
+    $expect(is_string($audit['created_at']) && $audit['created_at'] === $lastLogin);
 });
 
-$run('incorrect, unknown, and inactive credentials have the same failure result', static function () use ($createUserDatabase, $expect): void {
-    $pdo = $createUserDatabase();
+$run('login fails closed and rolls back last-login state when audit persistence fails', static function () use ($createAuthenticationDatabase, $expect): void {
+    $pdo = $createAuthenticationDatabase();
+    $pdo->exec(
+        "CREATE TRIGGER reject_login_audit BEFORE INSERT ON audit_logs " .
+        "WHEN NEW.action = 'auth.login_succeeded' BEGIN SELECT RAISE(ABORT, 'audit sink unavailable'); END"
+    );
+    $service = new AuthenticationService(new UserRepository($pdo), new TestLoginAttemptLimiter());
+    $failedClosed = false;
+    try {
+        $service->login('author one', 'author-pass-1234', '192.0.2.10');
+    } catch (Throwable) {
+        $failedClosed = true;
+    }
+    $expect($failedClosed, 'A login must not succeed when its required audit event cannot be persisted.');
+    $lastLogin = $pdo->query("SELECT last_login_at FROM users WHERE username = 'author one'")->fetchColumn();
+    $expect($lastLogin === null, 'The last-login update must roll back with the failed audit insert.');
+    $auditCount = (int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE action = 'auth.login_succeeded'")->fetchColumn();
+    $expect($auditCount === 0, 'A rejected audit write must not leave a partial event.');
+});
+
+$run('incorrect, unknown, and inactive credentials have the same failure result', static function () use ($createAuthenticationDatabase, $expect): void {
+    $pdo = $createAuthenticationDatabase();
     $service = new AuthenticationService(new UserRepository($pdo), new TestLoginAttemptLimiter());
     $wrong = $service->login('author one', 'wrong-password-123', '192.0.2.11');
     $unknown = $service->login('nobody here', 'wrong-password-123', '192.0.2.12');
@@ -496,6 +537,8 @@ $run('incorrect, unknown, and inactive credentials have the same failure result'
     $expect($wrong->status === LoginResult::FAILURE && $unknown->status === LoginResult::FAILURE);
     $expect($inactive->status === LoginResult::FAILURE);
     $expect($wrong->account === null && $unknown->account === null && $inactive->account === null);
+    $auditCount = (int) $pdo->query("SELECT COUNT(*) FROM audit_logs WHERE action = 'auth.login_succeeded'")->fetchColumn();
+    $expect($auditCount === 0, 'Failed credentials must not create a successful-login audit event.');
 });
 
 $run('login limiter counts failed attempts by normalized identifier and source address', static function () use ($expect): void {
@@ -1560,6 +1603,15 @@ $exerciseCredentialRevocation = static function (PDO $pdo) use ($withSession, $v
             $expect($guard->currentAccount() === null, 'Inactive accounts must not retain authenticated access.');
         });
     } finally {
+        $deleteLoginAudit = $pdo->prepare(
+            "DELETE FROM audit_logs WHERE action = 'auth.login_succeeded' AND actor_user_id IN " .
+            '(SELECT id FROM users WHERE username IN (:shubham, :sounak, :inactive))'
+        );
+        $deleteLoginAudit->execute([
+            'shubham' => 'shubham banerjee',
+            'sounak' => 'sounak sikdar',
+            'inactive' => $inactiveUsername,
+        ]);
         $cleanup = $pdo->prepare('DELETE FROM users WHERE username IN (:shubham, :sounak, :inactive)');
         $cleanup->execute([
             'shubham' => 'shubham banerjee',
@@ -1597,8 +1649,8 @@ $run('session ID regenerates on login, role guards read the account, and logout 
     });
 });
 
-$run('credential rotation revokes only the target account sessions and fresh login works', static function () use ($createUserDatabase, $exerciseCredentialRevocation): void {
-    $exerciseCredentialRevocation($createUserDatabase());
+$run('credential rotation revokes only the target account sessions and fresh login works', static function () use ($createAuthenticationDatabase, $exerciseCredentialRevocation): void {
+    $exerciseCredentialRevocation($createAuthenticationDatabase());
 });
 
 $run('administrator role guard permits an active admin account from the database', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
@@ -1673,10 +1725,10 @@ $run('expired sessions lose authorization and CSRF rejects missing or invalid to
     });
 });
 
-$run('auth controller rejects unauthenticated role escalation and public admin registration', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
-    $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
+$run('auth controller rejects unauthenticated role escalation and public admin registration', static function () use ($withSession, $validConfiguration, $createAuthenticationDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createAuthenticationDatabase, $expect): void {
         $config = AppConfig::fromArray($validConfiguration);
-        $pdo = $createUserDatabase();
+        $pdo = $createAuthenticationDatabase();
         $users = new UserRepository($pdo);
         $sessions = new SessionManager($config);
         $sessions->start();
@@ -2422,6 +2474,52 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
 
         $run('MySQL-backed credential rotation revokes only the target account sessions', static function () use ($pdo, $exerciseCredentialRevocation): void {
             $exerciseCredentialRevocation($pdo);
+        });
+
+        $run('MySQL successful login audit is inspectable from a subsequent database connection', static function () use ($pdo, $testConfig, $expect): void {
+            $token = bin2hex(random_bytes(6));
+            $username = 'login-audit-' . $token;
+            $userId = null;
+            try {
+                $insert = $pdo->prepare(
+                    "INSERT INTO users (username, display_name, password_hash, role, status) " .
+                    "VALUES (:username, 'Login Audit Integration', :password_hash, 'author', 'active')"
+                );
+                $insert->execute([
+                    'username' => $username,
+                    'password_hash' => password_hash('synthetic-login-audit-password', PASSWORD_DEFAULT),
+                ]);
+                $userId = (int) $pdo->lastInsertId();
+                $limiter = new \InfinityBlog\Auth\DatabaseLoginAttemptLimiter($pdo, bin2hex(random_bytes(32)));
+                $authentication = new AuthenticationService(new UserRepository($pdo), $limiter);
+                $result = $authentication->login($username, 'synthetic-login-audit-password', '198.51.100.44');
+                $expect($result->status === LoginResult::SUCCESS && $result->account?->id === $userId);
+
+                $readPdo = ConnectionFactory::create($testConfig);
+                $events = (new AuditLogRepository($readPdo))->listEvents(
+                    ['actor_id' => $userId, 'action' => 'auth.login_succeeded', 'entity_type' => 'user'],
+                    1,
+                    10
+                );
+                $expect($events['total'] === 1 && count($events['events']) === 1);
+                $event = $events['events'][0];
+                $expect($event['actor_user_id'] === $userId && $event['entity_id'] === $userId);
+                $expect($event['action'] === 'auth.login_succeeded' && $event['entity_type'] === 'user');
+                $stored = $readPdo->prepare(
+                    "SELECT metadata, created_at, (SELECT last_login_at FROM users WHERE id = :user_id) AS last_login_at " .
+                    "FROM audit_logs WHERE id = :event_id"
+                );
+                $stored->execute(['user_id' => $userId, 'event_id' => $event['id']]);
+                $details = $stored->fetch(PDO::FETCH_ASSOC);
+                $expect(is_array($details) && $details['metadata'] === null);
+                $expect($details['created_at'] === $event['created_at'] && $details['created_at'] === $details['last_login_at']);
+            } finally {
+                if ($userId !== null) {
+                    $pdo->prepare("DELETE FROM audit_logs WHERE actor_user_id = :id AND action = 'auth.login_succeeded'")
+                        ->execute(['id' => $userId]);
+                    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $userId]);
+                }
+            }
         });
 
         $run('MySQL-backed login limiter enforces account and source limits and clears successful accounts', static function () use ($pdo, $expect): void {

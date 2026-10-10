@@ -104,7 +104,9 @@ Rules:
 | `metadata` | JSON NULL | Safe, minimal metadata only |
 | `created_at` | DATETIME | Event timestamp |
 
-Never log passwords, session cookies, API keys, full article content, or complete provider requests/responses. Define retention and access policy before production use.
+Successful authentication writes an `auth.login_succeeded` event with the user ID in `actor_user_id` and `entity_id`, `entity_type = 'user'`, a UTC `created_at`, and NULL metadata. It is committed atomically with `users.last_login_at`; if the audit write fails, the login fails closed. Login events do not include source IP or user-agent. This uses the existing schema and requires no migration. `login_rate_limits` remains transient throttle state, not login history.
+
+Never log passwords, password hashes, session cookies or IDs, API keys, full article content, or complete provider requests/responses. Define retention and access policy before production use.
 
 ## 7. `login_rate_limits`
 

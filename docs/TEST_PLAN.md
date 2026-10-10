@@ -72,8 +72,9 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
 | AU-010 | Provision initial admins twice | First CLI operation stores distinct password hashes; duplicate run refuses without partial changes |
 | AU-011 | Five failures for one identifier or 20 for one source in 15 minutes | Subsequent login is limited; changing identifier does not bypass the source bucket |
 | AU-012 | Rotate a user's credentials through trusted provisioning | The old session is rejected on its next guarded request; old password fails; new login succeeds; another user's session remains valid |
+| AU-013 | Successful login and audit-store failure | A committed `auth.login_succeeded` event is inspectable by user ID and timestamp after a separate database read; failed, unknown, and inactive credentials create no event; audit persistence failure rolls back `last_login_at` and prevents login |
 
-MySQL login and summary limiter state and all four migrations require the MySQL integration run. The suite also exercises MySQL-backed author accounts, audit queries, summary persistence/source hashes, and session revocation when enabled. Unit tests use SQLite for application behavior and HMAC rate-limit persistence plus provider/test doubles; these are not evidence of MySQL integration success.
+MySQL login and summary limiter state and all four migrations require the MySQL integration run. The suite also exercises MySQL-backed author accounts, audit queries, successful-login audit persistence from a fresh connection, summary persistence/source hashes, and session revocation when enabled. Unit tests use SQLite for application behavior and HMAC rate-limit persistence plus provider/test doubles; these are not evidence of MySQL integration success.
 
 | ID | Scenario | Expected result |
 |---|---|---|

@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace InfinityBlog\Auth;
 
 use PDO;
+use RuntimeException;
+use Throwable;
 
 final class UserRepository
 {
@@ -38,11 +40,35 @@ final class UserRepository
 
     public function recordSuccessfulLogin(int $id): void
     {
-        $statement = $this->pdo->prepare('UPDATE users SET last_login_at = :last_login_at WHERE id = :id');
-        $statement->execute([
-            'last_login_at' => gmdate('Y-m-d H:i:s'),
-            'id' => $id,
-        ]);
+        if ($this->pdo->inTransaction() || !$this->pdo->beginTransaction()) {
+            throw new RuntimeException('Successful login details could not be recorded.');
+        }
+
+        try {
+            $loggedInAt = gmdate('Y-m-d H:i:s');
+            $statement = $this->pdo->prepare('UPDATE users SET last_login_at = :last_login_at WHERE id = :id');
+            $statement->execute([
+                'last_login_at' => $loggedInAt,
+                'id' => $id,
+            ]);
+
+            $audit = $this->pdo->prepare(
+                'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+                'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+            );
+            $audit->execute([
+                'actor_user_id' => $id,
+                'action' => 'auth.login_succeeded',
+                'entity_type' => 'user',
+                'entity_id' => $id,
+                'created_at' => $loggedInAt,
+            ]);
+
+            $this->pdo->commit();
+        } catch (Throwable $exception) {
+            $this->rollback();
+            throw $exception;
+        }
     }
 
     /**
@@ -71,6 +97,19 @@ final class UserRepository
         return function_exists('mb_strtolower')
             ? mb_strtolower($identifier, 'UTF-8')
             : strtolower($identifier);
+    }
+
+    private function rollback(): void
+    {
+        if (!$this->pdo->inTransaction()) {
+            return;
+        }
+
+        try {
+            $this->pdo->rollBack();
+        } catch (Throwable) {
+            // Preserve the original audit or persistence failure.
+        }
     }
 
     /** @param array<string, mixed> $row */
