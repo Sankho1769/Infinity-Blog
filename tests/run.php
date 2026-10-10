@@ -275,9 +275,20 @@ $run('environment file parsing preserves process overrides and rejects malformed
     }
 
     try {
-        file_put_contents($path, "APP_ENV=test\nDB_PASSWORD='test value'\n");
+        $password = '  P@ss #=;:$%^&*()[]{}\'"/?  ';
+        file_put_contents($path, "APP_ENV=test\nDB_PASSWORD='" . $password . "'\n");
         $values = EnvironmentLoader::loadFile($path, ['APP_ENV' => 'development']);
-        $expect($values['APP_ENV'] === 'development' && $values['DB_PASSWORD'] === 'test value');
+        $expect($values['APP_ENV'] === 'development' && $values['DB_PASSWORD'] === $password,
+            'Quoted password values with spaces and strong punctuation must round-trip unchanged.');
+
+        file_put_contents($path, "DB_PASSWORD='safe\r\nDB_USERNAME=injected'\n");
+        $lineBreakRejected = false;
+        try {
+            EnvironmentLoader::loadFile($path, []);
+        } catch (InvalidArgumentException) {
+            $lineBreakRejected = true;
+        }
+        $expect($lineBreakRejected, 'A password line break must not inject another environment setting.');
 
         file_put_contents($path, "not-an-environment-entry\n");
         try {
