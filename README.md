@@ -98,21 +98,23 @@ infinity-blog/
 ### Step 1: Start Services in XAMPP
 Ensure **Apache** (Port 80) and **MySQL** (Port 3306) are running via the XAMPP Control Panel.
 
-### Step 2: Initialize Database and Provision Users
+### Step 2: Initialize Database and Provision Administrators Safely
+Copy `.env.example` to `.env` if local configuration overrides are needed (e.g. `DB_PASS`, `ADMIN_DEFAULT_PASSWORD`, `GEMINI_API_KEY`).
+
 Run the CLI provisioning script:
 ```bash
 php database/setup.php
 ```
-This automatically:
-1. Executes `database/schema.sql` to build `users`, `categories`, `posts`, `audit_logs`, and `rate_limit_buckets`.
-2. Provisions the initial administrators:
-   * **`Shubham Banerjee`** (admin)
-   * **`Sounak Sikdar`** (admin)
-   * *Default setup password:* `Admin@Infinity2026!`
-3. Provisions a test author:
-   * **`john_doe`** (author)
-   * *Default setup password:* `Author@Infinity2026!`
-4. Seeds initial active categories (`Technology`, `Education`, `Lifestyle`, `Photography`) and sample articles.
+> [!NOTE]
+> `database/setup.php` enforces **CLI-only execution**. Direct web browser access is blocked with HTTP 403 Forbidden.
+> Provisioning is **fully idempotent**: it never resets existing account passwords, roles, or active/inactive statuses.
+> In production environments (`APP_ENV=production`), `ADMIN_DEFAULT_PASSWORD` must be provided as an environment variable (minimum 12 characters).
+
+Default development accounts configured if not already present:
+* **`Shubham Banerjee`** (admin)
+* **`Sounak Sikdar`** (admin)
+* **`john_doe`** (author, development only)
+* Initial active categories (`Technology`, `Education`, `Lifestyle`, `Photography`) and sample posts are verified.
 
 ### Step 3: Access the Application
 Open your browser and navigate to:
@@ -130,13 +132,17 @@ Run the test suite directly from your terminal:
 php tests/integration_test.php
 ```
 
-### Test Coverage (57 Assertions — 100% Passing):
-1. **Authentication:** Valid/invalid logins, session restoration (`/auth/me`), CSRF token retrieval, and post-logout rejection.
-2. **Public Blog:** Published posts retrieval, draft isolation (drafts return 404 to public queries), keyword search, and category filtering.
-3. **Author Post Operations:** Post drafting, update lifecycle, validation requiring active categories before publishing, unpublishing, and confirmed deletion.
-4. **Authorization & IDOR:** Role escalation prevention, Insecure Direct Object Reference (IDOR) protection preventing cross-author post tampering, and CSRF requirement on mutations.
-5. **Administrative Capabilities:** System statistics, category creation, activation/deactivation, author user provisioning, and audit log generation.
-6. **AI Article Summarization:** Authorized generation, database storage, stale summary detection upon article modification, and omission of stale summaries from public views.
+### Test Coverage (75 Assertions — 100% Passing):
+1. **Web Access & File Protections:** Verifies that `.env`, `database/setup.php`, `backend/`, and `tests/` return HTTP 403 Forbidden when requested over HTTP.
+2. **Rate Limiting Engine:** Tests that request burst thresholds are strictly enforced and requests exceeding limits are rate-limited.
+3. **Authentication & Sessions:** Tests credential verification, session cookie attributes (`HttpOnly`, `SameSite=Lax`), `/auth/me` identity retrieval, CSRF issuance, and post-logout session destruction.
+4. **Account Lifecycle & Deactivation:** Tests administrative deactivation of user accounts and confirms that deactivated accounts cannot log in and have existing sessions immediately rejected.
+5. **Public Blog:** Published posts retrieval, draft isolation (drafts return 404 to public queries), keyword search, and category filtering.
+6. **Author Post Operations:** Post drafting, update lifecycle, validation requiring active categories before publishing, unpublishing, and confirmed deletion.
+7. **PATCH Partial Updates:** Verifies that updating a post's title or status without supplying `category_id` correctly preserves the existing category.
+8. **Authorization & IDOR:** Role escalation prevention, Insecure Direct Object Reference (IDOR) protection preventing cross-author post tampering, and CSRF token requirement on state mutations.
+9. **Administrative Capabilities:** System statistics, category creation, activation/deactivation, author user provisioning, and audit log generation.
+10. **AI Article Summarization:** Authorized generation, prompt injection isolation, HTML output sanitization, database storage, stale summary detection upon article modification, and omission of stale summaries from public views.
 
 ---
 

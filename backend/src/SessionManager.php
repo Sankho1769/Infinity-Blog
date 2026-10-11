@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace InfinityBlog\Core;
 
+use InfinityBlog\Config\Database;
+
 class SessionManager {
     public static function start(): void {
         if (session_status() === PHP_SESSION_ACTIVE) {
@@ -10,7 +12,8 @@ class SessionManager {
         }
 
         $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
+            || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
 
         session_set_cookie_params([
             'lifetime' => 86400, // 24 hours
@@ -100,11 +103,14 @@ class SessionManager {
             setcookie(
                 session_name(),
                 '',
-                time() - 42000,
-                $params['path'],
-                $params['domain'],
-                $params['secure'],
-                $params['httponly']
+                [
+                    'expires' => time() - 42000,
+                    'path' => $params['path'],
+                    'domain' => $params['domain'],
+                    'secure' => $params['secure'],
+                    'httponly' => $params['httponly'],
+                    'samesite' => $params['samesite'] ?? 'Lax',
+                ]
             );
         }
 
@@ -121,6 +127,28 @@ class SessionManager {
         if (!$user) {
             Response::error('UNAUTHORIZED', 'Authentication required.', null, 401);
         }
+
+        // Verify account is still active in database
+        try {
+            $pdo = Database::getConnection();
+            $stmt = $pdo->prepare("SELECT `id`, `role`, `status` FROM `users` WHERE `id` = :id LIMIT 1");
+            $stmt->execute([':id' => $user['id']]);
+            $dbUser = $stmt->fetch();
+
+            if (!$dbUser || $dbUser['status'] !== 'active') {
+                self::logout();
+                Response::error('ACCOUNT_INACTIVE', 'This account has been deactivated.', null, 403);
+            }
+
+            // Keep session role synchronized
+            if ($dbUser['role'] !== $user['role']) {
+                $_SESSION['user']['role'] = $dbUser['role'];
+                $user['role'] = $dbUser['role'];
+            }
+        } catch (\Throwable $e) {
+            error_log("SessionManager status check error: " . $e->getMessage());
+        }
+
         return $user;
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 // Infinity Blog REST JSON API Router (/api/v1)
 // Follows API_SPEC.md contract
 
+require_once __DIR__ . '/../../backend/config/Env.php';
 require_once __DIR__ . '/../../backend/config/Database.php';
 require_once __DIR__ . '/../../backend/src/Response.php';
 require_once __DIR__ . '/../../backend/src/SessionManager.php';
@@ -11,12 +12,16 @@ require_once __DIR__ . '/../../backend/src/RateLimiter.php';
 require_once __DIR__ . '/../../backend/src/AuditLogger.php';
 require_once __DIR__ . '/../../backend/src/AISummarizer.php';
 
+use InfinityBlog\Config\Env;
 use InfinityBlog\Config\Database;
 use InfinityBlog\Core\Response;
 use InfinityBlog\Core\SessionManager;
 use InfinityBlog\Core\RateLimiter;
 use InfinityBlog\Core\AuditLogger;
 use InfinityBlog\Services\AISummarizer;
+
+// Load environment variables
+Env::load();
 
 // Set error handler to output clean JSON without exposing stack traces
 set_error_handler(function ($severity, $message, $file, $line) {
@@ -37,7 +42,7 @@ SessionManager::start();
 
 // Handle CORS if needed for local cross-origin development
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-$allowedOrigins = array_filter(array_map('trim', explode(',', getenv('ALLOWED_ORIGINS') ?: 'http://localhost,http://127.0.0.1,http://localhost:80,http://localhost:3000')));
+$allowedOrigins = array_filter(array_map('trim', explode(',', Env::get('ALLOWED_ORIGINS', 'http://localhost,http://127.0.0.1,http://localhost:80,http://localhost:3000'))));
 
 if ($origin && in_array($origin, $allowedOrigins, true)) {
     header("Access-Control-Allow-Origin: {$origin}");
@@ -97,8 +102,7 @@ try {
 
     // POST /auth/login
     if ($method === 'POST' && $route === '/auth/login') {
-        $isTestRunner = !empty($_SERVER['HTTP_X_TEST_RUNNER']);
-        if (!$isTestRunner && !RateLimiter::check('login', $clientIp, 40, 300)) {
+        if (!RateLimiter::check('login', $clientIp, 40, 300)) {
             Response::error('RATE_LIMITED', 'Too many failed login attempts. Please wait 5 minutes.', null, 429);
         }
 
@@ -514,7 +518,7 @@ try {
         SessionManager::requireCsrf();
         $postId = (int)$matches[1];
 
-        $stmt = $pdo->prepare("SELECT `id`, `author_id`, `title`, `content`, `status`, `summary_status` FROM `posts` WHERE `id` = :id");
+        $stmt = $pdo->prepare("SELECT `id`, `author_id`, `category_id`, `title`, `content`, `status`, `summary_status` FROM `posts` WHERE `id` = :id");
         $stmt->execute([':id' => $postId]);
         $existing = $stmt->fetch();
 
@@ -529,7 +533,9 @@ try {
         $title = isset($inputData['title']) ? trim((string)$inputData['title']) : $existing['title'];
         $content = isset($inputData['content']) ? trim((string)$inputData['content']) : $existing['content'];
         $status = isset($inputData['status']) ? strtolower(trim((string)$inputData['status'])) : $existing['status'];
-        $categoryId = array_key_exists('category_id', $inputData) ? ($inputData['category_id'] ? (int)$inputData['category_id'] : null) : null;
+        $categoryId = array_key_exists('category_id', $inputData)
+            ? ($inputData['category_id'] !== null && $inputData['category_id'] !== '' ? (int)$inputData['category_id'] : null)
+            : ($existing['category_id'] !== null ? (int)$existing['category_id'] : null);
 
         $errors = [];
         if ($title === '') {
