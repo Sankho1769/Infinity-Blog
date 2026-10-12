@@ -24,6 +24,7 @@ use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Http\RequestException;
 use InfinityBlog\Http\SummaryController;
+use InfinityBlog\Http\WebController;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Summaries\AiProviderConfig;
 use InfinityBlog\Summaries\DatabaseSummaryRateLimiter;
@@ -60,6 +61,43 @@ try {
     $pdo = ConnectionFactory::create($config->database);
     $users = new UserRepository($pdo);
     $guard = new AuthGuard($sessions, $users);
+
+    // Web Browser Views (HTML)
+    if ($request->method === 'GET') {
+        $webController = new WebController(
+            new PostRepository($pdo),
+            new CategoryRepository($pdo),
+            $users,
+            new AdminUserRepository($pdo),
+            new AuditLogRepository($pdo),
+            $guard,
+            $sessions,
+            $config
+        );
+
+        $webResult = match (true) {
+            $request->path === '/' => $webController->home($request),
+            (bool) preg_match('#^/article/([0-9]+)$#D', $request->path, $m) => $webController->article($request, (int) $m[1]),
+            $request->path === '/login' => $webController->login($request),
+            $request->path === '/dashboard' => $webController->dashboard($request),
+            $request->path === '/posts/new' => $webController->newPost($request),
+            (bool) preg_match('#^/posts/([0-9]+)/edit$#D', $request->path, $m) => $webController->editPost($request, (int) $m[1]),
+            $request->path === '/posts/manage' => $webController->managePosts($request),
+            $request->path === '/admin/categories-page' => $webController->adminCategories($request),
+            $request->path === '/admin/users-page' => $webController->adminUsers($request),
+            $request->path === '/admin/audit-logs-page' => $webController->adminAuditLogs($request),
+            $request->path === '/logout' => $webController->logout($request),
+            default => null,
+        };
+
+        if ($webResult !== null) {
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+    }
+
     if ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
