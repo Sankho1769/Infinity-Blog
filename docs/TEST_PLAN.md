@@ -23,7 +23,7 @@ Use a combination of unit tests for validators/services, integration tests for d
 
 Run `php tests/run.php` for configuration validation, production TLS checks, `.env` parsing/override behavior, generic PDO connection failure handling, request-correlated safe error logging, migration rollback protection, and secret-file ignore checks. The isolated SQLite/service-double cases also verify successful/failed/unknown/inactive login, missing and malformed fields, role derivation despite client-supplied role/user ID, session ID regeneration, idle expiry, logout invalidation, CSRF rejection/acceptance, limiter thresholds, administrator provisioning/rotation, database-backed auth-version revocation, unrelated-session preservation, and duplicate refusal. An application-level workflow test composes admin category setup, author login, draft creation, publication, public reads, summary generation, editing/stale-summary behavior, and deletion through the controllers; it uses SQLite and a mocked provider and does not verify MySQL syntax, constraints, or concurrency behavior.
 
-MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=test`, `INFINITY_BLOG_RUN_DB_TESTS=1`, and explicit `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_DATABASE`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD`. The database must be fresh/empty, its name must end exactly in `_test`, and its account must be dedicated and non-root. Remote test hosts also require `TEST_DB_SSL_CA`. Integration never reads `DB_*` as a fallback. If integration is enabled but settings are missing or invalid, the runner fails before making a connection. If integration is not enabled, the runner reports it as skipped; a skip is not a passing schema verification.
+MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=test`, `INFINITY_BLOG_RUN_DB_TESTS=1`, and explicit `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_DATABASE`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD`. For this local project setup, the runner is pinned to `blog_test` at `127.0.0.1:3307/infinity_blog_test` and verifies the live database and authenticated account before migrations. Integration never reads `DB_*` as a fallback. Before migration, it reports the table count and accepts either an empty database or the exact seven-table schema from all four project migrations, provided its six data tables are empty. Unknown objects, partial migration history, or existing data stop the suite without schema changes. This supports reruns after the suite's confirmed rollback/re-migration while preserving the database and account. If integration is enabled but settings are missing or invalid, the runner fails before making a connection. If integration is not enabled, the runner reports it as skipped; a skip is not a passing schema verification.
 
 ### Reproducible MySQL foundation run
 
@@ -37,22 +37,20 @@ MySQL integration checks use Oracle MySQL 8.0.16 or newer and require `APP_ENV=t
      ON infinity_blog_test.* TO 'blog_test'@'127.0.0.1';
    ```
 
-3. In PowerShell, set the non-secret test settings. Omit `TEST_DB_SSL_CA` only when connecting to loopback MySQL:
+3. In PowerShell, set the non-secret test settings for the pinned local target:
 
    ```powershell
    $env:APP_ENV = 'test'
    $env:INFINITY_BLOG_RUN_DB_TESTS = '1'
    $env:TEST_DB_HOST = '127.0.0.1'
-   $env:TEST_DB_PORT = '3306'
+   $env:TEST_DB_PORT = '3307'
    $env:TEST_DB_DATABASE = 'infinity_blog_test'
    $env:TEST_DB_USERNAME = 'blog_test'
-   # For remote MySQL, set this to the protected trusted-CA PEM path:
-   # $env:TEST_DB_SSL_CA = 'C:\protected\mysql-ca.pem'
    ```
 
    Supply `TEST_DB_PASSWORD` through a private environment/secret mechanism. Do not put it in a command argument or shell history.
-4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. The suite refuses any nonempty test schema before migration. It verifies the supported server version, clean execution and no-op rerun of all four migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership scopes, author-account creation/password/session revocation, MySQL summary persistence/source-race handling and HMAC rate limits, administrator provisioning, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the clean-schema check, then reapplies all four migrations to leave the schema reproducible.
-5. If tests stop with a nonempty database message, do not run a drop/reset against it. Create a new empty database ending in `_test` and point `TEST_DB_*` to that database.
+4. Run `& 'C:\xampp\php\php.exe' tests/run.php`. Before any migration, the suite reports the table count and verifies the database is empty or has only the exact fully migrated test schema with no data rows. It verifies the supported server version, no-op rerun of all four migrations, the `auth_version` column, required indexes, uniqueness/check/foreign-key behavior, category repository persistence/slugs/audit/deactivation/deletion rules, MySQL post persistence/transitions/ownership scopes, author-account creation/password/session revocation, MySQL summary persistence/source-race handling and HMAC rate limits, administrator provisioning, login-limiter behavior, and rollback confirmation. It performs the confirmed destructive rollback only after the preflight, then reapplies all four migrations to leave the schema reproducible.
+5. If preflight reports unexpected tables, migration history, or data rows, do not run a drop/reset against the database. Inspect the named test database and resolve the state deliberately before retrying.
 
 ## 3. Functional tests
 

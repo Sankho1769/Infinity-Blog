@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('provision', 'rotate')]
+    [ValidateSet('provision', 'rotate', 'diagnose')]
     [string] $Mode,
 
     [ValidateSet('Shubham Banerjee', 'Sounak Sikdar')]
@@ -31,19 +31,57 @@ function Read-ConfirmedPassword([string] $Prompt) {
         $second = Convert-SecureStringToPlainText $secondSecure
         $firstSecure.Dispose()
         $secondSecure.Dispose()
-        if ($first -ceq $second) {
+        if ($first -cne $second) {
+            $first = $null
             $second = $null
-            return $first
+            Write-Host 'Passwords did not match. Try again.'
+            continue
         }
-        $first = $null
+        if ($first.Length -lt 12 -or $first.Length -gt 72) {
+            $first = $null
+            $second = $null
+            Write-Host 'Passwords must be between 12 and 72 characters. Try again.'
+            continue
+        }
         $second = $null
-        Write-Host 'Passwords did not match. Try again.'
+        return $first
+    }
+}
+
+function Invoke-PhpCredentialsScript([string[]] $Arguments) {
+    $phpScript = Join-Path $PSScriptRoot 'admin-credentials.php'
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& $phpPath $phpScript @Arguments 2>&1)
+        $phpExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    foreach ($entry in $output) {
+        $text = if ($entry -is [System.Management.Automation.ErrorRecord]) {
+            $entry.Exception.Message
+        } else {
+            [string] $entry
+        }
+        if ($phpExitCode -ne 0) {
+            [Console]::Error.WriteLine($text)
+        } else {
+            Write-Host $text
+        }
+    }
+
+    if ($phpExitCode -ne 0) {
+        throw 'Administrator credential operation failed.'
     }
 }
 
 $passwords = @()
 try {
-    if ($Mode -eq 'provision') {
+    if ($Mode -eq 'diagnose') {
+        Invoke-PhpCredentialsScript @('diagnose')
+    } elseif ($Mode -eq 'provision') {
         $passwords += Read-ConfirmedPassword 'Password for Shubham Banerjee'
         $passwords += Read-ConfirmedPassword 'Password for Sounak Sikdar'
         if ($passwords[0] -ceq $passwords[1]) {
@@ -51,17 +89,14 @@ try {
         }
         $env:ADMIN_SHUBHAM_PASSWORD = $passwords[0]
         $env:ADMIN_SOUNAK_PASSWORD = $passwords[1]
-        & $phpPath (Join-Path $PSScriptRoot 'admin-credentials.php') provision
+        Invoke-PhpCredentialsScript @('provision')
     } else {
         if (-not $Identifier) {
             throw 'For rotation, provide -Identifier "Shubham Banerjee" or "Sounak Sikdar".'
         }
         $passwords += Read-ConfirmedPassword "New password for $Identifier"
         $env:ADMIN_NEW_PASSWORD = $passwords[0]
-        & $phpPath (Join-Path $PSScriptRoot 'admin-credentials.php') rotate $Identifier
-    }
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Administrator credential operation failed.'
+        Invoke-PhpCredentialsScript @('rotate', $Identifier)
     }
 } finally {
     Remove-Item Env:ADMIN_SHUBHAM_PASSWORD -ErrorAction SilentlyContinue

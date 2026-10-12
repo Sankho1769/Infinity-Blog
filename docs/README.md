@@ -85,15 +85,15 @@ Run the unit and safe-failure checks, including SQLite-backed authentication, se
 & 'C:\xampp\php\php.exe' tests/run.php
 ```
 
-Use Oracle MySQL 8.0.16 or newer for integration checks; MariaDB is not a substitute. Create a fresh, empty database named `infinity_blog_test` and a dedicated non-root test account. The suite checks that the database is empty before it migrates, requires the name to end exactly in `_test`, and never falls back to `DB_*`. It applies migrations twice, checks keys/constraints/indexes and category deactivation, verifies an unconfirmed rollback leaves the schema intact, performs a confirmed destructive rollback only against that empty disposable test schema, and migrates again to verify reproducibility. Do not point it at development or production data.
+Use Oracle MySQL 8.0.16 or newer for integration checks; MariaDB is not a substitute. The local integration runner is restricted to `blog_test` at `127.0.0.1:3307/infinity_blog_test` and verifies that live identity before migrations. It never falls back to `DB_*`. Before changing schema, it reports the table count and accepts either an empty database or the exact schema from all four migrations with no rows in its data tables; other schema or data states stop without changes. This allows repeat runs without recreating the database or account. Do not point it at development or production data.
 
-In PowerShell, set `APP_ENV=test`, `INFINITY_BLOG_RUN_DB_TESTS=1`, and `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_DATABASE`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD` in the process environment. Set `TEST_DB_SSL_CA` as well when the test server is remote. Supply passwords through a private environment/secret mechanism rather than command history. Then run:
+In PowerShell, set `APP_ENV=test`, `INFINITY_BLOG_RUN_DB_TESTS=1`, `TEST_DB_HOST=127.0.0.1`, `TEST_DB_PORT=3307`, `TEST_DB_DATABASE=infinity_blog_test`, and `TEST_DB_USERNAME=blog_test` in the process environment. Set `TEST_DB_PASSWORD` through a private environment/secret mechanism rather than command history. Then run:
 
 ```powershell
 & 'C:\xampp\php\php.exe' tests/run.php
 ```
 
-If the integration flag is enabled with missing, invalid, non-test, root-account, or non-`_test` settings, the runner fails before connecting. If the flag is not enabled, the integration group is reported as skipped, not passed. The test database must be empty; an existing table causes the suite to stop before migration or rollback.
+If the integration flag is enabled with missing, invalid, or mismatched local target settings, the runner fails before connecting. If the flag is not enabled, the integration group is reported as skipped, not passed. The preflight checks the table count, full migration history, and empty data tables before migrations or rollback; it does not reset unexpected state.
 
 ## Documentation map
 

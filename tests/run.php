@@ -5,6 +5,7 @@ use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Config\DatabaseConfig;
 use InfinityBlog\Config\EnvironmentLoader;
 use InfinityBlog\Auth\AdminProvisioner;
+use InfinityBlog\Auth\AdminProvisioningDiagnostic;
 use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\AuthenticationService;
 use InfinityBlog\Auth\LoginAttemptLimiter;
@@ -314,6 +315,23 @@ $run('database connection failure has a generic message and no chained driver ex
     }
 
     $expect(false, 'An unavailable database should fail safely.');
+});
+
+$run('CLI-only database connection diagnostics preserve safe error codes', static function () use ($expect): void {
+    $config = new DatabaseConfig('127.0.0.1', 1, 'unavailable_test', 'synthetic-user', 'synthetic-password');
+    try {
+        ConnectionFactory::createForCliDiagnostics($config, 1);
+    } catch (DatabaseUnavailableException $exception) {
+        $expect($exception->getMessage() === 'Database service is unavailable.');
+        $expect($exception->getPrevious() instanceof PDOException);
+        $diagnostic = AdminProvisioningDiagnostic::format($exception);
+        $expect(str_contains($diagnostic, 'DatabaseUnavailableException'));
+        $expect(str_contains($diagnostic, 'PDOException'));
+        $expect(!str_contains($diagnostic, 'synthetic-user') && !str_contains($diagnostic, 'synthetic-password'));
+        return;
+    }
+
+    $expect(false, 'An unavailable database should produce a safe local diagnostic.');
 });
 
 $run('environment example contains placeholders and local secrets are ignored', static function () use ($expect): void {
@@ -1843,6 +1861,14 @@ $run('administrator provisioning rejects duplicate passwords and unsafe configur
     }
     $expect($oversizedRejected, 'Oversized passwords must be rejected before database changes.');
 
+    $passwordPolicyAccepted = true;
+    try {
+        AdminProvisioner::validateProvisioningPasswords('valid-shubham-password', 'valid-sounak-password');
+    } catch (RuntimeException) {
+        $passwordPolicyAccepted = false;
+    }
+    $expect($passwordPolicyAccepted, 'The read-only preflight accepts distinct passwords within the configured length policy.');
+
     $unconfiguredDatabase = new PDO('sqlite::memory:');
     $databaseFailureWasHidden = false;
     try {
@@ -1851,8 +1877,23 @@ $run('administrator provisioning rejects duplicate passwords and unsafe configur
         $databaseFailureWasHidden = true;
         $expect($exception->getMessage() === 'Administrator provisioning failed.');
         $expect(!str_contains($exception->getMessage(), 'no such table'));
+        $expect($exception->getPrevious() instanceof PDOException, 'The local provisioning exception must preserve its database cause.');
+        $diagnostic = AdminProvisioningDiagnostic::format($exception);
+        $expect(str_contains($diagnostic, 'PDOException'));
+        $expect(str_contains($diagnostic, 'driver_code=1'));
+        $expect(!str_contains($diagnostic, 'no such table'));
     }
     $expect($databaseFailureWasHidden, 'Provisioning must fail safely when the schema is unavailable.');
+
+    $driverFailure = new PDOException('INSERT secret-name password-hash-value');
+    $driverFailure->errorInfo = ['23000', 1062, 'duplicate value secret-name'];
+    $safeDiagnostic = AdminProvisioningDiagnostic::format(
+        new RuntimeException('outer secret message', 0, $driverFailure)
+    );
+    $expect(str_contains($safeDiagnostic, 'sqlstate=23000') && str_contains($safeDiagnostic, 'driver_code=1062'));
+    $expect(!str_contains($safeDiagnostic, 'secret-name')
+        && !str_contains($safeDiagnostic, 'password-hash-value')
+        && !str_contains($safeDiagnostic, 'INSERT'));
 
     $invalid = $validConfiguration;
     $invalid['APP_KEY'] = '';

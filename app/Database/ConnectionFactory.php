@@ -11,6 +11,16 @@ final class ConnectionFactory
 {
     public static function create(DatabaseConfig $config, int $timeoutSeconds = 3): PDO
     {
+        return self::connect($config, $timeoutSeconds, false);
+    }
+
+    public static function createForCliDiagnostics(DatabaseConfig $config, int $timeoutSeconds = 3): PDO
+    {
+        return self::connect($config, $timeoutSeconds, true);
+    }
+
+    private static function connect(DatabaseConfig $config, int $timeoutSeconds, bool $preserveCause): PDO
+    {
         try {
             $options = [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -35,8 +45,8 @@ final class ConnectionFactory
                 $options
             );
         } catch (PDOException $exception) {
-            // Do not chain PDO's error: drivers may include connection details in it.
-            throw new DatabaseUnavailableException();
+            // General callers get no driver details; the local credential CLI can opt into safe-code diagnostics.
+            throw new DatabaseUnavailableException($preserveCause ? $exception : null);
         }
     }
 }

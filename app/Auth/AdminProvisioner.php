@@ -23,11 +23,7 @@ final class AdminProvisioner
 
     public function provision(string $shubhamPassword, string $sounakPassword): void
     {
-        self::validatePassword($shubhamPassword);
-        self::validatePassword($sounakPassword);
-        if (hash_equals($shubhamPassword, $sounakPassword)) {
-            throw new AdminProvisioningException('Each administrator must have a distinct password.');
-        }
+        self::validateProvisioningPasswords($shubhamPassword, $sounakPassword);
 
         $this->begin();
         try {
@@ -61,9 +57,9 @@ final class AdminProvisioner
         } catch (AdminProvisioningException $exception) {
             $this->rollback();
             throw $exception;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->rollback();
-            throw new AdminProvisioningException('Administrator provisioning failed.');
+            throw new AdminProvisioningException('Administrator provisioning failed.', 0, $exception);
         }
     }
 
@@ -93,9 +89,9 @@ final class AdminProvisioner
         } catch (AdminProvisioningException $exception) {
             $this->rollback();
             throw $exception;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->rollback();
-            throw new AdminProvisioningException('Administrator password rotation failed.');
+            throw new AdminProvisioningException('Administrator password rotation failed.', 0, $exception);
         }
     }
 
@@ -103,6 +99,15 @@ final class AdminProvisioner
     {
         if (strlen($password) < 12 || strlen($password) > 72) {
             throw new AdminProvisioningException('Passwords must be between 12 and 72 bytes.');
+        }
+    }
+
+    public static function validateProvisioningPasswords(string $shubhamPassword, string $sounakPassword): void
+    {
+        self::validatePassword($shubhamPassword);
+        self::validatePassword($sounakPassword);
+        if (hash_equals($shubhamPassword, $sounakPassword)) {
+            throw new AdminProvisioningException('Each administrator must have a distinct password.');
         }
     }
 
@@ -114,8 +119,8 @@ final class AdminProvisioner
             }
         } catch (AdminProvisioningException $exception) {
             throw $exception;
-        } catch (Throwable) {
-            throw new AdminProvisioningException('Administrator provisioning could not begin.');
+        } catch (Throwable $exception) {
+            throw new AdminProvisioningException('Administrator provisioning could not begin.', 0, $exception);
         }
     }
 
@@ -124,8 +129,8 @@ final class AdminProvisioner
         if ($this->pdo->inTransaction()) {
             try {
                 $this->pdo->rollBack();
-            } catch (Throwable) {
-                throw new AdminProvisioningException('Administrator operation could not be rolled back.');
+            } catch (Throwable $exception) {
+                throw new AdminProvisioningException('Administrator operation could not be rolled back.', 0, $exception);
             }
         }
     }
