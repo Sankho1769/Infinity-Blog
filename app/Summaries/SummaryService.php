@@ -30,7 +30,7 @@ final class SummaryService
     /** @return array{summary: string, summary_status: string, summary_generated_at: string} */
     public function generate(int $postId, UserAccount $actor, string $sourceAddress): array
     {
-        if ($actor->role === 'author') {
+        if ($actor->role === 'author' || $actor->role === 'user') {
             $ownerId = $actor->id;
             $post = $this->posts->findForAuthor($postId, $actor->id);
         } elseif ($actor->role === 'admin') {

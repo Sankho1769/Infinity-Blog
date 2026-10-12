@@ -28,10 +28,7 @@
                 <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
               </h3>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span class="user-role-badge <?= $author['role'] === 'admin' ? 'admin' : '' ?>">
-                  <?= htmlspecialchars(ucfirst($author['role']), ENT_QUOTES, 'UTF-8') ?>
-                </span>
-                <span style="font-size: 0.8rem; color: var(--text-muted);">
+                <span style="font-size: 0.85rem; color: var(--text-muted);">
                   @<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
               </div>

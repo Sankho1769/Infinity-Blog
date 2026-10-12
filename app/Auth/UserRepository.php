@@ -119,10 +119,15 @@ final class UserRepository
 
     public function createReader(string $displayName, string $email, string $passwordHash): int
     {
+        return $this->createUser($displayName, $email, $passwordHash);
+    }
+
+    public function createUser(string $displayName, string $email, string $passwordHash): int
+    {
         $normalized = self::normalizeIdentifier($email);
         $statement = $this->pdo->prepare(
             'INSERT INTO users (username, email, display_name, password_hash, role, status, auth_version, must_change_password) ' .
-            "VALUES (:username, :email, :display_name, :password_hash, 'reader', 'active', 1, 0)"
+            "VALUES (:username, :email, :display_name, :password_hash, 'user', 'active', 1, 0)"
         );
         $statement->execute([
             'username' => $normalized,
@@ -172,9 +177,10 @@ final class UserRepository
         $statement = $this->pdo->query(
             "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
             "FROM users u " .
-            "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-            "WHERE u.status = 'active' AND u.role IN ('author', 'admin') " .
+            "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+            "WHERE u.status = 'active' AND u.role IN ('user', 'author') " .
             "GROUP BY u.id, u.display_name, u.username, u.role " .
+            "HAVING post_count > 0 " .
             "ORDER BY post_count DESC, u.display_name ASC"
         );
 
@@ -194,7 +200,7 @@ final class UserRepository
             "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
             "FROM users u " .
             "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-            "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('author', 'admin') " .
+            "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') " .
             "GROUP BY u.id, u.display_name, u.username, u.role LIMIT 1"
         );
         $statement->execute(['id' => $id]);
@@ -219,7 +225,7 @@ final class UserRepository
         $status = (string) ($row['status'] ?? '');
         $id = filter_var($row['id'] ?? null, FILTER_VALIDATE_INT);
         $authVersion = filter_var($row['auth_version'] ?? null, FILTER_VALIDATE_INT);
-        if ($id === false || $id < 1 || !in_array($role, ['reader', 'author', 'admin'], true)
+        if ($id === false || $id < 1 || !in_array($role, ['user', 'reader', 'author', 'admin'], true)
             || !in_array($status, ['active', 'inactive'], true)
             || $authVersion === false || $authVersion < 1
             || !is_string($row['password_hash'] ?? null)) {

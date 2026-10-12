@@ -19,9 +19,6 @@
         <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-dark); margin: 0; letter-spacing: -0.02em;">
           <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
         </h1>
-        <span class="user-role-badge <?= ($author['role'] ?? '') === 'admin' ? 'admin' : 'author' ?>">
-          <?= htmlspecialchars(ucfirst($author['role'] ?? 'Author'), ENT_QUOTES, 'UTF-8') ?>
-        </span>
       </div>
 
       <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 540px; margin: 6px 0 14px; line-height: 1.5;">

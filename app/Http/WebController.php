@@ -114,7 +114,7 @@ final class WebController
     {
         $account = $this->guard->currentAccount();
         if ($account !== null) {
-            return $this->redirect($account->role === 'reader' ? '/' : '/dashboard');
+            return $this->redirect('/dashboard');
         }
 
         return $this->render('login', [
@@ -128,7 +128,7 @@ final class WebController
     {
         $account = $this->guard->currentAccount();
         if ($account !== null) {
-            return $this->redirect($account->role === 'reader' ? '/' : '/dashboard');
+            return $this->redirect('/dashboard');
         }
 
         return $this->render('register', [
@@ -170,7 +170,7 @@ final class WebController
                 'id' => $id,
                 'display_name' => 'Cristine Palmer',
                 'username' => 'cristine_palmer',
-                'role' => 'author',
+                'role' => 'user',
                 'post_count' => 0,
             ];
         }
@@ -187,12 +187,48 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function explore(Request $request): array
+    {
+        $q = isset($_GET['search']) && is_string($_GET['search']) ? trim($_GET['search']) : '';
+        if ($q === '' && isset($_GET['q']) && is_string($_GET['q'])) {
+            $q = trim($_GET['q']);
+        }
+        $categorySlug = isset($_GET['category']) && is_string($_GET['category']) ? trim($_GET['category']) : '';
+        $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+
+        $filters = [];
+        if ($q !== '') {
+            $filters['q'] = $q;
+        }
+
+        $activeCategory = null;
+        if ($categorySlug !== '') {
+            $activeCategory = $this->categories->findBySlug($categorySlug);
+            if ($activeCategory !== null) {
+                $filters['category_id'] = $activeCategory['id'];
+            }
+        }
+
+        $postsResult = $this->posts->listPublic($filters, $page, 12);
+        $categories = $this->categories->listActiveWithCounts();
+
+        return $this->render('explore', [
+            'pageTitle' => 'Explore Articles',
+            'activeNav' => 'explore',
+            'posts' => $postsResult['posts'],
+            'totalPosts' => $postsResult['total'],
+            'page' => $page,
+            'categories' => $categories,
+            'activeCategorySlug' => $categorySlug,
+            'activeCategoryName' => $activeCategory['name'] ?? null,
+            'searchQuery' => $q,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function about(Request $request): array
     {
-        return $this->render('about', [
-            'pageTitle' => 'About',
-            'activeNav' => 'about',
-        ]);
+        return $this->explore($request);
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -201,9 +237,6 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
-        }
-        if ($account->role === 'reader') {
-            return $this->redirect('/');
         }
 
         $counts = [];
@@ -223,7 +256,7 @@ final class WebController
         }
 
         return $this->render('dashboard', [
-            'pageTitle' => 'Author Dashboard',
+            'pageTitle' => 'Dashboard',
             'activeNav' => 'dashboard',
             'counts' => $counts,
             'recentPosts' => $recentPosts,
@@ -237,9 +270,6 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
-        }
-        if ($account->role === 'reader') {
-            return $this->redirect('/');
         }
 
         $activeCategories = $this->categories->listActive();
@@ -258,9 +288,6 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
-        }
-        if ($account->role === 'reader') {
-            return $this->redirect('/');
         }
 
         $post = $account->role === 'admin'
@@ -287,9 +314,6 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
-        }
-        if ($account->role === 'reader') {
-            return $this->redirect('/');
         }
 
         $status = isset($_GET['status']) && in_array($_GET['status'], ['draft', 'published'], true)

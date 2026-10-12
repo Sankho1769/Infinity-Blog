@@ -163,7 +163,7 @@ final class AuthController
                         'id' => $newUserId,
                         'display_name' => trim($displayName),
                         'email' => UserRepository::normalizeIdentifier(trim($email)),
-                        'role' => 'reader',
+                        'role' => 'user',
                         'status' => 'active',
                     ],
                     'csrf_token' => $this->sessions->csrfToken(),

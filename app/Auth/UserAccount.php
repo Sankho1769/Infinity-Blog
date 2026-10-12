@@ -39,14 +39,19 @@ final class UserAccount
         return $this->status === 'active';
     }
 
+    public function isUser(): bool
+    {
+        return $this->role === 'user' || $this->role === 'author';
+    }
+
     public function isReader(): bool
     {
-        return $this->role === 'reader';
+        return $this->role === 'reader' || $this->role === 'user';
     }
 
     public function isAuthor(): bool
     {
-        return $this->role === 'author';
+        return $this->role === 'user' || $this->role === 'author';
     }
 
     public function isAdmin(): bool

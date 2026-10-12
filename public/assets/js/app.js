@@ -203,24 +203,26 @@
       });
     }
 
-    // Escape key closes modals
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        window.closeDeleteModal();
-      }
-    });
-
-    // Mobile Navigation Drawer Toggle
+    // Mobile Navigation Drawer Controls
     const mobileToggle = document.getElementById('mobile-nav-toggle');
     const mobileDrawer = document.getElementById('mobile-nav-drawer');
+
+    function closeMobileDrawer() {
+      if (mobileDrawer && mobileDrawer.classList.contains('open')) {
+        mobileDrawer.classList.remove('open');
+        mobileDrawer.style.display = 'none';
+        if (mobileToggle) {
+          mobileToggle.setAttribute('aria-expanded', 'false');
+        }
+      }
+    }
+
     if (mobileToggle && mobileDrawer) {
       mobileToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = mobileDrawer.classList.contains('open');
         if (isOpen) {
-          mobileDrawer.classList.remove('open');
-          mobileDrawer.style.display = 'none';
-          mobileToggle.setAttribute('aria-expanded', 'false');
+          closeMobileDrawer();
         } else {
           mobileDrawer.classList.add('open');
           mobileDrawer.style.display = 'block';
@@ -231,14 +233,27 @@
       // Close mobile drawer if clicking outside
       document.addEventListener('click', (e) => {
         if (!mobileDrawer.contains(e.target) && !mobileToggle.contains(e.target)) {
-          if (mobileDrawer.classList.contains('open')) {
-            mobileDrawer.classList.remove('open');
-            mobileDrawer.style.display = 'none';
-            mobileToggle.setAttribute('aria-expanded', 'false');
-          }
+          closeMobileDrawer();
         }
       });
+
+      // Close mobile drawer when clicking any link inside it
+      mobileDrawer.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+          closeMobileDrawer();
+        });
+      });
     }
+
+    // Escape key closes modals and mobile drawer
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (typeof window.closeDeleteModal === 'function') {
+          window.closeDeleteModal();
+        }
+        closeMobileDrawer();
+      }
+    });
   });
 
   window.InfinityBlog = window.BlogCMS = {

@@ -222,7 +222,7 @@ final class PostController
         if ($account === null) {
             return $this->error(401, 'UNAUTHENTICATED', 'Authentication is required.');
         }
-        if ($account->role !== 'author') {
+        if (!in_array($account->role, ['user', 'author'], true)) {
             return $this->error(403, 'FORBIDDEN', 'Author access is required.');
         }
         return $account;
@@ -235,7 +235,7 @@ final class PostController
         if ($account === null) {
             return $this->error(401, 'UNAUTHENTICATED', 'Authentication is required.');
         }
-        if (!in_array($account->role, ['author', 'admin'], true)) {
+        if (!in_array($account->role, ['user', 'author', 'admin'], true)) {
             return $this->error(403, 'FORBIDDEN', 'Post access is not permitted.');
         }
         return $account;

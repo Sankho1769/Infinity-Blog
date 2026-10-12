@@ -48,7 +48,7 @@
       </div>
 
       <div style="margin-bottom: 20px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-        Sign in with your verified reader, author, or administrator credentials.
+        Sign in with your email or username and password.
       </div>
 
       <button type="submit" id="login-submit-btn" class="btn btn-primary btn-full">
@@ -108,8 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         // Successful login
         submitBtn.textContent = 'Signed in! Redirecting...';
-        const role = data.data?.user?.role;
-        window.location.href = role === 'reader' ? '/' : '/dashboard';
+        window.location.href = '/dashboard';
       } else {
         errorBox.textContent = data.error?.message || 'The login identifier or password is invalid.';
         errorBox.style.display = 'flex';

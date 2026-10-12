@@ -85,6 +85,7 @@ try {
             $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
             $request->path === '/authors' => $webController->publicAuthors($request),
             (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
+            $request->path === '/explore' => $webController->explore($request),
             $request->path === '/about' => $webController->about($request),
             $request->path === '/dashboard' => $webController->dashboard($request),
             $request->path === '/posts/new' => $webController->newPost($request),

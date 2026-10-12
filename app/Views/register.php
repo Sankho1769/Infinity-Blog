@@ -6,7 +6,7 @@
     </div>
 
     <h1 class="auth-title">Join Infinity Blog</h1>
-    <p class="auth-subtitle">Create your reader account to explore perspectives and engage with articles.</p>
+    <p class="auth-subtitle">Create your account to read, write, and share perspectives on Infinity Blog.</p>
 
     <div id="register-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 

@@ -39,9 +39,14 @@ final class SummaryController
         if ($actor === null) {
             return $this->error(401, 'UNAUTHENTICATED', 'Authentication is required.');
         }
-        $requiredRole = $matches[1] === 'admin' ? 'admin' : 'author';
-        if ($actor->role !== $requiredRole) {
-            return $this->error(403, 'FORBIDDEN', 'The requested operation is not permitted.');
+        if ($matches[1] === 'admin') {
+            if ($actor->role !== 'admin') {
+                return $this->error(403, 'FORBIDDEN', 'The requested operation is not permitted.');
+            }
+        } else {
+            if (!in_array($actor->role, ['user', 'author'], true)) {
+                return $this->error(403, 'FORBIDDEN', 'The requested operation is not permitted.');
+            }
         }
         if (!$this->sessions->validateCsrfToken($request->header('X-CSRF-Token'))) {
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');

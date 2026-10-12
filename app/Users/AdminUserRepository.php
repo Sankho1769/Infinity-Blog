@@ -20,10 +20,10 @@ final class AdminUserRepository
     /** @return array{users: list<array<string, mixed>>, total: int} */
     public function listAuthors(int $page, int $perPage): array
     {
-        $total = (int) $this->pdo->query("SELECT COUNT(*) FROM users WHERE role = 'author'")->fetchColumn();
+        $total = (int) $this->pdo->query("SELECT COUNT(*) FROM users WHERE role IN ('user', 'author')")->fetchColumn();
         $statement = $this->pdo->prepare(
             "SELECT id, username, display_name, role, status, must_change_password, last_login_at, created_at, updated_at " .
-            "FROM users WHERE role = 'author' ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset"
+            "FROM users WHERE role IN ('user', 'author') ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset"
         );
         $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
@@ -40,7 +40,7 @@ final class AdminUserRepository
     {
         $statement = $this->pdo->prepare(
             "SELECT id, username, display_name, role, status, must_change_password, last_login_at, created_at, updated_at " .
-            "FROM users WHERE id = :id AND role = 'author' LIMIT 1"
+            "FROM users WHERE id = :id AND role IN ('user', 'author') LIMIT 1"
         );
         $statement->execute(['id' => $userId]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -54,7 +54,7 @@ final class AdminUserRepository
         try {
             $insert = $this->pdo->prepare(
                 "INSERT INTO users (username, display_name, password_hash, role, status) " .
-                "VALUES (:username, :display_name, :password_hash, 'author', 'active')"
+                "VALUES (:username, :display_name, :password_hash, 'user', 'active')"
             );
             try {
                 $insert->execute([
@@ -69,7 +69,7 @@ final class AdminUserRepository
                 throw $exception;
             }
             $userId = (int) $this->pdo->lastInsertId();
-            $this->writeAudit('user.created', $userId, $actorId, ['username' => $username, 'role' => 'author']);
+            $this->writeAudit('user.created', $userId, $actorId, ['username' => $username, 'role' => 'user']);
             $user = $this->findAuthor($userId);
             if ($user === null) {
                 throw new RuntimeException('The new author account could not be loaded.');
@@ -107,7 +107,7 @@ final class AdminUserRepository
             $sets[] = 'updated_at = :updated_at';
             $parameters['updated_at'] = gmdate('Y-m-d H:i:s');
             $update = $this->pdo->prepare(
-                "UPDATE users SET " . implode(', ', $sets) . " WHERE id = :id AND role = 'author'"
+                "UPDATE users SET " . implode(', ', $sets) . " WHERE id = :id AND role IN ('user', 'author')"
             );
             $update->execute($parameters);
             $this->writeAudit(
@@ -144,7 +144,7 @@ final class AdminUserRepository
             }
             $update = $this->pdo->prepare(
                 "UPDATE users SET status = :status, auth_version = auth_version + 1, updated_at = :updated_at " .
-                "WHERE id = :id AND role = 'author'"
+                "WHERE id = :id AND role IN ('user', 'author')"
             );
             $update->execute([
                 'status' => $status,
@@ -176,7 +176,7 @@ final class AdminUserRepository
         $lock = $driver === 'mysql' ? ' FOR UPDATE' : '';
         $statement = $this->pdo->prepare(
             "SELECT id, username, display_name, role, status, must_change_password, last_login_at, created_at, updated_at " .
-            "FROM users WHERE id = :id AND role = 'author' LIMIT 1" . $lock
+            "FROM users WHERE id = :id AND role IN ('user', 'author') LIMIT 1" . $lock
         );
         $statement->execute(['id' => $userId]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
