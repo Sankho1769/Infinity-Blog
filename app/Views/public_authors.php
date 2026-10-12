@@ -35,7 +35,7 @@
             </div>
           </div>
 
-          <div style="margin-top: 14px; padding: 12px 14px; background: rgba(248, 250, 252, 0.6); border-radius: var(--radius-md); border: 1px solid rgba(226, 232, 240, 0.6); display: flex; justify-content: space-between; align-items: center;">
+          <div style="margin-top: 14px; padding: 12px 14px; background: var(--glass-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--glass-border-subtle); display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; color: var(--text-muted);">Published Articles</span>
             <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-color);">
               <?= (int) $author['post_count'] ?>

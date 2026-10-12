@@ -35,7 +35,7 @@
   </div>
 
   <!-- Author Stats Counter -->
-  <div style="display: flex; gap: 20px; background: rgba(255, 255, 255, 0.7); padding: 18px 24px; border-radius: var(--radius-lg); border: 1px solid rgba(226, 232, 240, 0.8);">
+  <div style="display: flex; gap: 20px; background: var(--glass-bg-elevated); backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm); padding: 18px 24px; border-radius: var(--radius-lg); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow-sm);">
     <div style="text-align: center;">
       <div style="font-size: 1.5rem; font-weight: 800; color: var(--text-dark);"><?= (int) $totalPosts ?></div>
       <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Articles</div>
