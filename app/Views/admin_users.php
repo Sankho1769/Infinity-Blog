@@ -1,5 +1,5 @@
 <!-- Author Accounts Management (Admin) -->
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting">Author Accounts</h1>
     <p class="dashboard-subhead">Manage author access and provision new writing accounts.</p>

@@ -1,5 +1,5 @@
 <!-- Explore Page: Discover & Browse Articles -->
-<div class="content-header" style="margin-top: 16px; margin-bottom: 28px; text-align: center;">
+<div class="content-header content-page-hero">
   <span class="hero-badge" style="display: inline-flex; margin-bottom: 12px;">Discover & Learn</span>
   <h1 style="font-size: 2.3rem; font-weight: 800; color: var(--text-dark); letter-spacing: -0.02em;">Explore Articles</h1>
   <p style="font-size: 1.05rem; color: var(--text-muted); max-width: 620px; margin: 10px auto 0;">
@@ -83,51 +83,21 @@
     </div>
   <?php else: ?>
     <div class="articles-grid">
-      <?php
-        $bannerGradients = [
-          'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(191, 219, 254, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(254, 243, 199, 0.9) 0%, rgba(253, 230, 138, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(243, 232, 255, 0.9) 0%, rgba(233, 213, 255, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(220, 252, 231, 0.9) 0%, rgba(187, 247, 208, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(255, 228, 230, 0.9) 0%, rgba(254, 205, 211, 0.7) 100%)',
-        ];
-        $cardIdx = 0;
-      ?>
-      <?php foreach ($posts as $post): ?>
+      <?php foreach ($posts as $idx => $post): ?>
         <?php
-          $bg = $bannerGradients[$cardIdx % count($bannerGradients)];
-          $cardIdx++;
+          $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
         ?>
         <article class="glass-panel glass-panel-hover article-card">
-          <?php if (!empty($post['featured_image_url'])): ?>
-            <div class="article-card-image" style="background-image: url('<?= htmlspecialchars($post['featured_image_url'], ENT_QUOTES, 'UTF-8') ?>'); background-size: cover; background-position: center; height: 190px; border-radius: var(--radius-md) var(--radius-md) 0 0; position: relative;">
-              <div class="article-banner-meta" style="position: absolute; top: 12px; left: 12px;">
-                <?php if (!empty($post['category_name'])): ?>
-                  <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-                <?php else: ?>
-                  <span class="badge badge-published">Published</span>
-                <?php endif; ?>
-              </div>
+          <div class="article-card-banner has-image">
+            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
+            <div class="article-banner-badge-wrapper">
+              <?php if (!empty($post['category_name'])): ?>
+                <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+              <?php else: ?>
+                <span class="badge badge-published">Published</span>
+              <?php endif; ?>
             </div>
-          <?php else: ?>
-            <div class="article-card-banner" style="background: <?= $bg ?>;">
-              <div class="article-banner-meta">
-                <?php if (!empty($post['category_name'])): ?>
-                  <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-                <?php else: ?>
-                  <span class="badge badge-published">Published</span>
-                <?php endif; ?>
-              </div>
-              <div class="article-banner-icon" aria-hidden="true">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(30, 41, 59, 0.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                </svg>
-              </div>
-            </div>
-          <?php endif; ?>
+          </div>
 
           <div class="article-card-body">
             <time class="article-date-meta">

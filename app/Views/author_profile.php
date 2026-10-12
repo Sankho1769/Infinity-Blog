@@ -73,17 +73,13 @@
   </div>
 <?php else: ?>
   <div class="articles-grid">
-    <?php
-      $bannerGradients = [
-        'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(191, 219, 254, 0.7) 100%)',
-        'linear-gradient(135deg, rgba(254, 243, 199, 0.9) 0%, rgba(253, 230, 138, 0.7) 100%)',
-        'linear-gradient(135deg, rgba(243, 232, 255, 0.9) 0%, rgba(233, 213, 255, 0.7) 100%)',
-      ];
-      foreach ($posts as $idx => $post):
-        $gradient = $bannerGradients[$idx % count($bannerGradients)];
-    ?>
+    <?php foreach ($posts as $idx => $post): ?>
+      <?php
+        $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
+      ?>
       <article class="glass-panel glass-panel-hover article-card">
-        <div class="article-card-banner" style="background: <?= $gradient ?>;">
+        <div class="article-card-banner has-image">
+          <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
           <div class="article-banner-badge-wrapper">
             <?php if (!empty($post['category_name'])): ?>
               <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>

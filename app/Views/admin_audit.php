@@ -1,5 +1,5 @@
 <!-- Audit Logs Viewer (Admin) -->
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting">Security & Audit Logs</h1>
     <p class="dashboard-subhead">System-wide record of authentication, content moderation and administrative changes.</p>

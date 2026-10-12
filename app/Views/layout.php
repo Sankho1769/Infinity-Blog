@@ -152,9 +152,9 @@
     <?= $content ?? '' ?>
   </main>
 
-  <!-- Footer -->
-  <footer class="container" style="margin-top: 80px; padding-bottom: 40px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
-    <p>© <?= date('Y') ?> Infinity Blog — Powered by PHP & MySQL.</p>
+  <!-- Footer with Asset Background -->
+  <footer class="container site-footer">
+    <p>© <?= date('Y') ?> Infinity Blog — Powered by PHP & MySQL. Ideas. Stories. Perspectives.</p>
   </footer>
 
   <!-- Global Delete Confirmation Modal Dialog -->

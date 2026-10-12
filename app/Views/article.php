@@ -61,6 +61,14 @@
       </div>
     </header>
 
+    <!-- Featured Article Banner Image -->
+    <?php
+      $articleImage = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
+    ?>
+    <div class="article-featured-banner">
+      <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+    </div>
+
     <!-- Stored AI Summary Box (if present and current) -->
     <?php if (!empty($post['summary']) && \InfinityBlog\Posts\PostRepository::isSummaryCurrent($post)): ?>
       <aside class="ai-summary-card">

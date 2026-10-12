@@ -1,5 +1,5 @@
 <!-- Screen 6: Manage Posts (All Posts) -->
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting">All Posts</h1>
     <p class="dashboard-subhead">Manage, edit, publish or delete your articles.</p>

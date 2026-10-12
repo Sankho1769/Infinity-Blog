@@ -1,5 +1,5 @@
 <!-- Public Authors Page -->
-<div class="content-header" style="margin-top: 20px; margin-bottom: 30px; text-align: center;">
+<div class="content-header content-page-hero">
   <span class="hero-badge" style="display: inline-flex; margin-bottom: 12px;">Voices & Contributors</span>
   <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-dark); letter-spacing: -0.02em;">Our Authors</h1>
   <p style="font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin: 10px auto 0;">

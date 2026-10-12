@@ -1,5 +1,5 @@
 <!-- Public Categories Page -->
-<div class="content-header" style="margin-top: 20px; margin-bottom: 30px; text-align: center;">
+<div class="content-header content-page-hero">
   <span class="hero-badge" style="display: inline-flex; margin-bottom: 12px;">Browse Knowledge</span>
   <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-dark); letter-spacing: -0.02em;">Explore Categories</h1>
   <p style="font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin: 10px auto 0;">
@@ -17,7 +17,7 @@
 <?php else: ?>
   <div class="categories-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
     <?php foreach ($categories as $cat): ?>
-      <a href="/?category=<?= htmlspecialchars($cat['slug'], ENT_QUOTES, 'UTF-8') ?>" class="glass-panel glass-panel-hover" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; text-decoration: none; border-radius: var(--radius-lg); transition: all 0.2s ease;">
+      <a href="/?category=<?= htmlspecialchars($cat['slug'], ENT_QUOTES, 'UTF-8') ?>" class="glass-panel glass-panel-hover category-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; text-decoration: none; border-radius: var(--radius-lg); transition: all 0.2s ease;">
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <div style="width: 42px; height: 42px; border-radius: 12px; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.15rem; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);">

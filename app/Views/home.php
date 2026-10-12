@@ -17,17 +17,8 @@
   </div>
 
   <div class="hero-visual" aria-hidden="true">
-    <div class="hero-card-stack">
-      <div class="hero-floating-card card-1">
-        <span class="badge badge-category" style="margin-bottom: 8px;">Featured</span>
-        <h4 style="font-size: 1.05rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px;">Modern Web Development</h4>
-        <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.4;">A beginner-friendly guide to building modern scalable web applications.</p>
-      </div>
-      <div class="hero-floating-card card-2">
-        <span class="badge badge-published" style="margin-bottom: 8px;">Trending</span>
-        <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px;">The Power of Focus</h4>
-        <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">Daily strategies to improve mental clarity, deep work and creative output.</p>
-      </div>
+    <div class="hero-illustration-wrapper">
+      <img src="/assets/images/floating-blog-documents.png" class="hero-floating-illustration" alt="Infinity Blog editorial illustration">
     </div>
   </div>
 </section>
@@ -66,7 +57,7 @@
       <?php if (!empty($searchQuery) || !empty($activeCategorySlug)): ?>
         <a href="/" class="section-link">Clear filters ×</a>
       <?php endif; ?>
-      <a href="/" class="section-link" style="font-weight: 700;">View All →</a>
+      <a href="/explore" class="section-link" style="font-weight: 700;">Explore All →</a>
     </div>
   </div>
 
@@ -82,67 +73,28 @@
       <p class="empty-desc">There are no published articles matching your criteria right now. Check back soon!</p>
       <?php if (!empty($currentUser)): ?>
         <a href="/posts/new" class="btn btn-primary btn-pill">Write First Post</a>
+      <?php else: ?>
+        <a href="/register" class="btn btn-primary btn-pill">Join & Write</a>
       <?php endif; ?>
     </div>
   <?php else: ?>
     <div class="articles-grid">
-      <?php
-        $bannerGradients = [
-          'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(191, 219, 254, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(254, 243, 199, 0.9) 0%, rgba(253, 230, 138, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(243, 232, 255, 0.9) 0%, rgba(233, 213, 255, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(220, 252, 231, 0.9) 0%, rgba(187, 247, 208, 0.7) 100%)',
-          'linear-gradient(135deg, rgba(255, 228, 230, 0.9) 0%, rgba(254, 205, 211, 0.7) 100%)',
-        ];
-        $cardIdx = 0;
-      ?>
-      <?php foreach ($posts as $post): ?>
+      <?php foreach ($posts as $idx => $post): ?>
         <?php
-          $gradient = $bannerGradients[$cardIdx % count($bannerGradients)];
-          $cardIdx++;
-          $imageUrl = null;
-          if (!empty($post['image_url'])) {
-              $imageUrl = $post['image_url'];
-          } elseif (!empty($post['content'])) {
-              if (preg_match('/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/i', $post['content'], $imgMatch)) {
-                  $imageUrl = $imgMatch[1];
-              } elseif (preg_match('/<img[^>]+src=["\'](https?:\/\/[^"\']+)["\']/i', $post['content'], $imgMatch)) {
-                  $imageUrl = $imgMatch[1];
-              }
-          }
+          $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
         ?>
         <article class="glass-panel glass-panel-hover article-card">
           <!-- Card Visual Banner Header matching Reference 2 -->
-          <?php if (!empty($imageUrl)): ?>
-            <div class="article-card-banner has-image">
-              <img src="<?= htmlspecialchars($imageUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
-              <div class="article-banner-badge-wrapper">
-                <?php if (!empty($post['category_name'])): ?>
-                  <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-                <?php else: ?>
-                  <span class="badge badge-published">Published</span>
-                <?php endif; ?>
-              </div>
+          <div class="article-card-banner has-image">
+            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
+            <div class="article-banner-badge-wrapper">
+              <?php if (!empty($post['category_name'])): ?>
+                <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+              <?php else: ?>
+                <span class="badge badge-published">Published</span>
+              <?php endif; ?>
             </div>
-          <?php else: ?>
-            <div class="article-card-banner" style="background: <?= $gradient ?>;">
-              <div class="article-banner-badge-wrapper">
-                <?php if (!empty($post['category_name'])): ?>
-                  <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-                <?php else: ?>
-                  <span class="badge badge-published">Published</span>
-                <?php endif; ?>
-              </div>
-              <div class="article-banner-icon" aria-hidden="true">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(30, 41, 59, 0.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                </svg>
-              </div>
-            </div>
-          <?php endif; ?>
+          </div>
 
           <div class="article-card-body">
             <time class="article-date-meta">

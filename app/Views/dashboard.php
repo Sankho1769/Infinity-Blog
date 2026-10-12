@@ -9,7 +9,7 @@
   }
 ?>
 <!-- Screen 3: Author Dashboard -->
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting">
       <?= $dynamicGreeting ?>, <?= htmlspecialchars(!empty($currentUser['display_name']) ? $currentUser['display_name'] : (!empty($currentUser['username']) ? $currentUser['username'] : 'Cristine Palmer'), ENT_QUOTES, 'UTF-8') ?>! 👋
@@ -175,7 +175,7 @@
 
   <!-- Quick Actions Sidebar matching Reference Image 2 -->
   <aside>
-    <div class="glass-panel" style="padding: 24px; margin-bottom: 24px;">
+    <div class="glass-panel dashboard-sidebar-widget" style="padding: 24px; margin-bottom: 24px;">
       <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--text-dark); margin-bottom: 16px;">Quick Actions</h3>
       <div style="display: flex; flex-direction: column; gap: 10px;">
         <a href="/posts/new" class="btn btn-primary" style="justify-content: flex-start; padding: 12px 18px;">

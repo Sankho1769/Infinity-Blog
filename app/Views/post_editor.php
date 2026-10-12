@@ -5,7 +5,7 @@
   $pageSubhead = $isEdit ? 'Update your article content and publication settings.' : 'Write and publish your ideas to the world.';
 ?>
 
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting"><?= $pageHeading ?></h1>
     <p class="dashboard-subhead"><?= $pageSubhead ?></p>

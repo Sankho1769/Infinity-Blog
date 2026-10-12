@@ -1,5 +1,5 @@
 <!-- Screen 7: Categories Page (Admin) -->
-<div class="dashboard-header">
+<div class="dashboard-header dashboard-page-bg">
   <div>
     <h1 class="dashboard-greeting">Categories</h1>
     <p class="dashboard-subhead">Organise your blog articles with clean, searchable categories.</p>
