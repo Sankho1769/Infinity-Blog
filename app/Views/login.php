@@ -41,7 +41,15 @@
         </div>
       </div>
 
-      <button type="submit" id="login-submit-btn" class="btn btn-primary btn-full" style="margin-top: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.85rem;">
+        <label style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); cursor: pointer;">
+          <input type="checkbox" name="remember" class="custom-checkbox">
+          <span>Remember me</span>
+        </label>
+        <span style="color: var(--primary-color); font-weight: 600; font-size: 0.85rem; cursor: pointer;" title="Contact your administrator for account assistance">Forgot password?</span>
+      </div>
+
+      <button type="submit" id="login-submit-btn" class="btn btn-primary btn-full">
         Sign In
       </button>
 

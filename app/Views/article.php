@@ -60,7 +60,7 @@
     </header>
 
     <!-- Stored AI Summary Box (if present and current) -->
-    <?php if (!empty($post['summary']) && ($post['summary_status'] ?? '') === 'current'): ?>
+    <?php if (!empty($post['summary']) && \InfinityBlog\Posts\PostRepository::isSummaryCurrent($post)): ?>
       <aside class="ai-summary-card">
         <div class="ai-summary-header">
           <span>✨</span>
@@ -80,7 +80,7 @@
         ← Back to All Articles
       </a>
       <span style="font-size: 0.85rem; color: var(--text-subtle);">
-        Infinity Blog CMS
+        Infinity Blog
       </span>
     </div>
   </article>

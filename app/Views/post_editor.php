@@ -45,14 +45,29 @@
       </div>
 
       <div class="form-group">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <label class="form-label">Featured Image Thumbnail <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
+        <div class="featured-image-placeholder-box">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 6px;">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Editorial Visual Card</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Standard pastel claymorphic banner will be paired automatically with this topic.</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
           <label for="post-content" class="form-label" style="margin-bottom: 0;">Article Content <span style="color: var(--danger-color);">*</span></label>
-          <div style="display: flex; gap: 6px;">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('**', '**')" title="Bold">B</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('*', '*')" title="Italic"><i>I</i></button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('## ', '')" title="Heading">H2</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('> ', '')" title="Quote">”</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('```\n', '\n```')" title="Code">Code</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('- ', '')" title="Bullet List">• List</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('[', '](https://)')" title="Link">🔗 Link</button>
           </div>
         </div>
         <textarea id="post-content" name="content" class="form-textarea" placeholder="Write your article here..." required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
@@ -122,11 +137,15 @@
           </button>
 
           <?php if ($isEdit): ?>
-            <button type="button" class="btn btn-danger btn-full" style="margin-top: 12px;"
+            <button type="button" class="btn btn-danger btn-full" style="margin-top: 8px;"
                     onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
               Delete Post
             </button>
           <?php endif; ?>
+
+          <a href="/posts/manage" class="btn btn-secondary btn-full" style="text-align: center; justify-content: center; margin-top: 4px;">
+            Cancel
+          </a>
         </div>
       </div>
     </aside>

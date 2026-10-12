@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($pageTitle ?? 'Infinity Blog', ENT_QUOTES, 'UTF-8') ?> — BlogCMS</title>
+  <title><?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog</title>
   <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,11 +21,12 @@
   <!-- Sticky Glass Navigation Header -->
   <header class="site-header container container-wide">
     <nav class="nav-bar glass-panel" aria-label="Main Navigation">
-      <a href="/" class="brand-logo">
+      <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
         <span class="brand-logo-icon">✦</span>
-        <span>Blog<span class="brand-text-accent">CMS</span></span>
+        <span>Infinity <span class="brand-text-accent">Blog</span></span>
       </a>
 
+      <!-- Desktop Navigation Links -->
       <ul class="nav-links">
         <li><a href="/" class="nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
         <?php if (!empty($currentUser)): ?>
@@ -41,6 +42,7 @@
         <?php endif; ?>
       </ul>
 
+      <!-- Desktop Header Actions -->
       <div class="nav-actions">
         <!-- Search bar -->
         <form action="/" method="GET" class="nav-search-form" role="search">
@@ -54,8 +56,10 @@
         <?php if (!empty($currentUser)): ?>
           <!-- Logged in Author / Admin Menu -->
           <div class="user-menu-pill">
-            <div class="user-avatar"><?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?></div>
-            <span><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?></span>
+            <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
+              <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
+            </div>
+            <span class="user-display-name"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?></span>
             <span class="user-role-badge <?= $currentUser['role'] === 'admin' ? 'admin' : '' ?>"><?= htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8') ?></span>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 4px;">Logout</a>
           </div>
@@ -63,8 +67,43 @@
           <!-- Guest Sign In Button -->
           <a href="/login" class="btn btn-primary btn-pill">Sign In</a>
         <?php endif; ?>
+
+        <!-- Mobile Navigation Toggle Button -->
+        <button type="button" class="mobile-nav-toggle btn btn-secondary btn-sm" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
       </div>
     </nav>
+
+    <!-- Mobile Nav Drawer (Collapsible) -->
+    <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" style="display: none;">
+      <ul class="mobile-nav-list">
+        <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
+        <?php if (!empty($currentUser)): ?>
+          <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
+          <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
+          <li><a href="/posts/new" class="mobile-nav-link">Create Post</a></li>
+          <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+            <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
+            <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>">Users</a></li>
+            <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>">Audit Logs</a></li>
+          <?php endif; ?>
+          <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8') ?>)</span>
+            <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
+          </li>
+        <?php else: ?>
+          <li><a href="/#articles" class="mobile-nav-link">Articles</a></li>
+          <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7);">
+            <a href="/login" class="btn btn-primary btn-pill btn-full">Sign In</a>
+          </li>
+        <?php endif; ?>
+      </ul>
+    </div>
   </header>
 
   <!-- Flash Messages Container -->
@@ -93,7 +132,7 @@
 
   <!-- Footer -->
   <footer class="container" style="margin-top: 80px; padding-bottom: 40px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
-    <p>© <?= date('Y') ?> Infinity Blog CMS — Powered by PHP & MySQL.</p>
+    <p>© <?= date('Y') ?> Infinity Blog — Powered by PHP & MySQL.</p>
   </footer>
 
   <!-- Global Delete Confirmation Modal Dialog -->

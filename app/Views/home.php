@@ -45,7 +45,7 @@
 <?php endif; ?>
 
 <!-- Latest Articles Section -->
-<section id="articles" style="margin-top: 16px;">
+<section id="articles" style="margin-top: 24px;">
   <div class="section-header">
     <div>
       <h2 class="section-title">
@@ -62,9 +62,12 @@
       </p>
     </div>
     
-    <?php if (!empty($searchQuery) || !empty($activeCategorySlug)): ?>
-      <a href="/" class="section-link">Clear filters ×</a>
-    <?php endif; ?>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <?php if (!empty($searchQuery) || !empty($activeCategorySlug)): ?>
+        <a href="/" class="section-link">Clear filters ×</a>
+      <?php endif; ?>
+      <a href="/#articles" class="section-link" style="font-weight: 700;">View All →</a>
+    </div>
   </div>
 
   <?php if (empty($posts)): ?>
@@ -83,43 +86,71 @@
     </div>
   <?php else: ?>
     <div class="articles-grid">
+      <?php
+        $bannerGradients = [
+          'linear-gradient(135deg, rgba(219, 234, 254, 0.9) 0%, rgba(191, 219, 254, 0.7) 100%)',
+          'linear-gradient(135deg, rgba(254, 243, 199, 0.9) 0%, rgba(253, 230, 138, 0.7) 100%)',
+          'linear-gradient(135deg, rgba(243, 232, 255, 0.9) 0%, rgba(233, 213, 255, 0.7) 100%)',
+          'linear-gradient(135deg, rgba(220, 252, 231, 0.9) 0%, rgba(187, 247, 208, 0.7) 100%)',
+          'linear-gradient(135deg, rgba(255, 228, 230, 0.9) 0%, rgba(254, 205, 211, 0.7) 100%)',
+        ];
+        $cardIdx = 0;
+      ?>
       <?php foreach ($posts as $post): ?>
+        <?php
+          $gradient = $bannerGradients[$cardIdx % count($bannerGradients)];
+          $cardIdx++;
+        ?>
         <article class="glass-panel glass-panel-hover article-card">
-          <div class="article-card-header">
-            <?php if (!empty($post['category_name'])): ?>
-              <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-            <?php else: ?>
-              <span class="badge badge-published">Published</span>
-            <?php endif; ?>
-            <time style="font-size: 0.8rem; color: var(--text-subtle);">
-              <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
-            </time>
+          <!-- Card Visual Banner Header matching Reference 2 -->
+          <div class="article-card-banner" style="background: <?= $gradient ?>;">
+            <div class="article-banner-badge-wrapper">
+              <?php if (!empty($post['category_name'])): ?>
+                <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+              <?php else: ?>
+                <span class="badge badge-published">Published</span>
+              <?php endif; ?>
+            </div>
+            <div class="article-banner-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(30, 41, 59, 0.3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+            </div>
           </div>
 
-          <h3 class="article-card-title">
-            <a href="/article/<?= (int) $post['id'] ?>" style="color: inherit; text-decoration: none;">
-              <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
-            </a>
-          </h3>
+          <div class="article-card-body">
+            <time class="article-date-meta">
+              <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
+            </time>
 
-          <p class="article-card-excerpt">
-            <?php
-              $excerpt = !empty($post['summary']) ? $post['summary'] : strip_tags($post['content'] ?? '');
-              echo htmlspecialchars(mb_substr($excerpt, 0, 140) . (mb_strlen($excerpt) > 140 ? '...' : ''), ENT_QUOTES, 'UTF-8');
-            ?>
-          </p>
+            <h3 class="article-card-title">
+              <a href="/article/<?= (int) $post['id'] ?>">
+                <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </h3>
 
-          <div class="article-card-footer">
-            <div class="article-author-info">
-              <div class="user-avatar" style="width: 24px; height: 24px; font-size: 0.75rem;">
-                <?= strtoupper(substr($post['author_name'] ?? 'Author', 0, 1)) ?>
+            <p class="article-card-excerpt">
+              <?php
+                $excerpt = !empty($post['summary']) ? $post['summary'] : strip_tags($post['content'] ?? '');
+                echo htmlspecialchars(mb_substr($excerpt, 0, 130) . (mb_strlen($excerpt) > 130 ? '...' : ''), ENT_QUOTES, 'UTF-8');
+              ?>
+            </p>
+
+            <div class="article-card-footer">
+              <div class="article-author-info">
+                <div class="user-avatar" style="width: 26px; height: 26px; font-size: 0.75rem;">
+                  <?= strtoupper(substr($post['author_name'] ?? 'Author', 0, 1)) ?>
+                </div>
+                <span><?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?></span>
               </div>
-              <span><?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?></span>
+
+              <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
+                Read Story →
+              </a>
             </div>
-            
-            <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
-              Read Story →
-            </a>
           </div>
         </article>
       <?php endforeach; ?>

@@ -2,9 +2,9 @@
 <div class="dashboard-header">
   <div>
     <h1 class="dashboard-greeting">
-      Hello, <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>! 👋
+      Good morning, <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>! 👋
     </h1>
-    <p class="dashboard-subhead">Here's an overview of your blog publications and writing activity.</p>
+    <p class="dashboard-subhead">Here's what's happening with your blog.</p>
   </div>
 
   <a href="/posts/new" class="btn btn-primary btn-pill">
@@ -70,6 +70,19 @@
       <div>
         <div class="stat-value"><?= (int) ($adminCounts['users_total'] ?? 2) ?></div>
         <div class="stat-label">System Accounts</div>
+      </div>
+    </div>
+  <?php else: ?>
+    <div class="glass-panel stat-card">
+      <div class="stat-icon purple">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      </div>
+      <div>
+        <div class="stat-value"><?= (int) ($counts['total'] ?? 0) ?></div>
+        <div class="stat-label">Total Written</div>
       </div>
     </div>
   <?php endif; ?>
@@ -138,7 +151,7 @@
                     ✏️
                   </a>
                   <button type="button" class="btn btn-danger btn-sm" title="Delete Post" style="padding: 4px 8px;"
-                          onclick="openDeleteModal('/author/posts/<?= (int) $post['id'] ?>/delete', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
+                          onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
                     🗑️
                   </button>
                 </td>
@@ -150,19 +163,32 @@
     <?php endif; ?>
   </div>
 
-  <!-- Quick Actions Sidebar -->
+  <!-- Quick Actions Sidebar matching Reference Image 2 -->
   <aside>
     <div class="glass-panel" style="padding: 24px; margin-bottom: 24px;">
       <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--text-dark); margin-bottom: 16px;">Quick Actions</h3>
       <div style="display: flex; flex-direction: column; gap: 10px;">
-        <a href="/posts/new" class="btn btn-primary" style="justify-content: flex-start;">
-          <span>✍️</span> Create New Post
+        <a href="/posts/new" class="btn btn-primary" style="justify-content: flex-start; padding: 12px 18px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Create New Post
         </a>
-        <a href="/posts/manage" class="btn btn-secondary" style="justify-content: flex-start;">
-          <span>📂</span> Manage All Posts
+        <a href="/posts/manage" class="btn btn-secondary" style="justify-content: flex-start; padding: 12px 18px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+          Manage Posts
         </a>
-        <a href="/" class="btn btn-secondary" style="justify-content: flex-start;" target="_blank">
-          <span>🌐</span> View Public Site ↗
+        <a href="/" class="btn btn-secondary" style="justify-content: flex-start; padding: 12px 18px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          View Site
         </a>
       </div>
     </div>
@@ -171,14 +197,14 @@
       <div class="glass-panel" style="padding: 24px;">
         <h3 style="font-size: 1.1rem; font-weight: 800; color: #4338ca; margin-bottom: 16px;">Admin Controls</h3>
         <div style="display: flex; flex-direction: column; gap: 10px;">
-          <a href="/admin/categories-page" class="btn btn-secondary" style="justify-content: flex-start;">
-            <span>🏷️</span> Manage Categories
+          <a href="/admin/categories-page" class="btn btn-secondary" style="justify-content: flex-start; padding: 10px 16px;">
+            <span style="margin-right: 8px;">🏷️</span> Manage Categories
           </a>
-          <a href="/admin/users-page" class="btn btn-secondary" style="justify-content: flex-start;">
-            <span>👥</span> Author Accounts
+          <a href="/admin/users-page" class="btn btn-secondary" style="justify-content: flex-start; padding: 10px 16px;">
+            <span style="margin-right: 8px;">👥</span> Author Accounts
           </a>
-          <a href="/admin/audit-logs-page" class="btn btn-secondary" style="justify-content: flex-start;">
-            <span>📜</span> View Audit Logs
+          <a href="/admin/audit-logs-page" class="btn btn-secondary" style="justify-content: flex-start; padding: 10px 16px;">
+            <span style="margin-right: 8px;">📜</span> View Audit Logs
           </a>
         </div>
       </div>

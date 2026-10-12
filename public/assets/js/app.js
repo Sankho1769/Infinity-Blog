@@ -1,6 +1,6 @@
 /**
- * Infinity Blog / BlogCMS Client Controller
- * Pure vanilla JavaScript with CSRF handling, modals, and AJAX interactions
+ * Infinity Blog Client Controller
+ * Pure vanilla JavaScript with CSRF handling, modals, mobile navigation, and AJAX interactions
  */
 
 (function () {
@@ -170,9 +170,39 @@
         window.closeDeleteModal();
       }
     });
+
+    // Mobile Navigation Drawer Toggle
+    const mobileToggle = document.getElementById('mobile-nav-toggle');
+    const mobileDrawer = document.getElementById('mobile-nav-drawer');
+    if (mobileToggle && mobileDrawer) {
+      mobileToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = mobileDrawer.classList.contains('open');
+        if (isOpen) {
+          mobileDrawer.classList.remove('open');
+          mobileDrawer.style.display = 'none';
+          mobileToggle.setAttribute('aria-expanded', 'false');
+        } else {
+          mobileDrawer.classList.add('open');
+          mobileDrawer.style.display = 'block';
+          mobileToggle.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      // Close mobile drawer if clicking outside
+      document.addEventListener('click', (e) => {
+        if (!mobileDrawer.contains(e.target) && !mobileToggle.contains(e.target)) {
+          if (mobileDrawer.classList.contains('open')) {
+            mobileDrawer.classList.remove('open');
+            mobileDrawer.style.display = 'none';
+            mobileToggle.setAttribute('aria-expanded', 'false');
+          }
+        }
+      });
+    }
   });
 
-  window.BlogCMS = {
+  window.InfinityBlog = window.BlogCMS = {
     getCsrfToken,
     ensureCsrfToken,
     showAlert
