@@ -2710,27 +2710,128 @@ $run('supabase live storage operations against project or transparent skip', sta
     }
 
     $client = new SupabaseStorageClient($liveConfig, 15);
-    $testObject = 'test_integration_' . bin2hex(random_bytes(6)) . '.txt';
-    $testContent = 'Infinity Blog Supabase Storage Test: ' . gmdate('Y-m-d H:i:s');
+    $mediaService = new MediaService($client, $liveConfig);
+    $tempDir = sys_get_temp_dir();
+
+    // 1. Negative Security Test: Verify bucket rejects unsupported text/plain MIME uploads
+    $rejectedDirectText = false;
+    $bogusTextKey = 'test_security_neg_' . bin2hex(random_bytes(6)) . '.txt';
+    try {
+        $client->upload($liveConfig->bucketArticles, $bogusTextKey, 'malicious plain text payload', 'text/plain', true);
+    } catch (StorageException $exception) {
+        $rejectedDirectText = true;
+        $expect(str_contains(strtolower($exception->getMessage()), 'mime') || $exception->errorCode === 'UPLOAD_FAILED',
+            'StorageException for unsupported mime must report rejection.');
+    } finally {
+        if (!$rejectedDirectText) {
+            try {
+                $client->delete($liveConfig->bucketArticles, $bogusTextKey);
+            } catch (Throwable) {
+                // Ignore cleanup error if upload never happened
+            }
+        }
+    }
+    $expect($rejectedDirectText, 'Supabase bucket must reject unsupported text/plain MIME uploads.');
+
+    // 2. Negative Security Test: Verify MediaService rejects spoofed extension containing plain text
+    $spoofedFile = $tempDir . DIRECTORY_SEPARATOR . 'spoofed_' . bin2hex(random_bytes(6)) . '.png';
+    file_put_contents($spoofedFile, 'This is plain text disguised with a .png extension');
+    $rejectedSpoofed = false;
+    try {
+        $mediaService->uploadCoverImage([
+            'tmp_name' => $spoofedFile,
+            'name' => 'spoofed.png',
+            'size' => filesize($spoofedFile),
+            'error' => UPLOAD_ERR_OK,
+        ], 9999);
+    } catch (StorageException $exception) {
+        $rejectedSpoofed = true;
+        $expect($exception->errorCode === 'INVALID_MIME_TYPE', 'Spoofed MIME type must be detected and rejected.');
+    } finally {
+        @unlink($spoofedFile);
+    }
+    $expect($rejectedSpoofed, 'MediaService must reject files with spoofed MIME types.');
+
+    // 3. Positive Workflow Test: Genuine minimal 1x1 PNG fixture (valid image bytes, matching extension, matching MIME)
+    $validPngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+    $testObjectKey = 'test_integration_' . bin2hex(random_bytes(8)) . '.png';
+    $directUploaded = false;
 
     try {
-        // Upload test object to article-images
-        $uploadedPath = $client->upload($liveConfig->bucketArticles, $testObject, $testContent, 'text/plain', true);
-        $expect($uploadedPath === $testObject);
+        // Direct Client Upload
+        $uploadedPath = $client->upload($liveConfig->bucketArticles, $testObjectKey, $validPngBytes, 'image/png', true);
+        $directUploaded = true;
+        $expect($uploadedPath === $testObjectKey, 'Uploaded object path must match target key.');
 
-        // Download object to verify retrieval
-        $downloaded = $client->download($liveConfig->bucketArticles, $testObject);
-        $expect($downloaded === $testContent, 'Downloaded content must match uploaded payload.');
+        // Direct Client Download & Binary Byte Verification
+        $downloaded = $client->download($liveConfig->bucketArticles, $testObjectKey);
+        $expect($downloaded === $validPngBytes, 'Downloaded image bytes must match uploaded PNG bytes.');
 
-        // Create signed URL
-        $signedUrl = $client->createSignedUrl($liveConfig->bucketArticles, $testObject, 300);
-        $expect(str_starts_with($signedUrl, 'http://') || str_starts_with($signedUrl, 'https://'));
+        // Signed URL Generation
+        $signedUrl = $client->createSignedUrl($liveConfig->bucketArticles, $testObjectKey, 300);
+        $expect(str_starts_with($signedUrl, 'http://') || str_starts_with($signedUrl, 'https://'), 'Signed URL must have valid HTTP/HTTPS scheme.');
 
-        // Delete test object
-        $deleted = $client->delete($liveConfig->bucketArticles, $testObject);
-        $expect($deleted, 'Test object must be successfully deleted.');
-    } catch (StorageException $e) {
-        throw new RuntimeException('Live Supabase Storage operation failed: ' . $e->getMessage() . ' [' . $e->errorCode . ']');
+        // Public URL Generation
+        $publicUrl = $client->getPublicUrl($liveConfig->bucketArticles, $testObjectKey);
+        $expect(str_starts_with($publicUrl, 'http://') || str_starts_with($publicUrl, 'https://'), 'Public URL must have valid HTTP/HTTPS scheme.');
+    } finally {
+        // Ensure cleanup runs even if assertions fail
+        if ($directUploaded) {
+            try {
+                $client->delete($liveConfig->bucketArticles, $testObjectKey);
+            } catch (Throwable) {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    // 4. MediaService High-Level Live Upload & Retrieval Workflow
+    $realImageFile = $tempDir . DIRECTORY_SEPARATOR . 'live_valid_' . bin2hex(random_bytes(6)) . '.png';
+    file_put_contents($realImageFile, $validPngBytes);
+    $mediaUploadedPath = null;
+    try {
+        $mediaUploadedPath = $mediaService->uploadCoverImage([
+            'tmp_name' => $realImageFile,
+            'name' => 'valid_cover.png',
+            'size' => strlen($validPngBytes),
+            'error' => UPLOAD_ERR_OK,
+        ], 9999);
+        $expect(str_starts_with($mediaUploadedPath, 'covers/u9999_'), 'Stored path must follow ownership prefix convention.');
+
+        // Verify retrieval of MediaService-uploaded object
+        $retrieved = $client->download($liveConfig->bucketArticles, $mediaUploadedPath);
+        $expect($retrieved === $validPngBytes, 'MediaService uploaded image must be retrievable and match original bytes.');
+    } finally {
+        @unlink($realImageFile);
+        if ($mediaUploadedPath !== null) {
+            try {
+                $client->delete($liveConfig->bucketArticles, $mediaUploadedPath);
+            } catch (Throwable) {
+                // Best-effort cleanup
+            }
+        }
+    }
+
+    // 5. Private Video Bucket Workflow (Signed URL & Authorization Verification)
+    $validMp4Bytes = "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom\x00\x00\x00\x08free";
+    $testVideoKey = 'test_integration_vid_' . bin2hex(random_bytes(8)) . '.mp4';
+    $videoUploaded = false;
+    try {
+        $uploadedVidPath = $client->upload($liveConfig->bucketVideos, $testVideoKey, $validMp4Bytes, 'video/mp4', true);
+        $videoUploaded = true;
+        $expect($uploadedVidPath === $testVideoKey, 'Uploaded video path must match target key.');
+
+        $signedVidUrl = $client->createSignedUrl($liveConfig->bucketVideos, $testVideoKey, 600);
+        $expect(str_starts_with($signedVidUrl, 'http://') || str_starts_with($signedVidUrl, 'https://'),
+            'Private video signed URL must return an authenticated access URL.');
+    } finally {
+        if ($videoUploaded) {
+            try {
+                $client->delete($liveConfig->bucketVideos, $testVideoKey);
+            } catch (Throwable) {
+                // Best-effort cleanup
+            }
+        }
     }
 });
 
