@@ -63,17 +63,29 @@
         </form>
 
         <?php if (!empty($currentUser)): ?>
+          <?php
+            $navAvatarUrl = $currentUser['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($currentUser['avatar_path'] ?? null);
+            $navDisplayName = $currentUser['display_name'] ?? $currentUser['username'] ?? 'User';
+            $navInitial = strtoupper(mb_substr($navDisplayName, 0, 1));
+          ?>
           <!-- Logged in User Menu -->
           <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn">+ Create Post</a>
           <a href="/profile" class="user-menu-pill user-profile-link" title="My Profile" style="text-decoration: none;">
-            <?php if (!empty($currentUser['avatar_path'])): ?>
-              <img src="<?= htmlspecialchars($currentUser['avatar_path'], ENT_QUOTES, 'UTF-8') ?>" alt="" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;">
+            <?php if (!empty($navAvatarUrl)): ?>
+              <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
+                   alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
+                   class="user-avatar-img"
+                   style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                   onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+              <div class="user-avatar nav-avatar-fallback" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; border-radius: 50%; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
+                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
             <?php else: ?>
-              <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
-                <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
+              <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
+                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
               </div>
             <?php endif; ?>
-            <span class="user-display-name"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?></span>
+            <span class="user-display-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
             <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
               <span class="user-role-badge admin">Admin</span>
             <?php endif; ?>
@@ -114,7 +126,23 @@
             <li><a href="/admin/audit-logs-page" class="mobile-nav-link">Audit Logs</a></li>
           <?php endif; ?>
           <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
-            <a href="/profile" style="text-decoration: none; font-size: 0.85rem; color: var(--text-muted); font-weight: 600;"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?><?= (($currentUser['role'] ?? '') === 'admin') ? ' (Admin)' : '' ?></a>
+            <a href="/profile" style="text-decoration: none; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+              <?php if (!empty($navAvatarUrl)): ?>
+                <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
+                     alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
+                     class="user-avatar-img"
+                     style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                     onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 24px; height: 24px; font-size: 0.75rem; flex-shrink: 0;">
+                  <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+              <?php else: ?>
+                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 24px; height: 24px; font-size: 0.75rem; flex-shrink: 0;">
+                  <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+              <?php endif; ?>
+              <span><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?><?= (($currentUser['role'] ?? '') === 'admin') ? ' (Admin)' : '' ?></span>
+            </a>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
           </li>
         <?php else: ?>

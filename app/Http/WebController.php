@@ -1076,6 +1076,10 @@ final class WebController
     private function render(string $template, array $data = [], int $status = 200): array
     {
         $currentUser = $this->guard->currentAccount()?->toPublicArray();
+        if ($currentUser !== null) {
+            $currentUser['avatar_url'] = $this->resolveAvatarUrl($currentUser['avatar_path'] ?? null);
+            $currentUser['banner_url'] = $this->resolveBannerUrl($currentUser['banner_path'] ?? null);
+        }
         $csrfToken = $this->sessions->csrfToken();
         $basePath = Request::detectBasePath($this->config->baseUrl);
 
@@ -1131,10 +1135,13 @@ final class WebController
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
             return $path;
         }
+        if (str_starts_with($path, 'uploads/')) {
+            return '/' . $path;
+        }
         if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
             return $this->media->resolvePublicUrl($this->media->getConfig()->bucketAvatars, $path);
         }
-        return $path;
+        return ArticleImageHelper::resolveAvatarUrl($path);
     }
 
     public function resolveBannerUrl(?string $path): ?string
@@ -1145,10 +1152,13 @@ final class WebController
         if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
             return $path;
         }
+        if (str_starts_with($path, 'uploads/')) {
+            return '/' . $path;
+        }
         if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
             return $this->media->resolvePublicUrl($this->media->getConfig()->bucketBanners, $path);
         }
-        return $path;
+        return ArticleImageHelper::resolveBannerUrl($path);
     }
 
     /**

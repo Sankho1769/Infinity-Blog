@@ -39,9 +39,15 @@ $errors = $errors ?? [];
 
       <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
         <div style="position: relative;">
-          <?php $avatarSrc = $user['avatar_url'] ?? ($user['avatar_path'] ?? null); ?>
+          <?php $avatarSrc = $user['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($user['avatar_path'] ?? null); ?>
           <?php if (!empty($avatarSrc)): ?>
-            <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Current Avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
+            <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>"
+                 alt="Current Avatar"
+                 style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);"
+                 onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+            <div style="display: none; width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 800; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
+              <?= strtoupper(substr($user['display_name'] ?? $user['username'], 0, 1)) ?>
+            </div>
           <?php else: ?>
             <div style="width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 800; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
               <?= strtoupper(substr($user['display_name'] ?? $user['username'], 0, 1)) ?>

@@ -9,19 +9,22 @@
 
 <!-- Author Bio Header Card -->
 <?php
-  $bannerSrc = $author['banner_url'] ?? ($author['banner_path'] ?? null);
-  $avatarSrc = $author['avatar_url'] ?? ($author['avatar_path'] ?? null);
+  $bannerSrc = $author['banner_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveBannerUrl($author['banner_path'] ?? null);
+  $avatarSrc = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
 ?>
 <div class="glass-panel" style="padding: 0; border-radius: var(--radius-xl); margin-bottom: 36px; overflow: hidden;">
   <?php if (!empty($bannerSrc)): ?>
     <div style="height: 180px; width: 100%; overflow: hidden; position: relative; background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));">
-      <img src="<?= htmlspecialchars($bannerSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Author Banner" style="width: 100%; height: 100%; object-fit: cover;">
+      <img src="<?= htmlspecialchars($bannerSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Author Banner" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.style.display='none';">
     </div>
   <?php endif; ?>
   <div style="padding: 32px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px;">
     <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
       <?php if (!empty($avatarSrc)): ?>
-        <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25); border: 3px solid rgba(255, 255, 255, 0.9); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>">
+        <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25); border: 3px solid rgba(255, 255, 255, 0.9); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>" onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+        <div class="author-avatar-initial-fallback" style="display: none; width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #818cf8, #4f46e5); align-items: center; justify-content: center; color: #fff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>">
+          <?= strtoupper(substr($author['display_name'] ?? 'A', 0, 1)) ?>
+        </div>
       <?php else: ?>
         <div style="width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #818cf8, #4f46e5); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>">
           <?= strtoupper(substr($author['display_name'] ?? 'A', 0, 1)) ?>

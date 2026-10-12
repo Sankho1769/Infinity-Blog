@@ -84,4 +84,80 @@ final class ArticleImageHelper
         $count = count(self::FALLBACK_THUMBNAILS);
         return self::FALLBACK_THUMBNAILS[abs($seed) % $count];
     }
+
+    /**
+     * Resolve public or local URL for a user avatar.
+     * Supports Supabase Storage paths (avatars/...), local uploads (/uploads/avatars/...),
+     * and external HTTP/HTTPS URLs. Returns null if empty.
+     */
+    public static function resolveAvatarUrl(?string $path): ?string
+    {
+        if ($path === null || trim($path) === '') {
+            return null;
+        }
+        $trimmed = trim($path);
+        if (str_starts_with($trimmed, 'http://') || str_starts_with($trimmed, 'https://')) {
+            return $trimmed;
+        }
+        if (str_starts_with($trimmed, '/')) {
+            return $trimmed;
+        }
+        if (str_starts_with($trimmed, 'uploads/')) {
+            return '/' . $trimmed;
+        }
+
+        try {
+            $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+            if ($storageConfig !== null && $storageConfig->isConfigured()) {
+                return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketAvatars) . '/' . ltrim($trimmed, '/');
+            }
+        } catch (\Throwable) {
+        }
+
+        // Check local avatars directory fallback
+        $localAvatarsPath = dirname(__DIR__, 2) . '/public/uploads/avatars/' . ltrim($trimmed, '/');
+        if (file_exists($localAvatarsPath)) {
+            return '/uploads/avatars/' . ltrim($trimmed, '/');
+        }
+
+        return '/' . ltrim($trimmed, '/');
+    }
+
+    /**
+     * Resolve public or local URL for a user banner.
+     * Supports Supabase Storage paths (banners/...), local uploads (/uploads/banners/...),
+     * and external HTTP/HTTPS URLs. Returns null if empty.
+     */
+    public static function resolveBannerUrl(?string $path): ?string
+    {
+        if ($path === null || trim($path) === '') {
+            return null;
+        }
+        $trimmed = trim($path);
+        if (str_starts_with($trimmed, 'http://') || str_starts_with($trimmed, 'https://')) {
+            return $trimmed;
+        }
+        if (str_starts_with($trimmed, '/')) {
+            return $trimmed;
+        }
+        if (str_starts_with($trimmed, 'uploads/')) {
+            return '/' . $trimmed;
+        }
+
+        try {
+            $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+            if ($storageConfig !== null && $storageConfig->isConfigured()) {
+                return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketBanners) . '/' . ltrim($trimmed, '/');
+            }
+        } catch (\Throwable) {
+        }
+
+        // Check local banners directory fallback
+        $localBannersPath = dirname(__DIR__, 2) . '/public/uploads/banners/' . ltrim($trimmed, '/');
+        if (file_exists($localBannersPath)) {
+            return '/uploads/banners/' . ltrim($trimmed, '/');
+        }
+
+        return '/' . ltrim($trimmed, '/');
+    }
 }

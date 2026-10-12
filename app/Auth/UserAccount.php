@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace InfinityBlog\Auth;
 
+use InfinityBlog\Posts\ArticleImageHelper;
+
 final class UserAccount
 {
     public int $id;
@@ -105,6 +107,8 @@ final class UserAccount
             'website' => $this->website,
             'avatar_path' => $this->avatarPath,
             'banner_path' => $this->bannerPath,
+            'avatar_url' => ArticleImageHelper::resolveAvatarUrl($this->avatarPath),
+            'banner_url' => ArticleImageHelper::resolveBannerUrl($this->bannerPath),
         ];
     }
 
@@ -125,6 +129,8 @@ final class UserAccount
             'phone' => $this->phone,
             'avatar_path' => $this->avatarPath,
             'banner_path' => $this->bannerPath,
+            'avatar_url' => ArticleImageHelper::resolveAvatarUrl($this->avatarPath),
+            'banner_url' => ArticleImageHelper::resolveBannerUrl($this->bannerPath),
             'profile_visibility' => $this->profileVisibility,
             'created_at' => $this->createdAt,
         ];
