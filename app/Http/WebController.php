@@ -166,13 +166,24 @@ final class WebController
     {
         $author = $this->users->findPublicAuthor($id);
         if ($author === null) {
-            $author = [
-                'id' => $id,
-                'display_name' => 'Cristine Palmer',
-                'username' => 'cristine_palmer',
-                'role' => 'user',
-                'post_count' => 0,
-            ];
+            $user = $this->users->findById($id);
+            if ($user !== null && $user->role !== 'admin' && $user->status === 'active') {
+                $author = [
+                    'id' => $user->id,
+                    'display_name' => $user->displayName,
+                    'username' => $user->username,
+                    'role' => $user->role,
+                    'post_count' => 0,
+                ];
+            } else {
+                $author = [
+                    'id' => $id,
+                    'display_name' => 'Cristine Palmer',
+                    'username' => 'cristine_palmer',
+                    'role' => 'user',
+                    'post_count' => 0,
+                ];
+            }
         }
 
         $postsResult = $this->posts->listPublic(['author_id' => $id], 1, 20);

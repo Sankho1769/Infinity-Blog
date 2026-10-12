@@ -6,12 +6,11 @@
 
     <form action="/" method="GET" class="hero-search-bar" role="search">
       <input type="search" name="search" class="hero-search-input" placeholder="Search articles by title or keyword..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
-      <button type="submit" class="btn btn-primary btn-pill btn-sm">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <button type="submit" class="hero-search-btn" aria-label="Search articles">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        Search
       </button>
     </form>
   </div>
@@ -62,19 +61,14 @@
   </div>
 
   <?php if (empty($posts)): ?>
-    <div class="glass-panel empty-state">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <line x1="16" y1="13" x2="8" y2="13"></line>
-        <line x1="16" y1="17" x2="8" y2="17"></line>
-      </svg>
+    <div class="glass-panel empty-state-compact">
+      <img src="/assets/images/empty-state-background.png" alt="No articles yet" class="empty-state-artwork" width="120" height="73">
       <h3 class="empty-title">No articles found</h3>
       <p class="empty-desc">There are no published articles matching your criteria right now. Check back soon!</p>
       <?php if (!empty($currentUser)): ?>
-        <a href="/posts/new" class="btn btn-primary btn-pill">Write First Post</a>
+        <a href="/posts/new" class="btn btn-primary btn-pill btn-sm">+ Write First Post</a>
       <?php else: ?>
-        <a href="/register" class="btn btn-primary btn-pill">Join & Write</a>
+        <a href="/register" class="btn btn-primary btn-pill btn-sm">Join & Write</a>
       <?php endif; ?>
     </div>
   <?php else: ?>

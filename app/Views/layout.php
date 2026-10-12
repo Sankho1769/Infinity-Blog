@@ -56,6 +56,7 @@
 
         <?php if (!empty($currentUser)): ?>
           <!-- Logged in User Menu -->
+          <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn">+ Create Post</a>
           <div class="user-menu-pill">
             <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
               <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
