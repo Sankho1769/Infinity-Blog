@@ -47,8 +47,8 @@
         </div>
 
         <div style="margin-top: 20px;">
-          <a href="/?search=<?= urlencode($author['display_name']) ?>" class="btn btn-secondary btn-sm btn-full btn-pill" style="text-decoration: none;">
-            Explore Articles
+          <a href="/author/<?= (int) $author['id'] ?>" class="btn btn-secondary btn-sm btn-full btn-pill" style="text-decoration: none;">
+            View Profile & Articles
           </a>
         </div>
       </div>

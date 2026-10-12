@@ -6,10 +6,13 @@
 (function () {
   'use strict';
 
-  // Read CSRF token from meta tag or cookie
+  // Read CSRF token from meta tag, hidden input, or cookie
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
-    return meta ? meta.getAttribute('content') : '';
+    if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+    const input = document.querySelector('input[name="csrf_token"]');
+    if (input && input.value) return input.value;
+    return '';
   }
 
   // Update CSRF token across page
@@ -61,6 +64,13 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // Expose immediately so page scripts can access anytime
+  window.InfinityBlog = window.BlogCMS = {
+    getCsrfToken,
+    ensureCsrfToken,
+    showAlert
+  };
 
   // Password Visibility Toggle & Setup
   document.addEventListener('DOMContentLoaded', () => {

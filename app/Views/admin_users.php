@@ -73,12 +73,12 @@
     <form id="create-user-form">
       <div class="form-group">
         <label for="u-name" class="form-label">Full Name / Display Name <span style="color: var(--danger-color);">*</span></label>
-        <input type="text" id="u-display-name" class="form-input" placeholder="e.g. Rahul Sharma" required>
+        <input type="text" id="u-display-name" class="form-input" placeholder="e.g. Cristine Palmer" required>
       </div>
 
       <div class="form-group">
         <label for="u-username" class="form-label">Username <span style="color: var(--danger-color);">*</span></label>
-        <input type="text" id="u-username" class="form-input" placeholder="e.g. rahul_sharma" required>
+        <input type="text" id="u-username" class="form-input" placeholder="e.g. cristine_palmer" required>
       </div>
 
       <div class="form-group">
@@ -115,14 +115,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     saveBtn.disabled = true;
+    saveBtn.textContent = 'Creating Account...';
     try {
-      const csrf = await window.BlogCMS.ensureCsrfToken();
+      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="csrf_token"]')?.value;
+      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        csrf = await window.BlogCMS.ensureCsrfToken();
+      }
       const res = await fetch('/admin/users', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrf
+          'X-CSRF-Token': csrf || ''
         },
         body: JSON.stringify({ username, display_name, password })
       });
@@ -133,11 +138,13 @@ document.addEventListener('DOMContentLoaded', () => {
         errorBox.textContent = data.error?.message || 'Could not create author account.';
         errorBox.style.display = 'flex';
         saveBtn.disabled = false;
+        saveBtn.textContent = 'Create Account';
       }
     } catch (err) {
       errorBox.textContent = 'Network error.';
       errorBox.style.display = 'flex';
       saveBtn.disabled = false;
+      saveBtn.textContent = 'Create Account';
     }
   });
 

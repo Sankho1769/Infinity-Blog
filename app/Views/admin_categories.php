@@ -85,7 +85,7 @@
       </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('new-category-modal').classList.remove('open')">Cancel</button>
-        <button type="submit" id="save-cat-btn" class="btn btn-primary">Save Category</button>
+        <button type="submit" id="save-cat-btn" class="btn btn-primary">Create Category</button>
       </div>
     </form>
   </div>
@@ -110,14 +110,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     saveBtn.disabled = true;
+    saveBtn.textContent = 'Creating...';
     try {
-      const csrf = await window.BlogCMS.ensureCsrfToken();
+      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="csrf_token"]')?.value;
+      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        csrf = await window.BlogCMS.ensureCsrfToken();
+      }
       const res = await fetch('/admin/categories', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrf
+          'X-CSRF-Token': csrf || ''
         },
         body: JSON.stringify({ name, description })
       });
@@ -128,11 +133,13 @@ document.addEventListener('DOMContentLoaded', () => {
         errorBox.textContent = data.error?.message || 'Could not create category.';
         errorBox.style.display = 'flex';
         saveBtn.disabled = false;
+        saveBtn.textContent = 'Create Category';
       }
     } catch (err) {
       errorBox.textContent = 'Network error.';
       errorBox.style.display = 'flex';
       saveBtn.disabled = false;
+      saveBtn.textContent = 'Create Category';
     }
   });
 

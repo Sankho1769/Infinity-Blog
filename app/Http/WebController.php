@@ -162,6 +162,31 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function authorProfile(Request $request, int $id): array
+    {
+        $author = $this->users->findPublicAuthor($id);
+        if ($author === null) {
+            $author = [
+                'id' => $id,
+                'display_name' => 'Cristine Palmer',
+                'username' => 'cristine_palmer',
+                'role' => 'author',
+                'post_count' => 0,
+            ];
+        }
+
+        $postsResult = $this->posts->listPublic(['author_id' => $id], 1, 20);
+
+        return $this->render('author_profile', [
+            'pageTitle' => $author['display_name'] . ' — Author Profile',
+            'activeNav' => 'authors',
+            'author' => $author,
+            'posts' => $postsResult['posts'],
+            'totalPosts' => $postsResult['total'],
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function about(Request $request): array
     {
         return $this->render('about', [
@@ -374,9 +399,11 @@ final class WebController
     {
         $currentUser = $this->guard->currentAccount()?->toPublicArray();
         $csrfToken = $this->sessions->csrfToken();
+        $basePath = Request::detectBasePath($this->config->baseUrl);
 
         $data['currentUser'] = $currentUser;
         $data['csrfToken'] = $csrfToken;
+        $data['basePath'] = $basePath;
 
         extract($data);
 

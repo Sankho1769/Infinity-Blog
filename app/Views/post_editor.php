@@ -203,8 +203,17 @@ document.addEventListener('DOMContentLoaded', () => {
       category_id: categoryId
     };
 
+    const saveDraftBtn = document.getElementById('save-draft-btn');
+    const publishBtn = document.getElementById('publish-btn');
+    if (saveDraftBtn) saveDraftBtn.disabled = true;
+    if (publishBtn) publishBtn.disabled = true;
+
     try {
-      const csrf = await window.BlogCMS.ensureCsrfToken();
+      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="csrf_token"]')?.value;
+      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        csrf = await window.BlogCMS.ensureCsrfToken();
+      }
       let url = isEdit ? `${apiBase}/${postId}` : apiBase;
       let method = isEdit ? 'PATCH' : 'POST';
 
@@ -213,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrf
+          'X-CSRF-Token': csrf || ''
         },
         body: JSON.stringify(payload)
       });
@@ -226,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
             method: 'POST',
             headers: {
               'Accept': 'application/json',
-              'X-CSRF-Token': csrf
+              'X-CSRF-Token': csrf || ''
             }
           });
           if (!pubRes.ok) {
@@ -240,7 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
             method: 'POST',
             headers: {
               'Accept': 'application/json',
-              'X-CSRF-Token': csrf
+              'X-CSRF-Token': csrf || ''
             }
           });
         }
@@ -252,10 +261,17 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       errorBox.textContent = 'Network error while saving post.';
       errorBox.style.display = 'flex';
+    } finally {
+      if (saveDraftBtn) saveDraftBtn.disabled = false;
+      if (publishBtn) publishBtn.disabled = false;
     }
   }
 
-  document.getElementById('save-draft-btn').addEventListener('click', () => submitPost('draft'));
-  document.getElementById('publish-btn').addEventListener('click', () => submitPost('published'));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitPost('published');
+  });
+  document.getElementById('save-draft-btn')?.addEventListener('click', () => submitPost('draft'));
+  document.getElementById('publish-btn')?.addEventListener('click', () => submitPost('published'));
 });
 </script>

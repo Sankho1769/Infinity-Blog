@@ -89,13 +89,17 @@ document.addEventListener('DOMContentLoaded', () => {
     submitBtn.textContent = 'Verifying credentials...';
 
     try {
-      const csrf = await window.BlogCMS.ensureCsrfToken();
+      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="csrf_token"]')?.value;
+      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        csrf = await window.BlogCMS.ensureCsrfToken();
+      }
       const res = await fetch('/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrf
+          'X-CSRF-Token': csrf || ''
         },
         body: JSON.stringify({ identifier, password })
       });

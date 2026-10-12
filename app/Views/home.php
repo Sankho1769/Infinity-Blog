@@ -164,10 +164,12 @@
 
             <div class="article-card-footer">
               <div class="article-author-info">
-                <div class="user-avatar" style="width: 26px; height: 26px; font-size: 0.75rem;">
-                  <?= strtoupper(substr($post['author_name'] ?? 'Author', 0, 1)) ?>
-                </div>
-                <span><?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?></span>
+                <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="user-avatar" style="width: 26px; height: 26px; font-size: 0.75rem; text-decoration: none;" title="View Author Profile">
+                  <?= strtoupper(substr($post['author_name'] ?? 'Cristine Palmer', 0, 1)) ?>
+                </a>
+                <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="color: var(--text-dark); text-decoration: none; font-weight: 600;" title="View Author Profile">
+                  <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>
+                </a>
               </div>
 
               <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">

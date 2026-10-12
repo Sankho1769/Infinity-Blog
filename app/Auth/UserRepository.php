@@ -187,6 +187,31 @@ final class UserRepository
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int}|null */
+    public function findPublicAuthor(int $id): ?array
+    {
+        $statement = $this->pdo->prepare(
+            "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
+            "FROM users u " .
+            "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+            "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('author', 'admin') " .
+            "GROUP BY u.id, u.display_name, u.username, u.role LIMIT 1"
+        );
+        $statement->execute(['id' => $id]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $row['id'],
+            'display_name' => (string) $row['display_name'],
+            'username' => (string) $row['username'],
+            'role' => (string) $row['role'],
+            'post_count' => (int) $row['post_count'],
+        ];
+    }
+
     /** @param array<string, mixed> $row */
     private static function accountFromRow(array $row): ?UserAccount
     {

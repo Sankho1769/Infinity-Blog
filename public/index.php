@@ -84,6 +84,7 @@ try {
             $request->path === '/register' => $webController->register($request),
             $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
             $request->path === '/authors' => $webController->publicAuthors($request),
+            (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
             $request->path === '/about' => $webController->about($request),
             $request->path === '/dashboard' => $webController->dashboard($request),
             $request->path === '/posts/new' => $webController->newPost($request),
@@ -143,6 +144,18 @@ try {
     }
 
     $result = $controller->handle($request);
+    $isBrowserForm = !str_contains((string) $request->header('Accept'), 'application/json') && !$request->isJson();
+    if ($isBrowserForm) {
+        if ($result['status'] === 201 && ($request->path === '/register' || $request->path === '/auth/register')) {
+            header('Location: /login?registered=1');
+            return;
+        }
+        if ($result['status'] === 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
+            $userRole = $result['body']['data']['user']['role'] ?? 'reader';
+            header('Location: ' . ($userRole === 'reader' ? '/' : '/dashboard'));
+            return;
+        }
+    }
     JsonResponse::send($result['status'], $result['body']);
 } catch (RequestException $exception) {
     JsonResponse::send($exception->httpStatus, ApiErrorResponder::build(

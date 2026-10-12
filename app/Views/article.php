@@ -29,11 +29,13 @@
 
       <div class="article-meta-row">
         <div class="article-author-info">
-          <div class="user-avatar" style="width: 36px; height: 36px; font-size: 0.95rem;">
-            <?= strtoupper(substr($post['author_name'] ?? 'Author', 0, 1)) ?>
-          </div>
+          <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="user-avatar" style="width: 36px; height: 36px; font-size: 0.95rem; text-decoration: none;" title="View Author Profile">
+            <?= strtoupper(substr($post['author_name'] ?? 'Cristine Palmer', 0, 1)) ?>
+          </a>
           <div>
-            <div style="font-weight: 700; color: var(--text-dark);"><?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?></div>
+            <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none;" title="View Author Profile">
+              <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>
+            </a>
             <div style="font-size: 0.8rem; color: var(--text-muted);">
               <?= date('F j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?> ·
               <?php

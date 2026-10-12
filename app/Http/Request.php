@@ -40,6 +40,16 @@ final class Request
         $basePath = parse_url($baseUrl, PHP_URL_PATH);
         if (is_string($basePath) && $basePath !== '' && $basePath !== '/' && str_starts_with($requestPath, $basePath)) {
             $requestPath = substr($requestPath, strlen($basePath));
+        } else {
+            $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? ''))), '/');
+            if ($scriptDir !== '' && $scriptDir !== '/' && $scriptDir !== '.' && str_starts_with($requestPath, $scriptDir)) {
+                $requestPath = substr($requestPath, strlen($scriptDir));
+            } else {
+                $parentDir = rtrim(str_replace('\\', '/', dirname($scriptDir)), '/');
+                if ($parentDir !== '' && $parentDir !== '/' && $parentDir !== '.' && str_starts_with($requestPath, $parentDir)) {
+                    $requestPath = substr($requestPath, strlen($parentDir));
+                }
+            }
         }
         $apiPosition = strpos($requestPath, '/api/v1');
         if ($apiPosition !== false) {
@@ -164,5 +174,48 @@ final class Request
         $this->json = $decoded;
 
         return $this->json;
+    }
+
+    public static function detectBasePath(string $baseUrl = ''): string
+    {
+        $basePath = parse_url($baseUrl, PHP_URL_PATH);
+        if (is_string($basePath) && $basePath !== '' && $basePath !== '/') {
+            return rtrim($basePath, '/');
+        }
+        $scriptDir = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? ''))), '/');
+        return ($scriptDir === '' || $scriptDir === '/' || $scriptDir === '.') ? '' : $scriptDir;
+    }
+
+    public function isJson(): bool
+    {
+        $contentType = strtolower(trim(explode(';', $this->header('Content-Type') ?? '')[0]));
+        return $contentType === 'application/json';
+    }
+
+    public function postParameter(string $name): mixed
+    {
+        return $_POST[$name] ?? null;
+    }
+
+    /** @return array<string, mixed> */
+    public function postParameters(): array
+    {
+        return is_array($_POST ?? null) ? $_POST : [];
+    }
+
+    /** @return array<string, mixed> */
+    public function input(): array
+    {
+        if ($this->jsonRead && $this->json !== null) {
+            return $this->json;
+        }
+        if ($this->isJson()) {
+            try {
+                return $this->jsonObject();
+            } catch (RequestException) {
+                return [];
+            }
+        }
+        return $this->postParameters();
     }
 }

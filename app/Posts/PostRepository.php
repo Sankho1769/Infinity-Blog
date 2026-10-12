@@ -521,6 +521,10 @@ final class PostRepository
                 : 'p.category_id = :filter_category_id';
             $parameters['filter_category_id'] = $filters['category_id'];
         }
+        if (isset($filters['author_id'])) {
+            $conditions[] = 'p.author_id = :filter_author_id';
+            $parameters['filter_author_id'] = (int) $filters['author_id'];
+        }
         if (isset($filters['q'])) {
             $conditions[] = '(INSTR(LOWER(p.title), LOWER(:query_title)) > 0 OR INSTR(LOWER(p.content), LOWER(:query_content)) > 0)';
             $parameters['query_title'] = $filters['q'];

@@ -10,8 +10,8 @@
 
     <div id="register-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
-    <form id="register-form" method="POST" action="/auth/register" novalidate>
-      <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    <form id="register-form" method="POST" action="/register" novalidate>
+      <input type="hidden" name="csrf_token" id="reg-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
       <div class="form-group">
         <label for="display_name" class="form-label">Full Name</label>
@@ -20,7 +20,7 @@
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
-          <input type="text" id="display_name" name="display_name" class="form-input" placeholder="e.g. Jane Doe" required autocomplete="name" autofocus>
+          <input type="text" id="display_name" name="display_name" class="form-input" placeholder="e.g. Cristine Palmer" required autocomplete="name" autofocus>
         </div>
       </div>
 
@@ -31,7 +31,7 @@
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
             <polyline points="22,6 12,13 2,6"></polyline>
           </svg>
-          <input type="email" id="email" name="email" class="form-input" placeholder="e.g. jane@example.com" required autocomplete="email">
+          <input type="email" id="email" name="email" class="form-input" placeholder="e.g. cristine@example.com" required autocomplete="email">
         </div>
       </div>
 
@@ -89,83 +89,119 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.getElementById('register-form');
-  const errorBox = document.getElementById('register-error-alert');
-  const submitBtn = document.getElementById('register-submit-btn');
+(function() {
+  function initRegister() {
+    const form = document.getElementById('register-form');
+    const errorBox = document.getElementById('register-error-alert');
+    const submitBtn = document.getElementById('register-submit-btn');
+    if (!form || !submitBtn) return;
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errorBox.style.display = 'none';
-
-    const displayName = document.getElementById('display_name').value.trim();
-    const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const confirmPassword = document.getElementById('confirm_password').value;
-
-    if (!displayName) {
-      errorBox.textContent = 'Please enter your full name.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-
-    if (!email || !email.includes('@')) {
-      errorBox.textContent = 'Please enter a valid email address.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-
-    if (password.length < 8) {
-      errorBox.textContent = 'Password must be at least 8 characters long.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      errorBox.textContent = 'Passwords do not match.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Creating account...';
-
-    try {
-      const csrf = await window.BlogCMS.ensureCsrfToken();
-      const res = await fetch('/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-Token': csrf
-        },
-        body: JSON.stringify({
-          display_name: displayName,
-          email: email,
-          password: password,
-          confirm_password: confirmPassword
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        submitBtn.textContent = 'Account created! Redirecting to sign in...';
-        window.location.href = '/login?registered=1';
-      } else {
-        const errorMsg = data.error?.fields
-          ? Object.values(data.error.fields).join(' ')
-          : (data.error?.message || 'Registration failed. Please check your inputs.');
-        errorBox.textContent = errorMsg;
-        errorBox.style.display = 'flex';
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Account';
+    async function obtainCsrf() {
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+      const input = document.getElementById('reg-csrf-token') || document.querySelector('input[name="csrf_token"]');
+      if (input && input.value) return input.value;
+      if (window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        const t = await window.BlogCMS.ensureCsrfToken();
+        if (t) return t;
       }
-    } catch (err) {
-      errorBox.textContent = 'Connection error. Please try again.';
-      errorBox.style.display = 'flex';
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Create Account';
+      try {
+        const res = await fetch('/auth/csrf', { headers: { 'Accept': 'application/json' } });
+        if (res.ok) {
+          const d = await res.json();
+          return d.data?.csrf_token || '';
+        }
+      } catch (e) {}
+      return '';
     }
-  });
-});
+
+    async function handleSubmit(e) {
+      if (e) e.preventDefault();
+      if (errorBox) errorBox.style.display = 'none';
+
+      const displayName = document.getElementById('display_name')?.value.trim() || '';
+      const email = document.getElementById('email')?.value.trim() || '';
+      const password = document.getElementById('password')?.value || '';
+      const confirmPassword = document.getElementById('confirm_password')?.value || '';
+
+      if (!displayName) {
+        showError('Please enter your full name.');
+        return;
+      }
+      if (!email || !email.includes('@')) {
+        showError('Please enter a valid email address.');
+        return;
+      }
+      if (password.length < 8) {
+        showError('Password must be at least 8 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showError('Passwords do not match.');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account...';
+
+      try {
+        const csrf = await obtainCsrf();
+        const res = await fetch('/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf
+          },
+          body: JSON.stringify({
+            display_name: displayName,
+            email: email,
+            password: password,
+            confirm_password: confirmPassword
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          submitBtn.textContent = 'Account created! Redirecting to sign in...';
+          window.location.href = '/login?registered=1';
+        } else {
+          const errorMsg = data.error?.fields
+            ? Object.values(data.error.fields).join(' ')
+            : (data.error?.message || 'Registration failed. Please check your inputs.');
+          showError(errorMsg);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create Account';
+        }
+      } catch (err) {
+        // Fallback to standard form post
+        const hiddenCsrf = document.getElementById('reg-csrf-token');
+        if (hiddenCsrf && !hiddenCsrf.value) {
+          hiddenCsrf.value = await obtainCsrf();
+        }
+        form.submit();
+      }
+    }
+
+    function showError(msg) {
+      if (errorBox) {
+        errorBox.textContent = msg;
+        errorBox.style.display = 'flex';
+      }
+    }
+
+    form.addEventListener('submit', handleSubmit);
+    submitBtn.addEventListener('click', (e) => {
+      if (form.checkValidity && !form.checkValidity()) {
+        // Let standard validation or handle submit run
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initRegister);
+  } else {
+    initRegister();
+  }
+})();
 </script>

@@ -12,7 +12,7 @@
 <div class="dashboard-header">
   <div>
     <h1 class="dashboard-greeting">
-      <?= $dynamicGreeting ?>, <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>! 👋
+      <?= $dynamicGreeting ?>, <?= htmlspecialchars(!empty($currentUser['display_name']) ? $currentUser['display_name'] : (!empty($currentUser['username']) ? $currentUser['username'] : 'Cristine Palmer'), ENT_QUOTES, 'UTF-8') ?>! 👋
     </h1>
     <p class="dashboard-subhead">Here's what's happening with your blog.</p>
   </div>

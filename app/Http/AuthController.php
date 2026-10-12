@@ -33,18 +33,18 @@ final class AuthController
     public function handle(Request $request): array
     {
         $result = match ([$request->method, $request->path]) {
-            ['POST', '/auth/login'] => $this->login($request),
-            ['POST', '/auth/register'] => $this->register($request),
-            ['POST', '/auth/logout'] => $this->logout($request),
-            ['GET', '/auth/me'] => $this->me(),
-            ['GET', '/auth/csrf'] => $this->csrf(),
+            ['POST', '/auth/login'], ['POST', '/login'] => $this->login($request),
+            ['POST', '/auth/register'], ['POST', '/register'] => $this->register($request),
+            ['POST', '/auth/logout'], ['POST', '/logout'] => $this->logout($request),
+            ['GET', '/auth/me'], ['GET', '/me'] => $this->me(),
+            ['GET', '/auth/csrf'], ['GET', '/csrf'] => $this->csrf(),
             default => null,
         };
         if ($result !== null) {
             return $result;
         }
 
-        $knownPath = in_array($request->path, ['/auth/login', '/auth/register', '/auth/logout', '/auth/me', '/auth/csrf'], true);
+        $knownPath = in_array($request->path, ['/auth/login', '/login', '/auth/register', '/register', '/auth/logout', '/logout', '/auth/me', '/auth/csrf'], true);
         return $this->error(
             $knownPath ? 405 : 404,
             $knownPath ? 'METHOD_NOT_ALLOWED' : 'NOT_FOUND',
@@ -64,11 +64,12 @@ final class AuthController
     /** @return array{status: int, body: array<string, mixed>} */
     public function login(Request $request): array
     {
-        if (!$this->sessions->validateCsrfToken($request->header('X-CSRF-Token'))) {
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
         }
 
-        $input = $request->jsonObject();
+        $input = $request->input();
         $identifier = $input['identifier'] ?? null;
         $password = $input['password'] ?? null;
         $fields = [];
@@ -110,12 +111,12 @@ final class AuthController
     /** @return array{status: int, body: array<string, mixed>} */
     public function register(Request $request): array
     {
-        $csrfToken = $request->header('X-CSRF-Token');
-        if (!$this->sessions->validateCsrfToken($csrfToken)) {
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
         }
 
-        $input = $request->jsonObject();
+        $input = $request->input();
         $displayName = $input['display_name'] ?? $input['name'] ?? null;
         $email = $input['email'] ?? null;
         $password = $input['password'] ?? null;
