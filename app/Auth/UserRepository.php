@@ -20,8 +20,7 @@ final class UserRepository
     {
         $normalized = self::normalizeIdentifier($identifier);
         $statement = $this->pdo->prepare(
-            'SELECT id, username, email, display_name, role, status, password_hash, auth_version FROM users ' .
-            'WHERE username = :identifier OR email = :identifier_email LIMIT 1'
+            'SELECT * FROM users WHERE username = :identifier OR email = :identifier_email LIMIT 1'
         );
         $statement->execute([
             'identifier' => $normalized,
@@ -34,9 +33,7 @@ final class UserRepository
 
     public function findById(int $id): ?UserAccount
     {
-        $statement = $this->pdo->prepare(
-            'SELECT id, username, email, display_name, role, status, password_hash, auth_version FROM users WHERE id = :id LIMIT 1'
-        );
+        $statement = $this->pdo->prepare('SELECT * FROM users WHERE id = :id LIMIT 1');
         $statement->execute(['id' => $id]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
@@ -122,7 +119,8 @@ final class UserRepository
         return $this->createUser($displayName, $email, $passwordHash);
     }
 
-    public function createUser(string $displayName, string $email, string $passwordHash): int
+    /** @param array<string, mixed> $profile */
+    public function createUser(string $displayName, string $email, string $passwordHash, array $profile = []): int
     {
         $normalized = self::normalizeIdentifier($email);
         $statement = $this->pdo->prepare(
@@ -154,6 +152,10 @@ final class UserRepository
             // Tolerate test environments where audit_logs table is omitted
         }
 
+        if ($profile !== []) {
+            $this->updateProfile($id, $profile);
+        }
+
         return $id;
     }
 
@@ -171,51 +173,306 @@ final class UserRepository
         return $statement->fetchColumn() !== false;
     }
 
-    /** @return list<array{id: int, display_name: string, username: string, role: string, post_count: int}> */
-    public function listPublicAuthors(): array
+    /**
+     * @param array<string, mixed> $fields
+     * @throws ProfileValidationException
+     */
+    public function updateProfile(int $userId, array $fields): UserAccount
     {
-        $statement = $this->pdo->query(
-            "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
-            "FROM users u " .
-            "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-            "WHERE u.status = 'active' AND u.role IN ('user', 'author') " .
-            "GROUP BY u.id, u.display_name, u.username, u.role " .
-            "HAVING post_count > 0 " .
-            "ORDER BY post_count DESC, u.display_name ASC"
-        );
-
-        return array_map(static fn (array $row): array => [
-            'id' => (int) $row['id'],
-            'display_name' => (string) $row['display_name'],
-            'username' => (string) $row['username'],
-            'role' => (string) $row['role'],
-            'post_count' => (int) $row['post_count'],
-        ], $statement->fetchAll(PDO::FETCH_ASSOC));
-    }
-
-    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int}|null */
-    public function findPublicAuthor(int $id): ?array
-    {
-        $statement = $this->pdo->prepare(
-            "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
-            "FROM users u " .
-            "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-            "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') " .
-            "GROUP BY u.id, u.display_name, u.username, u.role LIMIT 1"
-        );
-        $statement->execute(['id' => $id]);
-        $row = $statement->fetch(PDO::FETCH_ASSOC);
-        if (!$row) {
-            return null;
+        $user = $this->findById($userId);
+        if ($user === null) {
+            throw new RuntimeException('User not found.');
         }
 
-        return [
-            'id' => (int) $row['id'],
-            'display_name' => (string) $row['display_name'],
-            'username' => (string) $row['username'],
-            'role' => (string) $row['role'],
-            'post_count' => (int) $row['post_count'],
-        ];
+        $errors = [];
+        $updates = [];
+        $params = ['id' => $userId];
+
+        if (array_key_exists('display_name', $fields)) {
+            $displayName = trim((string) $fields['display_name']);
+            if ($displayName === '' || strlen($displayName) > 190 || preg_match('/[\x00-\x1F\x7F]/', $displayName) === 1) {
+                $errors['display_name'] = 'Full name must be between 1 and 190 characters.';
+            } else {
+                $updates[] = 'display_name = :display_name';
+                $params['display_name'] = $displayName;
+            }
+        }
+
+        if (array_key_exists('username', $fields)) {
+            $username = trim((string) $fields['username']);
+            if (strlen($username) < 3 || strlen($username) > 50 || !preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
+                $errors['username'] = 'Username must be 3-50 alphanumeric characters (dots, dashes, and underscores allowed).';
+            } else {
+                $check = $this->pdo->prepare('SELECT 1 FROM users WHERE username = :username AND id <> :id LIMIT 1');
+                $check->execute(['username' => self::normalizeIdentifier($username), 'id' => $userId]);
+                if ($check->fetchColumn() !== false) {
+                    $errors['username'] = 'This username is already taken.';
+                } else {
+                    $updates[] = 'username = :username';
+                    $params['username'] = self::normalizeIdentifier($username);
+                }
+            }
+        }
+
+        if (array_key_exists('email', $fields)) {
+            $email = trim((string) $fields['email']);
+            if ($email === '' || strlen($email) > 190 || filter_var($email, FILTER_VALIDATE_EMAIL) === false || preg_match('/[\x00-\x1F\x7F]/', $email) === 1) {
+                $errors['email'] = 'Enter a valid email address.';
+            } else {
+                $check = $this->pdo->prepare('SELECT 1 FROM users WHERE email = :email AND id <> :id LIMIT 1');
+                $check->execute(['email' => self::normalizeIdentifier($email), 'id' => $userId]);
+                if ($check->fetchColumn() !== false) {
+                    $errors['email'] = 'An account with this email address already exists.';
+                } else {
+                    $updates[] = 'email = :email';
+                    $params['email'] = self::normalizeIdentifier($email);
+                }
+            }
+        }
+
+        if (array_key_exists('bio', $fields)) {
+            $bio = is_string($fields['bio']) ? trim($fields['bio']) : null;
+            if ($bio !== null && strlen($bio) > 1000) {
+                $errors['bio'] = 'Bio cannot exceed 1000 characters.';
+            } else {
+                $updates[] = 'bio = :bio';
+                $params['bio'] = ($bio === '' || $bio === null) ? null : $bio;
+            }
+        }
+
+        if (array_key_exists('location', $fields)) {
+            $location = is_string($fields['location']) ? trim($fields['location']) : null;
+            if ($location !== null && strlen($location) > 120) {
+                $errors['location'] = 'Location cannot exceed 120 characters.';
+            } else {
+                $updates[] = 'location = :location';
+                $params['location'] = ($location === '' || $location === null) ? null : $location;
+            }
+        }
+
+        if (array_key_exists('interests', $fields)) {
+            $interests = is_string($fields['interests']) ? trim($fields['interests']) : null;
+            if ($interests !== null && strlen($interests) > 255) {
+                $errors['interests'] = 'Interests cannot exceed 255 characters.';
+            } else {
+                $updates[] = 'interests = :interests';
+                $params['interests'] = ($interests === '' || $interests === null) ? null : $interests;
+            }
+        }
+
+        if (array_key_exists('website', $fields)) {
+            $website = is_string($fields['website']) ? trim($fields['website']) : null;
+            if ($website !== null && $website !== '') {
+                if (!preg_match('/^https?:\/\//i', $website) || filter_var($website, FILTER_VALIDATE_URL) === false || strlen($website) > 255) {
+                    $errors['website'] = 'Website must be a valid URL starting with http:// or https:// (up to 255 characters).';
+                } else {
+                    $updates[] = 'website = :website';
+                    $params['website'] = $website;
+                }
+            } else {
+                $updates[] = 'website = :website';
+                $params['website'] = null;
+            }
+        }
+
+        if (array_key_exists('phone', $fields)) {
+            $phone = is_string($fields['phone']) ? trim($fields['phone']) : null;
+            if ($phone !== null && $phone !== '') {
+                if (strlen($phone) > 30 || !preg_match('/^[+]?[\d\s\-().]{7,30}$/', $phone)) {
+                    $errors['phone'] = 'Phone number format is invalid (7 to 30 characters).';
+                } else {
+                    $updates[] = 'phone = :phone';
+                    $params['phone'] = $phone;
+                }
+            } else {
+                $updates[] = 'phone = :phone';
+                $params['phone'] = null;
+            }
+        }
+
+        if (array_key_exists('profile_visibility', $fields)) {
+            $visibility = (string) $fields['profile_visibility'];
+            if (!in_array($visibility, ['public', 'private'], true)) {
+                $errors['profile_visibility'] = "Profile visibility must be either 'public' or 'private'.";
+            } else {
+                $updates[] = 'profile_visibility = :profile_visibility';
+                $params['profile_visibility'] = $visibility;
+            }
+        }
+
+        if ($errors !== []) {
+            throw new ProfileValidationException($errors);
+        }
+
+        if ($updates !== []) {
+            $sql = 'UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = :id';
+            $statement = $this->pdo->prepare($sql);
+            $statement->execute($params);
+
+            try {
+                $audit = $this->pdo->prepare(
+                    'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+                    'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+                );
+                $audit->execute([
+                    'actor_user_id' => $userId,
+                    'action' => 'user.profile_updated',
+                    'entity_type' => 'user',
+                    'entity_id' => $userId,
+                    'created_at' => gmdate('Y-m-d H:i:s'),
+                ]);
+            } catch (Throwable) {
+                // Tolerate test environments where audit_logs table is omitted
+            }
+        }
+
+        $fresh = $this->findById($userId);
+        if ($fresh === null) {
+            throw new RuntimeException('Failed to reload updated profile.');
+        }
+
+        return $fresh;
+    }
+
+    public function updateAvatar(int $userId, ?string $avatarPath): void
+    {
+        $user = $this->findById($userId);
+        if ($user === null) {
+            throw new RuntimeException('User not found.');
+        }
+
+        $statement = $this->pdo->prepare('UPDATE users SET avatar_path = :avatar_path WHERE id = :id');
+        $statement->execute([
+            'avatar_path' => $avatarPath,
+            'id' => $userId,
+        ]);
+
+        try {
+            $audit = $this->pdo->prepare(
+                'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+                'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+            );
+            $audit->execute([
+                'actor_user_id' => $userId,
+                'action' => 'user.avatar_updated',
+                'entity_type' => 'user',
+                'entity_id' => $userId,
+                'created_at' => gmdate('Y-m-d H:i:s'),
+            ]);
+        } catch (Throwable) {
+            // Tolerate test environments where audit_logs table is omitted
+        }
+    }
+
+    /** @return list<array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string}> */
+    public function listPublicAuthors(): array
+    {
+        try {
+            $statement = $this->pdo->query(
+                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, COUNT(p.id) AS post_count " .
+                "FROM users u " .
+                "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+                "WHERE u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
+                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path " .
+                "HAVING post_count > 0 " .
+                "ORDER BY post_count DESC, u.display_name ASC"
+            );
+
+            return array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'display_name' => (string) $row['display_name'],
+                'username' => (string) $row['username'],
+                'role' => (string) $row['role'],
+                'post_count' => (int) $row['post_count'],
+                'bio' => isset($row['bio']) && is_string($row['bio']) ? $row['bio'] : null,
+                'location' => isset($row['location']) && is_string($row['location']) ? $row['location'] : null,
+                'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
+                'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
+                'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
+            ], $statement->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Throwable) {
+            // Fallback for schemas without profile columns
+            $statement = $this->pdo->query(
+                "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
+                "FROM users u " .
+                "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+                "WHERE u.status = 'active' AND u.role IN ('user', 'author') " .
+                "GROUP BY u.id, u.display_name, u.username, u.role " .
+                "HAVING post_count > 0 " .
+                "ORDER BY post_count DESC, u.display_name ASC"
+            );
+
+            return array_map(static fn (array $row): array => [
+                'id' => (int) $row['id'],
+                'display_name' => (string) $row['display_name'],
+                'username' => (string) $row['username'],
+                'role' => (string) $row['role'],
+                'post_count' => (int) $row['post_count'],
+                'bio' => null,
+                'location' => null,
+                'interests' => null,
+                'website' => null,
+                'avatar_path' => null,
+            ], $statement->fetchAll(PDO::FETCH_ASSOC));
+        }
+    }
+
+    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string}|null */
+    public function findPublicAuthor(int $id): ?array
+    {
+        try {
+            $statement = $this->pdo->prepare(
+                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, COUNT(p.id) AS post_count " .
+                "FROM users u " .
+                "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+                "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
+                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path LIMIT 1"
+            );
+            $statement->execute(['id' => $id]);
+            $row = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return null;
+            }
+
+            return [
+                'id' => (int) $row['id'],
+                'display_name' => (string) $row['display_name'],
+                'username' => (string) $row['username'],
+                'role' => (string) $row['role'],
+                'post_count' => (int) $row['post_count'],
+                'bio' => isset($row['bio']) && is_string($row['bio']) ? $row['bio'] : null,
+                'location' => isset($row['location']) && is_string($row['location']) ? $row['location'] : null,
+                'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
+                'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
+                'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
+            ];
+        } catch (Throwable) {
+            $statement = $this->pdo->prepare(
+                "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
+                "FROM users u " .
+                "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
+                "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') " .
+                "GROUP BY u.id, u.display_name, u.username, u.role LIMIT 1"
+            );
+            $statement->execute(['id' => $id]);
+            $row = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                return null;
+            }
+
+            return [
+                'id' => (int) $row['id'],
+                'display_name' => (string) $row['display_name'],
+                'username' => (string) $row['username'],
+                'role' => (string) $row['role'],
+                'post_count' => (int) $row['post_count'],
+                'bio' => null,
+                'location' => null,
+                'interests' => null,
+                'website' => null,
+                'avatar_path' => null,
+            ];
+        }
     }
 
     /** @param array<string, mixed> $row */
@@ -233,6 +490,14 @@ final class UserRepository
         }
 
         $email = is_string($row['email'] ?? null) ? (string) $row['email'] : null;
+        $bio = isset($row['bio']) && is_string($row['bio']) ? (string) $row['bio'] : null;
+        $location = isset($row['location']) && is_string($row['location']) ? (string) $row['location'] : null;
+        $interests = isset($row['interests']) && is_string($row['interests']) ? (string) $row['interests'] : null;
+        $website = isset($row['website']) && is_string($row['website']) ? (string) $row['website'] : null;
+        $phone = isset($row['phone']) && is_string($row['phone']) ? (string) $row['phone'] : null;
+        $avatarPath = isset($row['avatar_path']) && is_string($row['avatar_path']) ? (string) $row['avatar_path'] : null;
+        $profileVisibility = isset($row['profile_visibility']) && is_string($row['profile_visibility']) ? (string) $row['profile_visibility'] : 'public';
+        $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? (string) $row['created_at'] : null;
 
         return new UserAccount(
             (int) $id,
@@ -242,7 +507,15 @@ final class UserRepository
             $status,
             $row['password_hash'],
             (int) $authVersion,
-            $email
+            $email,
+            $bio,
+            $location,
+            $interests,
+            $website,
+            $phone,
+            $avatarPath,
+            $profileVisibility,
+            $createdAt
         );
     }
 }

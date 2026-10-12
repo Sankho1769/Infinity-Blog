@@ -2238,6 +2238,184 @@ $run('administrator provisioning rejects duplicate passwords and unsafe configur
     $expectInvalid(static fn () => AppConfig::fromArray($invalid));
 });
 
+$createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
+    $pdo = $createUserDatabase();
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    $pdo->exec('ALTER TABLE users ADD COLUMN bio TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN location TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN interests TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN website TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN phone TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN avatar_path TEXT NULL');
+    $pdo->exec("ALTER TABLE users ADD COLUMN profile_visibility TEXT NOT NULL DEFAULT 'public'");
+    return $pdo;
+};
+
+$run('user profile system validates updates, blocks unsafe website protocols, verifies uniqueness, and records audit logs', static function () use ($expect, $createProfileTestDatabase): void {
+    $pdo = $createProfileTestDatabase();
+
+    $userRepo = new UserRepository($pdo);
+    $userId = $userRepo->createUser('Original Author', 'author@example.com', password_hash('password123', PASSWORD_DEFAULT));
+    $user2Id = $userRepo->createUser('Second User', 'second@example.com', password_hash('password123', PASSWORD_DEFAULT));
+
+    // Valid update
+    $updated = $userRepo->updateProfile($userId, [
+        'display_name' => 'Updated Author Name',
+        'username' => 'updated_author',
+        'email' => 'newemail@example.com',
+        'bio' => 'Software developer and writer.',
+        'location' => 'San Francisco, CA',
+        'interests' => 'PHP, MySQL, Cloud',
+        'website' => 'https://author.example.com',
+        'phone' => '+1 555-0199',
+        'profile_visibility' => 'private',
+    ]);
+
+    $expect($updated->displayName === 'Updated Author Name');
+    $expect($updated->username === 'updated_author');
+    $expect($updated->email === 'newemail@example.com');
+    $expect($updated->bio === 'Software developer and writer.');
+    $expect($updated->location === 'San Francisco, CA');
+    $expect($updated->interests === 'PHP, MySQL, Cloud');
+    $expect($updated->website === 'https://author.example.com');
+    $expect($updated->phone === '+1 555-0199');
+    $expect($updated->profileVisibility === 'private');
+
+    // Audit log check
+    $auditLog = $pdo->query("SELECT action, entity_type, entity_id FROM audit_logs WHERE actor_user_id = {$userId} AND action = 'user.profile_updated'")->fetch(PDO::FETCH_ASSOC);
+    $expect(is_array($auditLog) && $auditLog['action'] === 'user.profile_updated');
+
+    // Avatar update
+    $userRepo->updateAvatar($userId, '/uploads/avatars/avatar_123.png');
+    $freshUser = $userRepo->findById($userId);
+    $expect($freshUser->avatarPath === '/uploads/avatars/avatar_123.png');
+    $avatarAudit = $pdo->query("SELECT action FROM audit_logs WHERE actor_user_id = {$userId} AND action = 'user.avatar_updated'")->fetch(PDO::FETCH_ASSOC);
+    $expect(is_array($avatarAudit) && $avatarAudit['action'] === 'user.avatar_updated');
+
+    // Reject unsafe website protocol (javascript:)
+    try {
+        $userRepo->updateProfile($userId, ['website' => 'javascript:alert(1)']);
+        $expect(false, 'Expected ProfileValidationException for javascript website.');
+    } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+        $expect(isset($e->errors['website']), 'Expected website error.');
+    }
+
+    // Reject invalid phone
+    try {
+        $userRepo->updateProfile($userId, ['phone' => 'abc']);
+        $expect(false, 'Expected ProfileValidationException for invalid phone.');
+    } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+        $expect(isset($e->errors['phone']), 'Expected phone error.');
+    }
+
+    // Reject username collision with other user
+    try {
+        $userRepo->updateProfile($userId, ['username' => 'second@example.com']);
+        $expect(false, 'Expected ProfileValidationException for duplicate username.');
+    } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+        $expect(isset($e->errors['username']), 'Expected duplicate username error.');
+    }
+
+    // Reject email collision with other user
+    try {
+        $userRepo->updateProfile($userId, ['email' => 'second@example.com']);
+        $expect(false, 'Expected ProfileValidationException for duplicate email.');
+    } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+        $expect(isset($e->errors['email']), 'Expected duplicate email error.');
+    }
+});
+
+$run('public author profile respects privacy visibility and 404s for non-existent authors', static function () use ($expect, $createProfileTestDatabase): void {
+    $pdo = $createProfileTestDatabase();
+
+    $userRepo = new UserRepository($pdo);
+    $authorId = $userRepo->createUser('Public Author', 'public_author@example.com', password_hash('pass123456', PASSWORD_DEFAULT), [
+        'bio' => 'Public bio',
+        'location' => 'Paris',
+        'website' => 'https://paris.example.com',
+        'profile_visibility' => 'public',
+    ]);
+
+    // Create a published post for this author
+    $categoryRepo = new \InfinityBlog\Categories\CategoryRepository($pdo);
+    $cat = $categoryRepo->create('Tech Category', 'Description', $authorId);
+    $catId = (int) $cat['id'];
+    $postRepo = new \InfinityBlog\Posts\PostRepository($pdo);
+    $post = $postRepo->createDraft($authorId, [
+        'title' => 'Article Title',
+        'content' => 'Content of the article',
+        'category_id' => $catId,
+    ]);
+    $postId = (int) $post['id'];
+    $postRepo->publishForAuthor($postId, $authorId);
+
+    // Should appear in public authors
+    $authors = $userRepo->listPublicAuthors();
+    $found = array_filter($authors, fn($a) => $a['id'] === $authorId);
+    $expect(count($found) === 1);
+    $authorData = $userRepo->findPublicAuthor($authorId);
+    $expect($authorData !== null && $authorData['bio'] === 'Public bio');
+
+    // Switch to private visibility
+    $userRepo->updateProfile($authorId, ['profile_visibility' => 'private']);
+
+    // Should no longer appear in public authors list or findPublicAuthor
+    $authorsAfter = $userRepo->listPublicAuthors();
+    $foundAfter = array_filter($authorsAfter, fn($a) => $a['id'] === $authorId);
+    $expect(count($foundAfter) === 0, 'Private author must not appear in public author list.');
+    $authorDataAfter = $userRepo->findPublicAuthor($authorId);
+    $expect($authorDataAfter === null, 'findPublicAuthor must return null for private author.');
+
+    // Non-existent author
+    $missing = $userRepo->findPublicAuthor(999999);
+    $expect($missing === null, 'findPublicAuthor must return null for non-existent author.');
+});
+
+$run('custom frosted-glass 404 page is rendered for missing web routes with status 404', static function () use ($expect, $createProfileTestDatabase, $validConfiguration): void {
+    $pdo = $createProfileTestDatabase();
+
+    $userRepo = new UserRepository($pdo);
+    $sessions = new \InfinityBlog\Auth\SessionManager(\InfinityBlog\Config\AppConfig::fromArray($validConfiguration));
+    $sessions->start();
+    $guard = new \InfinityBlog\Auth\AuthGuard($sessions, $userRepo);
+
+    $webController = new \InfinityBlog\Http\WebController(
+        new \InfinityBlog\Posts\PostRepository($pdo),
+        new \InfinityBlog\Categories\CategoryRepository($pdo),
+        $userRepo,
+        new \InfinityBlog\Users\AdminUserRepository($pdo),
+        new \InfinityBlog\Audit\AuditLogRepository($pdo),
+        $guard,
+        $sessions,
+        \InfinityBlog\Config\AppConfig::fromArray($validConfiguration)
+    );
+
+    $notFoundResult = $webController->notFound('The requested test page was not found.');
+    $expect($notFoundResult['status'] === 404);
+    $expect(str_contains($notFoundResult['type'], 'text/html'));
+    $expect(str_contains($notFoundResult['body'], '404'));
+    $expect(str_contains($notFoundResult['body'], 'Page Not Found'));
+    $expect(str_contains($notFoundResult['body'], 'The requested test page was not found.'));
+
+    // Non-existent article returns 404
+    $request = \InfinityBlog\Http\Request::fromValues('GET', '/article/999999', '127.0.0.1');
+    $missingArticleResult = $webController->article($request, 999999);
+    $expect($missingArticleResult['status'] === 404);
+
+    // Non-existent author returns 404 (no fabricated Cristine Palmer)
+    $missingAuthorResult = $webController->authorProfile($request, 999999);
+    $expect($missingAuthorResult['status'] === 404);
+    $expect(!str_contains($missingAuthorResult['body'], 'Cristine Palmer'));
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [
@@ -2373,6 +2551,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         $expect(in_array('202610130007_expand_categories', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610130008_add_remix_to_posts', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610130010_add_user_profile_fields', $migrationRunner->appliedMigrations(), true));
         $authVersionColumn = $pdo->query(
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'auth_version'"
         )->fetchColumn();
@@ -3034,6 +3213,10 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130010_add_user_profile_fields');
+                $profileColumn = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'bio'")->fetchColumn();
+                $expect($profileColumn === 0, 'The bio column should be removed by rollback.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610130009_create_post_scores');
                 $postScoreTables = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'post_scores'")->fetchColumn();
                 $expect($postScoreTables === 0, 'The post_scores table should be removed by rollback.');
@@ -3076,6 +3259,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130007_expand_categories', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130008_add_remix_to_posts', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130010_add_user_profile_fields', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

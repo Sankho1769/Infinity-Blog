@@ -60,24 +60,50 @@ try {
         return;
     }
 
+    if (!headers_sent()) {
+        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
+        header("X-Content-Type-Options: nosniff");
+        header("X-Frame-Options: SAMEORIGIN");
+        header("Referrer-Policy: strict-origin-when-cross-origin");
+        header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+    }
+
     $pdo = ConnectionFactory::create($config->database);
     $users = new UserRepository($pdo);
     $guard = new AuthGuard($sessions, $users);
 
+    $webController = new WebController(
+        new PostRepository($pdo),
+        new CategoryRepository($pdo),
+        $users,
+        new AdminUserRepository($pdo),
+        new AuditLogRepository($pdo),
+        $guard,
+        $sessions,
+        $config,
+        new ScoreRepository($pdo)
+    );
+
+    // Browser POST form submissions for user profile & avatar
+    if ($request->method === 'POST') {
+        if ($request->path === '/profile/edit') {
+            $webResult = $webController->editProfile($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/profile/avatar') {
+            $webResult = $webController->uploadAvatar($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+    }
+
     // Web Browser Views (HTML)
     if ($request->method === 'GET') {
-        $webController = new WebController(
-            new PostRepository($pdo),
-            new CategoryRepository($pdo),
-            $users,
-            new AdminUserRepository($pdo),
-            new AuditLogRepository($pdo),
-            $guard,
-            $sessions,
-            $config,
-            new ScoreRepository($pdo)
-        );
-
         $wantsJson = str_contains((string) $request->header('Accept'), 'application/json');
 
         $webResult = match (true) {
@@ -85,6 +111,10 @@ try {
             (bool) preg_match('#^/article/([0-9]+)$#D', $request->path, $m) => $webController->article($request, (int) $m[1]),
             $request->path === '/login' => $webController->login($request),
             $request->path === '/register' => $webController->register($request),
+            $request->path === '/profile' => $webController->profile($request),
+            $request->path === '/profile/edit' => $webController->editProfile($request),
+            $request->path === '/contact' => $webController->contact($request),
+            $request->path === '/privacy' => $webController->privacy($request),
             $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
             $request->path === '/authors' => $webController->publicAuthors($request),
             (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
@@ -100,6 +130,17 @@ try {
             $request->path === '/logout' => $webController->logout($request),
             default => null,
         };
+
+        if ($webResult === null && !$wantsJson && !$request->isJson()
+            && !str_starts_with($request->path, '/api/')
+            && !str_starts_with($request->path, '/auth/')
+            && !str_starts_with($request->path, '/admin/')
+            && !str_starts_with($request->path, '/author/')
+            && !str_starts_with($request->path, '/posts/')
+            && $request->path !== '/categories'
+            && $request->path !== '/posts') {
+            $webResult = $webController->notFound('The page or resource you requested could not be found.');
+        }
 
         if ($webResult !== null) {
             http_response_code($webResult['status']);

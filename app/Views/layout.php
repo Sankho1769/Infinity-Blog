@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog</title>
+  <meta name="description" content="<?= htmlspecialchars($metaDescription ?? 'Infinity Blog — A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
+  <meta property="og:site_name" content="Infinity Blog">
+  <meta property="og:title" content="<?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog">
+  <meta property="og:description" content="<?= htmlspecialchars($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
+  <meta property="og:type" content="website">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/favicon-apple.png">
   <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,16 +65,20 @@
         <?php if (!empty($currentUser)): ?>
           <!-- Logged in User Menu -->
           <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn">+ Create Post</a>
-          <div class="user-menu-pill">
-            <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
-              <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
-            </div>
+          <a href="/profile" class="user-menu-pill user-profile-link" title="My Profile" style="text-decoration: none;">
+            <?php if (!empty($currentUser['avatar_path'])): ?>
+              <img src="<?= htmlspecialchars($currentUser['avatar_path'], ENT_QUOTES, 'UTF-8') ?>" alt="" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;">
+            <?php else: ?>
+              <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
+                <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
+              </div>
+            <?php endif; ?>
             <span class="user-display-name"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?></span>
             <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
               <span class="user-role-badge admin">Admin</span>
             <?php endif; ?>
-            <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 4px;">Logout</a>
-          </div>
+          </a>
+          <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 2px;">Logout</a>
         <?php else: ?>
           <!-- Guest Navigation Buttons: Sign In | Create Account -->
           <a href="/login" class="btn btn-secondary btn-pill btn-sm" style="padding: 7px 15px; white-space: nowrap;">Sign In</a>
@@ -92,6 +104,7 @@
         <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
         <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
         <?php if (!empty($currentUser)): ?>
+          <li><a href="/profile" class="mobile-nav-link <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>">My Profile</a></li>
           <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
           <li><a href="/posts/new" class="mobile-nav-link">Create Post</a></li>
@@ -101,7 +114,7 @@
             <li><a href="/admin/audit-logs-page" class="mobile-nav-link">Audit Logs</a></li>
           <?php endif; ?>
           <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.85rem; color: var(--text-muted);"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?><?= (($currentUser['role'] ?? '') === 'admin') ? ' (Admin)' : '' ?></span>
+            <a href="/profile" style="text-decoration: none; font-size: 0.85rem; color: var(--text-muted); font-weight: 600;"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?><?= (($currentUser['role'] ?? '') === 'admin') ? ' (Admin)' : '' ?></a>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
           </li>
         <?php else: ?>
@@ -153,9 +166,60 @@
     <?= $content ?? '' ?>
   </main>
 
-  <!-- Footer with Asset Background -->
-  <footer class="container site-footer">
-    <p>© <?= date('Y') ?> Infinity Blog — Powered by PHP & MySQL. Ideas. Stories. Perspectives.</p>
+  <!-- Footer with Clean Multi-Column Layout -->
+  <footer class="container site-footer glass-panel" style="margin-top: 60px; margin-bottom: 24px; padding: 36px 32px; border-radius: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px; margin-bottom: 24px;">
+      <div style="max-width: 320px;">
+        <a href="/" class="brand-logo" aria-label="Infinity Blog Home" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span class="brand-logo-icon">✦</span>
+          <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
+        </a>
+        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+          A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 40px; flex-wrap: wrap;">
+        <div>
+          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Explore</div>
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
+            <li><a href="/" style="color: var(--text-muted); text-decoration: none;">Home</a></li>
+            <li><a href="/explore" style="color: var(--text-muted); text-decoration: none;">Articles</a></li>
+            <li><a href="/categories" style="color: var(--text-muted); text-decoration: none;">Categories</a></li>
+            <li><a href="/authors" style="color: var(--text-muted); text-decoration: none;">Authors</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Platform</div>
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
+            <?php if (!empty($currentUser)): ?>
+              <li><a href="/profile" style="color: var(--text-muted); text-decoration: none;">My Profile</a></li>
+              <li><a href="/dashboard" style="color: var(--text-muted); text-decoration: none;">Dashboard</a></li>
+              <li><a href="/posts/new" style="color: var(--text-muted); text-decoration: none;">Write Post</a></li>
+            <?php else: ?>
+              <li><a href="/login" style="color: var(--text-muted); text-decoration: none;">Sign In</a></li>
+              <li><a href="/register" style="color: var(--text-muted); text-decoration: none;">Create Account</a></li>
+            <?php endif; ?>
+            <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
+            <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Connect</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
+            <a href="mailto:support@infinityblog.local" style="color: var(--primary-600, #4f46e5); text-decoration: none;">support@infinityblog.local</a>
+            <a href="tel:+18005550199" style="color: var(--primary-600, #4f46e5); text-decoration: none;">+1 (800) 555-0199</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.84rem; color: var(--text-muted);">
+      <div>© <?= date('Y') ?> Infinity Blog. All rights reserved.</div>
+      <div>Crafted with PHP, PDO & MySQL.</div>
+    </div>
   </footer>
 
   <!-- Global Delete Confirmation Modal Dialog -->

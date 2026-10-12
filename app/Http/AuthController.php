@@ -152,7 +152,13 @@ final class AuthController
         }
 
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-        $newUserId = $this->users->createReader(trim($displayName), trim($email), $passwordHash);
+        $profile = [];
+        foreach (['bio', 'location', 'interests', 'website', 'phone'] as $fieldKey) {
+            if (isset($input[$fieldKey]) && is_string($input[$fieldKey]) && trim($input[$fieldKey]) !== '') {
+                $profile[$fieldKey] = trim($input[$fieldKey]);
+            }
+        }
+        $newUserId = $this->users->createUser(trim($displayName), trim($email), $passwordHash, $profile);
 
         return [
             'status' => 201,

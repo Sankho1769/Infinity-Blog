@@ -22,3 +22,9 @@ Thumbs.db
 powershell.cmd
 category_page_test.html
 .codex-*
+
+# User uploads and local scratch
+/public/uploads/avatars/*
+!/public/uploads/avatars/.htaccess
+/Assets/
+/tools/

@@ -69,6 +69,38 @@
         </div>
       </div>
 
+      <details style="margin-bottom: 20px; padding: 12px 16px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(226, 232, 240, 0.7);">
+        <summary style="font-weight: 600; font-size: 0.88rem; color: var(--primary-color); cursor: pointer; user-select: none;">
+          Optional: Add Bio & Details (or do this later)
+        </summary>
+        <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 12px;">
+          <div>
+            <label for="bio" class="form-label" style="font-size: 0.82rem;">Bio</label>
+            <textarea id="bio" name="bio" rows="2" class="form-input" placeholder="Brief introduction..." maxlength="1000"></textarea>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label for="location" class="form-label" style="font-size: 0.82rem;">Location</label>
+              <input type="text" id="location" name="location" class="form-input" placeholder="e.g. London, UK" maxlength="120">
+            </div>
+            <div>
+              <label for="interests" class="form-label" style="font-size: 0.82rem;">Interests</label>
+              <input type="text" id="interests" name="interests" class="form-input" placeholder="e.g. AI, Web Dev" maxlength="255">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label for="website" class="form-label" style="font-size: 0.82rem;">Website</label>
+              <input type="url" id="website" name="website" class="form-input" placeholder="https://..." maxlength="255">
+            </div>
+            <div>
+              <label for="phone" class="form-label" style="font-size: 0.82rem;">Phone (Private)</label>
+              <input type="tel" id="phone" name="phone" class="form-input" placeholder="+1..." maxlength="30">
+            </div>
+          </div>
+        </div>
+      </details>
+
       <div style="margin-bottom: 20px; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
         Password must be at least 8 characters long.
       </div>
@@ -123,6 +155,11 @@
       const email = document.getElementById('email')?.value.trim() || '';
       const password = document.getElementById('password')?.value || '';
       const confirmPassword = document.getElementById('confirm_password')?.value || '';
+      const bio = document.getElementById('bio')?.value.trim() || '';
+      const location = document.getElementById('location')?.value.trim() || '';
+      const interests = document.getElementById('interests')?.value.trim() || '';
+      const website = document.getElementById('website')?.value.trim() || '';
+      const phone = document.getElementById('phone')?.value.trim() || '';
 
       if (!displayName) {
         showError('Please enter your full name.');
@@ -144,6 +181,18 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Creating account...';
 
+      const payload = {
+        display_name: displayName,
+        email: email,
+        password: password,
+        confirm_password: confirmPassword
+      };
+      if (bio) payload.bio = bio;
+      if (location) payload.location = location;
+      if (interests) payload.interests = interests;
+      if (website) payload.website = website;
+      if (phone) payload.phone = phone;
+
       try {
         const csrf = await obtainCsrf();
         const res = await fetch('/auth/register', {
@@ -153,12 +202,7 @@
             'Accept': 'application/json',
             'X-CSRF-Token': csrf
           },
-          body: JSON.stringify({
-            display_name: displayName,
-            email: email,
-            password: password,
-            confirm_password: confirmPassword
-          })
+          body: JSON.stringify(payload)
         });
 
         const data = await res.json();

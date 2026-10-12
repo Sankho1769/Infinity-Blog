@@ -12,6 +12,14 @@ final class UserAccount
     public string $role;
     public string $status;
     public int $authVersion;
+    public ?string $bio;
+    public ?string $location;
+    public ?string $interests;
+    public ?string $website;
+    public ?string $phone;
+    public ?string $avatarPath;
+    public string $profileVisibility;
+    public ?string $createdAt;
     private string $passwordHash;
 
     public function __construct(
@@ -22,7 +30,15 @@ final class UserAccount
         string $status,
         string $passwordHash,
         int $authVersion,
-        ?string $email = null
+        ?string $email = null,
+        ?string $bio = null,
+        ?string $location = null,
+        ?string $interests = null,
+        ?string $website = null,
+        ?string $phone = null,
+        ?string $avatarPath = null,
+        string $profileVisibility = 'public',
+        ?string $createdAt = null
     ) {
         $this->id = $id;
         $this->username = $username;
@@ -32,6 +48,14 @@ final class UserAccount
         $this->passwordHash = $passwordHash;
         $this->authVersion = $authVersion;
         $this->email = $email;
+        $this->bio = $bio;
+        $this->location = $location;
+        $this->interests = $interests;
+        $this->website = $website;
+        $this->phone = $phone;
+        $this->avatarPath = $avatarPath;
+        $this->profileVisibility = $profileVisibility;
+        $this->createdAt = $createdAt;
     }
 
     public function isActive(): bool
@@ -64,8 +88,24 @@ final class UserAccount
         return password_verify($password, $this->passwordHash);
     }
 
-    /** @return array{id: int, username: string, email: ?string, display_name: string, role: string} */
+    /** @return array<string, mixed> */
     public function toPublicArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'username' => $this->username,
+            'display_name' => $this->displayName,
+            'role' => $this->role,
+            'bio' => $this->bio,
+            'location' => $this->location,
+            'interests' => $this->interests,
+            'website' => $this->website,
+            'avatar_path' => $this->avatarPath,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function toPrivateArray(): array
     {
         return [
             'id' => $this->id,
@@ -73,6 +113,15 @@ final class UserAccount
             'email' => $this->email,
             'display_name' => $this->displayName,
             'role' => $this->role,
+            'status' => $this->status,
+            'bio' => $this->bio,
+            'location' => $this->location,
+            'interests' => $this->interests,
+            'website' => $this->website,
+            'phone' => $this->phone,
+            'avatar_path' => $this->avatarPath,
+            'profile_visibility' => $this->profileVisibility,
+            'created_at' => $this->createdAt,
         ];
     }
 }
