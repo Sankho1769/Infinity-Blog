@@ -39,8 +39,9 @@ $errors = $errors ?? [];
 
       <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
         <div style="position: relative;">
-          <?php if (!empty($user['avatar_path'])): ?>
-            <img src="<?= htmlspecialchars($user['avatar_path'], ENT_QUOTES, 'UTF-8') ?>" alt="Current Avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
+          <?php $avatarSrc = $user['avatar_url'] ?? ($user['avatar_path'] ?? null); ?>
+          <?php if (!empty($avatarSrc)): ?>
+            <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Current Avatar" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
           <?php else: ?>
             <div style="width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 800; border: 3px solid rgba(255, 255, 255, 0.8); box-shadow: 0 4px 14px rgba(0,0,0,0.08);">
               <?= strtoupper(substr($user['display_name'] ?? $user['username'], 0, 1)) ?>
@@ -52,13 +53,41 @@ $errors = $errors ?? [];
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
           <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <input type="file" name="avatar" id="avatar" accept="image/png,image/jpeg,image/webp,image/gif" class="form-input" style="padding: 8px 12px; flex: 1; min-width: 200px;" required>
-            <button type="submit" class="btn btn-secondary btn-pill">Upload Image</button>
+            <button type="submit" class="btn btn-secondary btn-pill">Upload Avatar</button>
           </div>
           <?php if (!empty($errors['avatar'])): ?>
             <p style="color: #dc2626; font-size: 0.85rem; margin-top: 6px;"><?= htmlspecialchars($errors['avatar'], ENT_QUOTES, 'UTF-8') ?></p>
           <?php endif; ?>
         </form>
       </div>
+    </div>
+
+    <!-- Profile Banner Upload Card -->
+    <div class="glass-card" style="padding: 28px 24px; border-radius: 20px;">
+      <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">
+        Profile Banner
+      </h2>
+      <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+        Upload a header banner image (JPEG, PNG, or WebP up to 4MB).
+      </p>
+
+      <?php $bannerSrc = $user['banner_url'] ?? ($user['banner_path'] ?? null); ?>
+      <?php if (!empty($bannerSrc)): ?>
+        <div style="margin-bottom: 16px; border-radius: 12px; overflow: hidden; height: 120px; max-width: 100%; border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <img src="<?= htmlspecialchars($bannerSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Current Banner" style="width: 100%; height: 100%; object-fit: cover;">
+        </div>
+      <?php endif; ?>
+
+      <form action="/profile/banner" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <input type="file" name="banner" id="banner" accept="image/png,image/jpeg,image/webp" class="form-input" style="padding: 8px 12px; flex: 1; min-width: 200px;" required>
+          <button type="submit" class="btn btn-secondary btn-pill">Upload Banner</button>
+        </div>
+        <?php if (!empty($errors['banner'])): ?>
+          <p style="color: #dc2626; font-size: 0.85rem; margin-top: 6px;"><?= htmlspecialchars($errors['banner'], ENT_QUOTES, 'UTF-8') ?></p>
+        <?php endif; ?>
+      </form>
     </div>
 
     <!-- Main Profile Details Form -->

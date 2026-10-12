@@ -47,6 +47,11 @@ use InfinityBlog\Posts\PostValidationException;
 use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Scores\ScoreValidationException;
 use InfinityBlog\Http\ScoreController;
+use InfinityBlog\Storage\MediaService;
+use InfinityBlog\Storage\StorageClientInterface;
+use InfinityBlog\Storage\StorageException;
+use InfinityBlog\Storage\SupabaseStorageClient;
+use InfinityBlog\Storage\SupabaseStorageConfig;
 use InfinityBlog\Users\AdminUserRepository;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -119,6 +124,52 @@ final class TestSummaryProvider implements SummaryProvider
     public function beforeResponse(?callable $callback): void
     {
         $this->beforeResponse = $callback === null ? null : Closure::fromCallable($callback);
+    }
+}
+
+final class TestStorageClient implements StorageClientInterface
+{
+    /** @var array<string, array<string, array{data: string, mime: string}>> */
+    public array $storage = [];
+    /** @var list<string> */
+    public array $deleted = [];
+    public bool $shouldFail = false;
+
+    public function upload(string $bucket, string $path, string $binaryData, string $mimeType, bool $upsert = true): string
+    {
+        if ($this->shouldFail) {
+            throw new StorageException('Simulated storage upload error.', 'UPLOAD_FAILED');
+        }
+        $this->storage[$bucket][$path] = ['data' => $binaryData, 'mime' => $mimeType];
+        return $path;
+    }
+
+    public function delete(string $bucket, string $path): bool
+    {
+        if ($this->shouldFail) {
+            throw new StorageException('Simulated storage delete error.', 'DELETE_FAILED');
+        }
+        $this->deleted[] = $bucket . '/' . $path;
+        unset($this->storage[$bucket][$path]);
+        return true;
+    }
+
+    public function getPublicUrl(string $bucket, string $path): string
+    {
+        return 'https://example.supabase.co/storage/v1/object/public/' . $bucket . '/' . $path;
+    }
+
+    public function createSignedUrl(string $bucket, string $path, int $expiresInSeconds = 3600): string
+    {
+        if ($this->shouldFail) {
+            throw new StorageException('Simulated signed URL error.', 'SIGN_FAILED');
+        }
+        return 'https://example.supabase.co/storage/v1/object/sign/' . $bucket . '/' . $path . '?token=mock-token-' . $expiresInSeconds;
+    }
+
+    public function download(string $bucket, string $path): ?string
+    {
+        return $this->storage[$bucket][$path]['data'] ?? null;
     }
 }
 
@@ -507,6 +558,7 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, ' .
         'remixed_from_post_id INTEGER NULL REFERENCES posts(id) ON DELETE SET NULL, ' .
         'title TEXT NOT NULL, content TEXT NOT NULL, ' .
+        'cover_image_path TEXT NULL, video_path TEXT NULL, ' .
         'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
         'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
         'published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
@@ -2247,7 +2299,7 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec('ALTER TABLE users ADD COLUMN bio TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN location TEXT NULL');
@@ -2255,6 +2307,7 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
     $pdo->exec('ALTER TABLE users ADD COLUMN website TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN phone TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN avatar_path TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN banner_path TEXT NULL');
     $pdo->exec("ALTER TABLE users ADD COLUMN profile_visibility TEXT NOT NULL DEFAULT 'public'");
     return $pdo;
 };
@@ -2414,6 +2467,271 @@ $run('custom frosted-glass 404 page is rendered for missing web routes with stat
     $missingAuthorResult = $webController->authorProfile($request, 999999);
     $expect($missingAuthorResult['status'] === 404);
     $expect(!str_contains($missingAuthorResult['body'], 'Cristine Palmer'));
+});
+
+$run('supabase storage config validates parameters, rejects placeholders, and defines bucket limits and mime types', static function () use ($expect): void {
+    // Rejects placeholder credentials
+    $placeholderConfig = new SupabaseStorageConfig('https://YOUR_PROJECT_REF.supabase.co', 'YOUR_SECRET_KEY');
+    $expect(!$placeholderConfig->isConfigured(), 'Placeholder credentials must not be marked configured.');
+
+    $emptyConfig = new SupabaseStorageConfig('', '');
+    $expect(!$emptyConfig->isConfigured(), 'Empty credentials must not be marked configured.');
+
+    // Accepts well-formed credentials
+    $validStorage = new SupabaseStorageConfig('https://xyzcompany.supabase.co', 'sb_secret_key_12345');
+    $expect($validStorage->isConfigured(), 'Valid credentials must be marked configured.');
+    $expect($validStorage->supabaseUrl === 'https://xyzcompany.supabase.co');
+    $expect($validStorage->secretKey === 'sb_secret_key_12345');
+    $expect($validStorage->bucketArticles === 'article-images');
+    $expect($validStorage->bucketAvatars === 'profile-avatars');
+    $expect($validStorage->bucketBanners === 'profile-banners');
+    $expect($validStorage->bucketVideos === 'article-videos');
+
+    // Bucket limits
+    $expect(SupabaseStorageConfig::getBucketLimit('article-images') === 5 * 1024 * 1024, 'article-images limit must be 5MB.');
+    $expect(SupabaseStorageConfig::getBucketLimit('profile-avatars') === 2 * 1024 * 1024, 'profile-avatars limit must be 2MB.');
+    $expect(SupabaseStorageConfig::getBucketLimit('profile-banners') === 4 * 1024 * 1024, 'profile-banners limit must be 4MB.');
+    $expect(SupabaseStorageConfig::getBucketLimit('article-videos') === 50 * 1024 * 1024, 'article-videos limit must be 50MB.');
+
+    // Allowed MIME types
+    $expect(in_array('image/jpeg', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
+    $expect(in_array('image/png', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
+    $expect(in_array('image/webp', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
+    $expect(!in_array('image/gif', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true), 'GIF must not be allowed for articles.');
+    $expect(in_array('video/mp4', SupabaseStorageConfig::ALLOWED_VIDEO_MIME_TYPES, true));
+    $expect(in_array('video/webm', SupabaseStorageConfig::ALLOWED_VIDEO_MIME_TYPES, true));
+});
+
+$run('supabase storage client rejects unconfigured operation and generates clean public URLs', static function () use ($expect): void {
+    $placeholderConfig = new SupabaseStorageConfig('https://YOUR_PROJECT_REF.supabase.co', 'YOUR_SECRET_KEY');
+    $client = new SupabaseStorageClient($placeholderConfig);
+
+    // Public URL does not require network connection
+    $publicUrl = $client->getPublicUrl('article-images', 'covers/test.png');
+    $expect(str_contains($publicUrl, '/storage/v1/object/public/article-images/covers/test.png'));
+
+    // Operations requiring network fail closed with NOT_CONFIGURED when placeholder
+    try {
+        $client->upload('article-images', 'test.png', 'data', 'image/png');
+        $expect(false, 'Expected StorageException for unconfigured upload.');
+    } catch (StorageException $e) {
+        $expect($e->errorCode === 'NOT_CONFIGURED');
+    }
+
+    try {
+        $client->delete('article-images', 'test.png');
+        $expect(false, 'Expected StorageException for unconfigured delete.');
+    } catch (StorageException $e) {
+        $expect($e->errorCode === 'NOT_CONFIGURED');
+    }
+
+    try {
+        $client->createSignedUrl('article-videos', 'video.mp4', 3600);
+        $expect(false, 'Expected StorageException for unconfigured createSignedUrl.');
+    } catch (StorageException $e) {
+        $expect($e->errorCode === 'NOT_CONFIGURED');
+    }
+});
+
+$run('media service validates contents, enforces bucket limits, randomizes keys, and safely deletes old media', static function () use ($expect): void {
+    $storageConfig = new SupabaseStorageConfig('https://xyzcompany.supabase.co', 'sb_secret_key_12345');
+    $testClient = new TestStorageClient();
+    $mediaService = new MediaService($testClient, $storageConfig);
+
+    $tempDir = sys_get_temp_dir() . '/infinity_blog_test_' . bin2hex(random_bytes(4));
+    mkdir($tempDir, 0755, true);
+
+    // Create 1x1 valid PNG
+    $pngData = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+    $pngPath = $tempDir . '/valid.png';
+    file_put_contents($pngPath, $pngData);
+
+    // Create valid MP4 stub (with isom ftyp box)
+    $mp4Data = "\x00\x00\x00\x20ftypisom\x00\x00\x02\x00isomiso2mp41\x00\x00\x00\x08free";
+    $mp4Path = $tempDir . '/valid.mp4';
+    file_put_contents($mp4Path, $mp4Data);
+
+    // Create valid WebM stub (EBML header)
+    $webmHeader = "\x1a\x45\xdf\xa3\x9f\x42\x86\x81\x01\x42\xf7\x81\x01\x42\xf2\x81\x04\x42\xf3\x81\x08\x42\x82\x84webm";
+    $webmPath = $tempDir . '/valid.webm';
+    file_put_contents($webmPath, $webmHeader);
+
+    // Create invalid text file masquerading as image
+    $fakeImgPath = $tempDir . '/fake.jpg';
+    file_put_contents($fakeImgPath, '<?php echo "evil"; ?>');
+
+    // Create invalid video
+    $fakeVideoPath = $tempDir . '/fake.mp4';
+    file_put_contents($fakeVideoPath, 'not a valid video stream content');
+
+    try {
+        // 1. Upload Avatar
+        $avatarUpload = [
+            'tmp_name' => $pngPath,
+            'name' => 'my_avatar.png',
+            'size' => strlen($pngData),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        $storedAvatar = $mediaService->uploadAvatar($avatarUpload, 42);
+        $expect(str_starts_with($storedAvatar, 'avatars/u42_'), 'Avatar path must be scoped to user ID.');
+        $expect(str_ends_with($storedAvatar, '.png'), 'Avatar must have .png extension.');
+        $expect(isset($testClient->storage['profile-avatars'][$storedAvatar]), 'Avatar must be uploaded to profile-avatars bucket.');
+
+        // Avatar replacement deletes old avatar
+        $storedAvatar2 = $mediaService->uploadAvatar($avatarUpload, 42, $storedAvatar);
+        $expect(in_array('profile-avatars/' . $storedAvatar, $testClient->deleted, true), 'Previous avatar must be safely deleted.');
+        $expect(!isset($testClient->storage['profile-avatars'][$storedAvatar]), 'Old avatar removed from storage.');
+
+        // 2. Upload Banner
+        $bannerUpload = [
+            'tmp_name' => $pngPath,
+            'name' => 'banner.png',
+            'size' => strlen($pngData),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        $storedBanner = $mediaService->uploadBanner($bannerUpload, 42);
+        $expect(str_starts_with($storedBanner, 'banners/u42_'), 'Banner path must be scoped to user ID.');
+        $expect(isset($testClient->storage['profile-banners'][$storedBanner]), 'Banner must be uploaded to profile-banners bucket.');
+
+        // Banner replacement deletes old banner
+        $storedBanner2 = $mediaService->uploadBanner($bannerUpload, 42, $storedBanner);
+        $expect(in_array('profile-banners/' . $storedBanner, $testClient->deleted, true), 'Previous banner must be safely deleted.');
+
+        // 3. Upload Article Cover Image
+        $coverUpload = [
+            'tmp_name' => $pngPath,
+            'name' => 'cover.png',
+            'size' => strlen($pngData),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        $storedCover = $mediaService->uploadCoverImage($coverUpload, 42);
+        $expect(str_starts_with($storedCover, 'covers/u42_'), 'Cover image path must be scoped to user ID.');
+        $expect(isset($testClient->storage['article-images'][$storedCover]), 'Cover must be uploaded to article-images bucket.');
+
+        // 4. Upload Inline Image
+        $inlineResult = $mediaService->uploadInlineArticleImage($coverUpload, 42);
+        $expect(str_starts_with($inlineResult['path'], 'inline/u42_'), 'Inline image path must be scoped to user ID.');
+        $expect(str_contains($inlineResult['url'], 'article-images/inline/u42_'), 'Inline image public URL must be generated.');
+
+        // 5. Upload Video
+        $videoUpload = [
+            'tmp_name' => $mp4Path,
+            'name' => 'sample.mp4',
+            'size' => strlen($mp4Data),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        $storedVideo = $mediaService->uploadVideo($videoUpload, 42);
+        $expect(str_starts_with($storedVideo, 'videos/u42_'), 'Video path must be scoped to user ID.');
+        $expect(str_ends_with($storedVideo, '.mp4'), 'Video extension must be .mp4.');
+        $expect(isset($testClient->storage['article-videos'][$storedVideo]), 'Video must be uploaded to article-videos bucket.');
+
+        // WebM video upload
+        $webmUpload = [
+            'tmp_name' => $webmPath,
+            'name' => 'sample.webm',
+            'size' => strlen($webmHeader),
+            'error' => UPLOAD_ERR_OK,
+        ];
+        $storedWebm = $mediaService->uploadVideo($webmUpload, 42);
+        $expect(str_ends_with($storedWebm, '.webm'), 'WebM video extension must be .webm.');
+
+        // Video replacement deletes old video
+        $storedVideo2 = $mediaService->uploadVideo($videoUpload, 42, $storedVideo);
+        $expect(in_array('article-videos/' . $storedVideo, $testClient->deleted, true), 'Previous video must be safely deleted.');
+
+        // 6. Signed Video URL
+        $signedUrl = $mediaService->resolveSignedVideoUrl($storedVideo2, 1800);
+        $expect(str_contains($signedUrl, 'article-videos/' . $storedVideo2), 'Signed URL must include bucket and object path.');
+        $expect(str_contains($signedUrl, 'token='), 'Signed URL must include security signature token.');
+
+        // External URLs resolve idempotently
+        $externalUrl = 'https://cdn.example.com/videos/external.mp4';
+        $expect($mediaService->resolveSignedVideoUrl($externalUrl) === $externalUrl);
+
+        // 7. Error Handling & Validation
+        // Corrupted/fake image rejected
+        try {
+            $mediaService->uploadAvatar([
+                'tmp_name' => $fakeImgPath,
+                'name' => 'fake.jpg',
+                'size' => filesize($fakeImgPath),
+                'error' => UPLOAD_ERR_OK,
+            ], 42);
+            $expect(false, 'Fake image must be rejected.');
+        } catch (StorageException $e) {
+            $expect(in_array($e->errorCode, ['INVALID_MIME_TYPE', 'CORRUPT_IMAGE', 'INVALID_IMAGE'], true), 'Expected invalid image error code.');
+        }
+
+        // Corrupted/fake video rejected
+        try {
+            $mediaService->uploadVideo([
+                'tmp_name' => $fakeVideoPath,
+                'name' => 'fake.mp4',
+                'size' => filesize($fakeVideoPath),
+                'error' => UPLOAD_ERR_OK,
+            ], 42);
+            $expect(false, 'Fake video must be rejected.');
+        } catch (StorageException $e) {
+            $expect(in_array($e->errorCode, ['INVALID_MIME_TYPE', 'CORRUPT_VIDEO', 'INVALID_VIDEO'], true), 'Expected invalid video error code.');
+        }
+
+        // File exceeding limit rejected
+        try {
+            $mediaService->uploadAvatar([
+                'tmp_name' => $pngPath,
+                'name' => 'huge.png',
+                'size' => 3 * 1024 * 1024, // 3MB > 2MB limit
+                'error' => UPLOAD_ERR_OK,
+            ], 42);
+            $expect(false, 'File exceeding limit must be rejected.');
+        } catch (StorageException $e) {
+            $expect($e->errorCode === 'FILE_TOO_LARGE');
+        }
+
+        // Safe delete does not throw when client fails
+        $testClient->shouldFail = true;
+        $deleteResult = $mediaService->safeDelete('article-images', 'covers/nonexistent.png');
+        $expect($deleteResult === false, 'safeDelete must return false and not throw.');
+    } finally {
+        @unlink($pngPath);
+        @unlink($mp4Path);
+        @unlink($webmPath);
+        @unlink($fakeImgPath);
+        @unlink($fakeVideoPath);
+        @rmdir($tempDir);
+    }
+});
+
+$run('supabase live storage operations against project or transparent skip', static function () use ($expect): void {
+    $liveConfig = SupabaseStorageConfig::fromEnvironment();
+    if ($liveConfig === null || !$liveConfig->isConfigured()) {
+        echo "SKIP Supabase live storage tests (SUPABASE_URL or SUPABASE_SECRET_KEY not configured or set to placeholder).\n";
+        return;
+    }
+
+    $client = new SupabaseStorageClient($liveConfig, 15);
+    $testObject = 'test_integration_' . bin2hex(random_bytes(6)) . '.txt';
+    $testContent = 'Infinity Blog Supabase Storage Test: ' . gmdate('Y-m-d H:i:s');
+
+    try {
+        // Upload test object to article-images
+        $uploadedPath = $client->upload($liveConfig->bucketArticles, $testObject, $testContent, 'text/plain', true);
+        $expect($uploadedPath === $testObject);
+
+        // Download object to verify retrieval
+        $downloaded = $client->download($liveConfig->bucketArticles, $testObject);
+        $expect($downloaded === $testContent, 'Downloaded content must match uploaded payload.');
+
+        // Create signed URL
+        $signedUrl = $client->createSignedUrl($liveConfig->bucketArticles, $testObject, 300);
+        $expect(str_starts_with($signedUrl, 'http://') || str_starts_with($signedUrl, 'https://'));
+
+        // Delete test object
+        $deleted = $client->delete($liveConfig->bucketArticles, $testObject);
+        $expect($deleted, 'Test object must be successfully deleted.');
+    } catch (StorageException $e) {
+        throw new RuntimeException('Live Supabase Storage operation failed: ' . $e->getMessage() . ' [' . $e->errorCode . ']');
+    }
 });
 
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
@@ -3213,6 +3531,10 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130011_add_storage_paths');
+                $storageColumn = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'posts' AND column_name = 'cover_image_path'")->fetchColumn();
+                $expect($storageColumn === 0, 'The cover_image_path column should be removed by rollback.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610130010_add_user_profile_fields');
                 $profileColumn = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'bio'")->fetchColumn();
                 $expect($profileColumn === 0, 'The bio column should be removed by rollback.');
@@ -3260,6 +3582,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130008_add_remix_to_posts', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130010_add_user_profile_fields', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130011_add_storage_paths', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

@@ -38,7 +38,7 @@ final class PostRepository
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'p.summary, p.summary_status, p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
             $where . ' ORDER BY p.published_at DESC, p.id DESC LIMIT :limit OFFSET :offset'
@@ -83,6 +83,8 @@ final class PostRepository
                 'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
                 'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
                 'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
+                'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
+                'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
                 'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'author_id' => (int) $row['author_id'],
                 'author_name' => (string) $row['author_name'],
@@ -135,7 +137,7 @@ final class PostRepository
     public function findPublished(int $postId): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, p.summary, p.summary_status, ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, p.summary, p.summary_status, ' .
             'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
             'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
@@ -149,6 +151,18 @@ final class PostRepository
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? self::mapDetail($row) : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findByVideoPath(string $videoPath): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT p.id, p.author_id, p.status, p.video_path FROM posts p WHERE p.video_path = :video_path LIMIT 1'
+        );
+        $statement->execute(['video_path' => $videoPath]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? $row : null;
     }
 
     public function isActiveCategory(int $categoryId): bool
@@ -197,20 +211,25 @@ final class PostRepository
                 }
             }
 
+            $coverImagePath = isset($post['cover_image_path']) && is_string($post['cover_image_path']) ? $post['cover_image_path'] : null;
+            $videoPath = isset($post['video_path']) && is_string($post['video_path']) ? $post['video_path'] : null;
+
             $insert = $this->pdo->prepare(
-                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, title, content, status) " .
-                "VALUES (:author_id, :category_id, :remixed_from_post_id, :title, :content, 'draft')"
+                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, cover_image_path, video_path, title, content, status) " .
+                "VALUES (:author_id, :category_id, :remixed_from_post_id, :cover_image_path, :video_path, :title, :content, 'draft')"
             );
             $insert->execute([
                 'author_id' => $authorId,
                 'category_id' => $post['category_id'],
                 'remixed_from_post_id' => $remixedFromId,
+                'cover_image_path' => $coverImagePath,
+                'video_path' => $videoPath,
                 'title' => $post['title'],
                 'content' => $post['content'],
             ]);
             $postId = (int) $this->pdo->lastInsertId();
             $this->writeAudit('post.created', $postId, $authorId, [
-                'fields' => ['title', 'content', 'category_id'],
+                'fields' => ['title', 'content', 'category_id', 'cover_image_path', 'video_path'],
                 'remixed_from_post_id' => $remixedFromId,
             ]);
             $saved = $this->find($postId, $authorId, false);
@@ -266,14 +285,16 @@ final class PostRepository
         return $this->changePublication($postId, null, $adminId, false);
     }
 
-    public function deleteForAuthor(int $postId, int $authorId): void
+    /** @return array<string, mixed> */
+    public function deleteForAuthor(int $postId, int $authorId): array
     {
-        $this->deleteAuthorized($postId, $authorId, $authorId);
+        return $this->deleteAuthorized($postId, $authorId, $authorId);
     }
 
-    public function deleteForAdmin(int $postId, int $adminId): void
+    /** @return array<string, mixed> */
+    public function deleteForAdmin(int $postId, int $adminId): array
     {
-        $this->deleteAuthorized($postId, null, $adminId);
+        return $this->deleteAuthorized($postId, null, $adminId);
     }
 
     /**
@@ -391,7 +412,7 @@ final class PostRepository
             if ($ownerId !== null) {
                 $parameters['author_id'] = $ownerId;
             }
-            foreach (['title', 'content', 'category_id'] as $field) {
+            foreach (['title', 'content', 'category_id', 'cover_image_path', 'video_path'] as $field) {
                 if (array_key_exists($field, $changes)) {
                     $sets[] = $field . ' = :' . $field;
                     $parameters[$field] = $changes[$field];
@@ -470,7 +491,8 @@ final class PostRepository
         }
     }
 
-    private function deleteAuthorized(int $postId, ?int $ownerId, int $actorId): void
+    /** @return array<string, mixed> */
+    private function deleteAuthorized(int $postId, ?int $ownerId, int $actorId): array
     {
         $this->begin();
         try {
@@ -488,6 +510,7 @@ final class PostRepository
             $delete->execute($parameters);
             $this->writeAudit('post.deleted', $postId, $actorId, ['status' => $current['status']]);
             $this->pdo->commit();
+            return $current;
         } catch (Throwable $exception) {
             $this->rollback();
             throw $exception;
@@ -505,7 +528,7 @@ final class PostRepository
         $total = (int) $count->fetchColumn();
 
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, p.remixed_from_post_id, ' .
+            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, ' .
             'c.name AS category_name, p.status, p.published_at, p.created_at, p.updated_at, ' .
             'u.display_name AS author_name' . ($includeSummary ? ', p.summary, p.summary_status, p.summary_generated_at' : '') .
             ' FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
@@ -526,6 +549,8 @@ final class PostRepository
                 'excerpt' => self::excerpt((string) $row['preview']),
                 'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
                 'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
+                'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
+                'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
                 'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'status' => (string) $row['status'],
                 'published_at' => $row['published_at'] === null ? null : (string) $row['published_at'],
@@ -590,7 +615,7 @@ final class PostRepository
     {
         $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $lock = $forUpdate && $driver === 'mysql' ? ' FOR UPDATE' : '';
-        $sql = 'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, p.summary, p.summary_status, ' .
+        $sql = 'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, p.summary, p.summary_status, ' .
             'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
             'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
@@ -687,6 +712,8 @@ final class PostRepository
             'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
             'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
             'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
+            'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
+            'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
             'remixed_from_post_id' => $remixedFromId,
             'remixed_from_title' => $remixedFromTitle,
             'remixed_from_author_id' => $remixedFromAuthorId,

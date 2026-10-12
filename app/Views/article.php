@@ -113,6 +113,16 @@
       </aside>
     <?php endif; ?>
 
+    <!-- Video Player (authorized signed URL from private bucket or local) -->
+    <?php if (!empty($videoSignedUrl)): ?>
+      <div class="article-video-player" style="margin: 20px 0 28px; border-radius: var(--radius-lg); overflow: hidden; background: #0f172a; box-shadow: var(--glass-shadow-sm); border: 1px solid rgba(255, 255, 255, 0.4);">
+        <video controls preload="metadata" style="width: 100%; max-height: 540px; display: block;" playsinline>
+          <source src="<?= htmlspecialchars($videoSignedUrl, ENT_QUOTES, 'UTF-8') ?>">
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    <?php endif; ?>
+
     <!-- Full Article Content (safely entity-escaped) -->
     <div class="article-body-content">
       <?= nl2br(htmlspecialchars($post['content'], ENT_QUOTES, 'UTF-8')) ?>

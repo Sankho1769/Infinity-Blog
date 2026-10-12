@@ -21,19 +21,33 @@ declare(strict_types=1);
       <button type="button" class="alert-close-btn" aria-label="Close" onclick="this.closest('.alert-banner').remove()">×</button>
     </div>
   <?php endif; ?>
+  <?php if (!empty($_GET['banner_updated'])): ?>
+    <div class="alert-banner alert-success alert-dismissible" role="alert" style="margin-bottom: 24px;">
+      <span>Your profile banner has been updated successfully!</span>
+      <button type="button" class="alert-close-btn" aria-label="Close" onclick="this.closest('.alert-banner').remove()">×</button>
+    </div>
+  <?php endif; ?>
 
-  <div class="glass-card profile-card" style="padding: 36px 32px; border-radius: 24px; position: relative; overflow: hidden; margin-bottom: 28px;">
-    <div class="profile-header" style="display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap;">
-      <!-- Avatar -->
-      <div class="profile-avatar-wrapper" style="position: relative;">
-        <?php if (!empty($user['avatar_path'])): ?>
-          <img src="<?= htmlspecialchars($user['avatar_path'], ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($user['display_name'], ENT_QUOTES, 'UTF-8') ?>" class="profile-avatar-img" style="width: 104px; height: 104px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2); border: 3px solid rgba(255, 255, 255, 0.8);">
-        <?php else: ?>
-          <div class="profile-avatar-initial" style="width: 104px; height: 104px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2); border: 3px solid rgba(255, 255, 255, 0.8);">
-            <?= strtoupper(substr($user['display_name'] ?? $user['username'], 0, 1)) ?>
-          </div>
-        <?php endif; ?>
+  <div class="glass-card profile-card" style="padding: 0; border-radius: 24px; position: relative; overflow: hidden; margin-bottom: 28px;">
+    <?php $bannerSrc = $user['banner_url'] ?? ($user['banner_path'] ?? null); ?>
+    <?php if (!empty($bannerSrc)): ?>
+      <div class="profile-banner-hero" style="height: 180px; width: 100%; overflow: hidden; position: relative; background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));">
+        <img src="<?= htmlspecialchars($bannerSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Profile Banner" style="width: 100%; height: 100%; object-fit: cover;">
       </div>
+    <?php endif; ?>
+    <div style="padding: 32px 32px; position: relative;">
+      <div class="profile-header" style="display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap;">
+        <!-- Avatar -->
+        <div class="profile-avatar-wrapper" style="position: relative; <?= !empty($bannerSrc) ? 'margin-top: -60px;' : '' ?>">
+          <?php $avatarSrc = $user['avatar_url'] ?? ($user['avatar_path'] ?? null); ?>
+          <?php if (!empty($avatarSrc)): ?>
+            <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($user['display_name'], ENT_QUOTES, 'UTF-8') ?>" class="profile-avatar-img" style="width: 104px; height: 104px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2); border: 3px solid rgba(255, 255, 255, 0.9);">
+          <?php else: ?>
+            <div class="profile-avatar-initial" style="width: 104px; height: 104px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: 800; box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2); border: 3px solid rgba(255, 255, 255, 0.9);">
+              <?= strtoupper(substr($user['display_name'] ?? $user['username'], 0, 1)) ?>
+            </div>
+          <?php endif; ?>
+        </div>
 
       <!-- Main Profile Info -->
       <div class="profile-info" style="flex: 1; min-width: 250px;">
@@ -152,6 +166,7 @@ declare(strict_types=1);
           <div style="font-size: 0.82rem; color: var(--text-muted); font-weight: 600;">Member Since</div>
         </div>
       <?php endif; ?>
+    </div>
     </div>
   </div>
 

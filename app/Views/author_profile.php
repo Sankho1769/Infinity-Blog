@@ -8,21 +8,31 @@
 </div>
 
 <!-- Author Bio Header Card -->
-<div class="glass-panel" style="padding: 36px 32px; border-radius: var(--radius-xl); margin-bottom: 36px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px;">
-  <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
-    <?php if (!empty($author['avatar_path'])): ?>
-      <img src="<?= htmlspecialchars($author['avatar_path'], ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25); border: 3px solid rgba(255, 255, 255, 0.8); flex-shrink: 0;">
-    <?php else: ?>
-      <div style="width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #818cf8, #4f46e5); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35); flex-shrink: 0;">
-        <?= strtoupper(substr($author['display_name'] ?? 'A', 0, 1)) ?>
-      </div>
-    <?php endif; ?>
+<?php
+  $bannerSrc = $author['banner_url'] ?? ($author['banner_path'] ?? null);
+  $avatarSrc = $author['avatar_url'] ?? ($author['avatar_path'] ?? null);
+?>
+<div class="glass-panel" style="padding: 0; border-radius: var(--radius-xl); margin-bottom: 36px; overflow: hidden;">
+  <?php if (!empty($bannerSrc)): ?>
+    <div style="height: 180px; width: 100%; overflow: hidden; position: relative; background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));">
+      <img src="<?= htmlspecialchars($bannerSrc, ENT_QUOTES, 'UTF-8') ?>" alt="Author Banner" style="width: 100%; height: 100%; object-fit: cover;">
+    </div>
+  <?php endif; ?>
+  <div style="padding: 32px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px;">
+    <div style="display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
+      <?php if (!empty($avatarSrc)): ?>
+        <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>" style="width: 88px; height: 88px; border-radius: 50%; object-fit: cover; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25); border: 3px solid rgba(255, 255, 255, 0.9); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>">
+      <?php else: ?>
+        <div style="width: 88px; height: 88px; border-radius: 50%; background: linear-gradient(135deg, #818cf8, #4f46e5); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 2.2rem; font-weight: 800; box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35); flex-shrink: 0; <?= !empty($bannerSrc) ? 'margin-top: -50px;' : '' ?>">
+          <?= strtoupper(substr($author['display_name'] ?? 'A', 0, 1)) ?>
+        </div>
+      <?php endif; ?>
 
-    <div style="max-width: 540px;">
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap;">
-        <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-dark); margin: 0; letter-spacing: -0.02em;">
-          <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
-        </h1>
+      <div style="max-width: 540px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px; flex-wrap: wrap;">
+          <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-dark); margin: 0; letter-spacing: -0.02em;">
+            <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
+          </h1>
         <?php if (!empty($author['location'])): ?>
           <span style="font-size: 0.82rem; padding: 2px 10px; border-radius: 9999px; background: rgba(99, 102, 241, 0.1); color: var(--primary-600, #4f46e5); font-weight: 500;">
             📍 <?= htmlspecialchars($author['location'], ENT_QUOTES, 'UTF-8') ?>
@@ -74,6 +84,7 @@
       <div style="font-size: 1.5rem; font-weight: 800; color: #6366f1;"><?= max(12, (int) $totalPosts * 14) ?></div>
       <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Readers</div>
     </div>
+  </div>
   </div>
 </div>
 

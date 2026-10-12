@@ -12,7 +12,12 @@ use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Scores\ScoreRepository;
+use InfinityBlog\Storage\MediaService;
+use InfinityBlog\Storage\StorageException;
+use InfinityBlog\Storage\SupabaseStorageClient;
+use InfinityBlog\Storage\SupabaseStorageConfig;
 use InfinityBlog\Users\AdminUserRepository;
+use Throwable;
 
 final class WebController
 {
@@ -25,6 +30,7 @@ final class WebController
     private SessionManager $sessions;
     private AppConfig $config;
     private ?ScoreRepository $scores;
+    private ?MediaService $media;
 
     public function __construct(
         PostRepository $posts,
@@ -35,7 +41,8 @@ final class WebController
         AuthGuard $guard,
         SessionManager $sessions,
         AppConfig $config,
-        ?ScoreRepository $scores = null
+        ?ScoreRepository $scores = null,
+        ?MediaService $media = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -46,6 +53,18 @@ final class WebController
         $this->sessions = $sessions;
         $this->config = $config;
         $this->scores = $scores;
+
+        if ($media === null) {
+            try {
+                $storageConfig = SupabaseStorageConfig::fromEnvironment();
+                if ($storageConfig !== null) {
+                    $client = new SupabaseStorageClient($storageConfig);
+                    $media = new MediaService($client, $storageConfig);
+                }
+            } catch (Throwable) {
+            }
+        }
+        $this->media = $media;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -110,10 +129,19 @@ final class WebController
         $scoreSummary = $this->scores !== null ? $this->scores->getSummary($id) : ['average' => 0.0, 'count' => 0];
         $userScore = ($this->scores !== null && $account !== null) ? $this->scores->getUserScore($id, $account->id) : null;
 
+        $videoSignedUrl = null;
+        if (!empty($post['video_path']) && $this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $videoSignedUrl = $this->media->resolveSignedVideoUrl((string) $post['video_path'], 3600);
+            } catch (Throwable) {
+            }
+        }
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'activeNav' => 'home',
             'post' => $post,
+            'videoSignedUrl' => $videoSignedUrl,
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
             'scoreSummary' => $scoreSummary,
             'userScore' => $userScore,
@@ -176,6 +204,11 @@ final class WebController
     public function publicAuthors(Request $request): array
     {
         $authors = $this->users->listPublicAuthors();
+        $authors = array_map(function (array $a): array {
+            $a['avatar_url'] = $this->resolveAvatarUrl($a['avatar_path'] ?? null);
+            $a['banner_url'] = $this->resolveBannerUrl($a['banner_path'] ?? null);
+            return $a;
+        }, $authors);
 
         return $this->render('public_authors', [
             'pageTitle' => 'Authors',
@@ -202,11 +235,15 @@ final class WebController
                     'interests' => $user->interests,
                     'website' => $user->website,
                     'avatar_path' => $user->avatarPath,
+                    'banner_path' => $user->bannerPath,
                 ];
             } else {
                 return $this->notFound('The requested author was not found.');
             }
         }
+
+        $author['avatar_url'] = $this->resolveAvatarUrl($author['avatar_path'] ?? null);
+        $author['banner_url'] = $this->resolveBannerUrl($author['banner_path'] ?? null);
 
         $postsResult = $this->posts->listPublic(['author_id' => $id], 1, 20);
 
@@ -489,10 +526,14 @@ final class WebController
         $remixCount = count(array_filter($allUserPosts['posts'], static fn($p) => !empty($p['remixed_from_post_id'])));
         $recent = array_slice($allUserPosts['posts'], 0, 6);
 
+        $userData = $user->toPrivateArray();
+        $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
+        $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
+
         return $this->render('profile', [
             'pageTitle' => $user->displayName . ' — Profile',
             'activeNav' => 'profile',
-            'user' => $user->toPrivateArray(),
+            'user' => $userData,
             'stats' => [
                 'published_count' => $published['total'],
                 'draft_count' => $drafts['total'],
@@ -515,13 +556,17 @@ final class WebController
             return $this->redirect('/login');
         }
 
+        $userData = $user->toPrivateArray();
+        $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
+        $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
+
         if ($request->method === 'POST') {
             $csrf = $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
             if (!$this->sessions->validateCsrfToken($csrf)) {
                 return $this->render('profile_edit', [
                     'pageTitle' => 'Edit Profile',
                     'activeNav' => 'profile',
-                    'user' => $user->toPrivateArray(),
+                    'user' => $userData,
                     'errors' => ['general' => 'Security token invalid or expired. Please refresh and try again.'],
                 ]);
             }
@@ -533,7 +578,7 @@ final class WebController
                 return $this->render('profile_edit', [
                     'pageTitle' => 'Edit Profile',
                     'activeNav' => 'profile',
-                    'user' => $user->toPrivateArray(),
+                    'user' => $userData,
                     'errors' => $e->errors,
                 ]);
             }
@@ -542,7 +587,7 @@ final class WebController
         return $this->render('profile_edit', [
             'pageTitle' => 'Edit Profile',
             'activeNav' => 'profile',
-            'user' => $user->toPrivateArray(),
+            'user' => $userData,
             'errors' => [],
         ]);
     }
@@ -560,12 +605,16 @@ final class WebController
             return $this->redirect('/login');
         }
 
+        $userData = $user->toPrivateArray();
+        $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
+        $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
+
         $csrf = $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
         if (!$this->sessions->validateCsrfToken($csrf)) {
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
+                'user' => $userData,
                 'errors' => ['avatar' => 'Security token invalid or expired.'],
             ]);
         }
@@ -574,18 +623,34 @@ final class WebController
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
+                'user' => $userData,
                 'errors' => ['avatar' => 'Please select a valid image file to upload.'],
             ]);
         }
 
         $file = $_FILES['avatar'];
-        $maxBytes = 2 * 1024 * 1024; // 2MB
+
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $storedPath = $this->media->uploadAvatar($file, $account->id, $user->avatarPath);
+                $this->users->updateAvatar($account->id, $storedPath);
+                return $this->redirect('/profile?avatar_updated=1');
+            } catch (StorageException $e) {
+                return $this->render('profile_edit', [
+                    'pageTitle' => 'Edit Profile',
+                    'activeNav' => 'profile',
+                    'user' => $userData,
+                    'errors' => ['avatar' => $e->getMessage()],
+                ]);
+            }
+        }
+
+        $maxBytes = SupabaseStorageConfig::LIMIT_AVATARS; // 2MB
         if ($file['size'] > $maxBytes) {
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
+                'user' => $userData,
                 'errors' => ['avatar' => 'Image file size must not exceed 2MB.'],
             ]);
         }
@@ -596,7 +661,7 @@ final class WebController
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
+                'user' => $userData,
                 'errors' => ['avatar' => 'The uploaded file is not a valid image.'],
             ]);
         }
@@ -606,7 +671,6 @@ final class WebController
             'image/jpeg' => 'jpg',
             'image/pjpeg' => 'jpg',
             'image/webp' => 'webp',
-            'image/gif' => 'gif',
         ];
 
         $detectedMime = $imageInfo['mime'] ?? '';
@@ -614,8 +678,8 @@ final class WebController
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
-                'errors' => ['avatar' => 'Only PNG, JPEG, WebP, and GIF images are permitted.'],
+                'user' => $userData,
+                'errors' => ['avatar' => 'Only PNG, JPEG, and WebP images are permitted.'],
             ]);
         }
 
@@ -631,7 +695,7 @@ final class WebController
             return $this->render('profile_edit', [
                 'pageTitle' => 'Edit Profile',
                 'activeNav' => 'profile',
-                'user' => $user->toPrivateArray(),
+                'user' => $userData,
                 'errors' => ['avatar' => 'Could not save the avatar image. Please try again.'],
             ]);
         }
@@ -640,6 +704,351 @@ final class WebController
         $this->users->updateAvatar($account->id, $avatarUrl);
 
         return $this->redirect('/profile?avatar_updated=1');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function uploadBanner(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login');
+        }
+
+        $user = $this->users->findById($account->id);
+        if ($user === null) {
+            return $this->redirect('/login');
+        }
+
+        $userData = $user->toPrivateArray();
+        $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
+        $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
+
+        $csrf = $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'Security token invalid or expired.'],
+            ]);
+        }
+
+        if (!isset($_FILES['banner']) || !is_array($_FILES['banner']) || $_FILES['banner']['error'] !== UPLOAD_ERR_OK) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'Please select a valid banner image file to upload.'],
+            ]);
+        }
+
+        $file = $_FILES['banner'];
+
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $storedPath = $this->media->uploadBanner($file, $account->id, $user->bannerPath);
+                $this->users->updateBanner($account->id, $storedPath);
+                return $this->redirect('/profile?banner_updated=1');
+            } catch (StorageException $e) {
+                return $this->render('profile_edit', [
+                    'pageTitle' => 'Edit Profile',
+                    'activeNav' => 'profile',
+                    'user' => $userData,
+                    'errors' => ['banner' => $e->getMessage()],
+                ]);
+            }
+        }
+
+        // Local fallback
+        $maxBytes = SupabaseStorageConfig::LIMIT_BANNERS; // 4MB
+        if ($file['size'] > $maxBytes) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'Banner image file size must not exceed 4MB.'],
+            ]);
+        }
+
+        $tmpPath = (string) $file['tmp_name'];
+        $imageInfo = @getimagesize($tmpPath);
+        if ($imageInfo === false) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'The uploaded file is not a valid image.'],
+            ]);
+        }
+
+        $allowedMimes = [
+            'image/png' => 'png',
+            'image/jpeg' => 'jpg',
+            'image/pjpeg' => 'jpg',
+            'image/webp' => 'webp',
+        ];
+
+        $detectedMime = $imageInfo['mime'] ?? '';
+        if (!isset($allowedMimes[$detectedMime])) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'Only PNG, JPEG, and WebP images are permitted for profile banners.'],
+            ]);
+        }
+
+        $ext = $allowedMimes[$detectedMime];
+        $filename = 'banner_' . $account->id . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destDir = dirname(__DIR__, 2) . '/public/uploads/banners';
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+        $destPath = $destDir . '/' . $filename;
+
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            return $this->render('profile_edit', [
+                'pageTitle' => 'Edit Profile',
+                'activeNav' => 'profile',
+                'user' => $userData,
+                'errors' => ['banner' => 'Could not save the banner image. Please try again.'],
+            ]);
+        }
+
+        $bannerUrl = '/uploads/banners/' . $filename;
+        $this->users->updateBanner($account->id, $bannerUrl);
+
+        return $this->redirect('/profile?banner_updated=1');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function uploadCover(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Sign in to upload cover images.']]);
+        }
+
+        $csrf = $request->header('X-CSRF-Token') ?? ($_POST['csrf_token'] ?? null);
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        if (!isset($_FILES['cover']) || !is_array($_FILES['cover']) || $_FILES['cover']['error'] !== UPLOAD_ERR_OK) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Please select a valid image file.']]);
+        }
+
+        $file = $_FILES['cover'];
+        $oldPath = isset($_POST['old_path']) && is_string($_POST['old_path']) ? trim($_POST['old_path']) : null;
+
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $path = $this->media->uploadCoverImage($file, $account->id, $oldPath);
+                $url = $this->media->resolvePublicUrl($this->media->getConfig()->bucketArticles, $path);
+                return $this->jsonResponse(200, ['data' => ['path' => $path, 'url' => $url]]);
+            } catch (StorageException $e) {
+                return $this->jsonResponse(422, ['error' => ['code' => $e->errorCode, 'message' => $e->getMessage()]]);
+            }
+        }
+
+        // Local fallback
+        $maxBytes = SupabaseStorageConfig::LIMIT_ARTICLES; // 5MB
+        if ($file['size'] > $maxBytes) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'FILE_TOO_LARGE', 'message' => 'Cover image must not exceed 5MB.']]);
+        }
+
+        $tmpPath = (string) $file['tmp_name'];
+        $imageInfo = @getimagesize($tmpPath);
+        if ($imageInfo === false) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'INVALID_IMAGE', 'message' => 'The uploaded file is not a valid image.']]);
+        }
+
+        $allowedMimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        $detectedMime = $imageInfo['mime'] ?? '';
+        if (!isset($allowedMimes[$detectedMime])) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'UNSUPPORTED_TYPE', 'message' => 'Only JPEG, PNG, and WebP images are allowed.']]);
+        }
+
+        $ext = $allowedMimes[$detectedMime];
+        $filename = 'cover_' . $account->id . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destDir = dirname(__DIR__, 2) . '/public/uploads/covers';
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+        $destPath = $destDir . '/' . $filename;
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            return $this->jsonResponse(500, ['error' => ['code' => 'SAVE_FAILED', 'message' => 'Could not save uploaded cover image.']]);
+        }
+
+        $url = '/uploads/covers/' . $filename;
+        return $this->jsonResponse(200, ['data' => ['path' => $url, 'url' => $url]]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function uploadInline(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Sign in to upload images.']]);
+        }
+
+        $csrf = $request->header('X-CSRF-Token') ?? ($_POST['csrf_token'] ?? null);
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        $file = $_FILES['image'] ?? ($_FILES['file'] ?? null);
+        if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Please select a valid image file.']]);
+        }
+
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $result = $this->media->uploadInlineArticleImage($file, $account->id);
+                return $this->jsonResponse(200, ['data' => ['url' => $result['url'], 'path' => $result['path']]]);
+            } catch (StorageException $e) {
+                return $this->jsonResponse(422, ['error' => ['code' => $e->errorCode, 'message' => $e->getMessage()]]);
+            }
+        }
+
+        // Local fallback
+        $maxBytes = SupabaseStorageConfig::LIMIT_ARTICLES; // 5MB
+        if ($file['size'] > $maxBytes) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'FILE_TOO_LARGE', 'message' => 'Article image must not exceed 5MB.']]);
+        }
+
+        $tmpPath = (string) $file['tmp_name'];
+        $imageInfo = @getimagesize($tmpPath);
+        if ($imageInfo === false) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'INVALID_IMAGE', 'message' => 'The uploaded file is not a valid image.']]);
+        }
+
+        $allowedMimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        $detectedMime = $imageInfo['mime'] ?? '';
+        if (!isset($allowedMimes[$detectedMime])) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'UNSUPPORTED_TYPE', 'message' => 'Only JPEG, PNG, and WebP images are allowed.']]);
+        }
+
+        $ext = $allowedMimes[$detectedMime];
+        $filename = 'inline_' . $account->id . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destDir = dirname(__DIR__, 2) . '/public/uploads/inline';
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+        $destPath = $destDir . '/' . $filename;
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            return $this->jsonResponse(500, ['error' => ['code' => 'SAVE_FAILED', 'message' => 'Could not save inline image.']]);
+        }
+
+        $url = '/uploads/inline/' . $filename;
+        return $this->jsonResponse(200, ['data' => ['url' => $url, 'path' => $url]]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function uploadVideo(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Sign in to upload videos.']]);
+        }
+
+        $csrf = $request->header('X-CSRF-Token') ?? ($_POST['csrf_token'] ?? null);
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        if (!isset($_FILES['video']) || !is_array($_FILES['video']) || $_FILES['video']['error'] !== UPLOAD_ERR_OK) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Please select a valid video file.']]);
+        }
+
+        $file = $_FILES['video'];
+        $oldPath = isset($_POST['old_path']) && is_string($_POST['old_path']) ? trim($_POST['old_path']) : null;
+
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            try {
+                $path = $this->media->uploadVideo($file, $account->id, $oldPath);
+                $signedUrl = $this->media->resolveSignedVideoUrl($path, 3600);
+                return $this->jsonResponse(200, ['data' => ['path' => $path, 'signed_url' => $signedUrl]]);
+            } catch (StorageException $e) {
+                return $this->jsonResponse(422, ['error' => ['code' => $e->errorCode, 'message' => $e->getMessage()]]);
+            }
+        }
+
+        // Local fallback
+        $maxBytes = SupabaseStorageConfig::LIMIT_VIDEOS; // 50MB
+        if ($file['size'] > $maxBytes) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'FILE_TOO_LARGE', 'message' => 'Video must not exceed 50MB.']]);
+        }
+
+        $tmpPath = (string) $file['tmp_name'];
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo !== false ? finfo_file($finfo, $tmpPath) : false;
+        if ($finfo !== false) {
+            finfo_close($finfo);
+        }
+
+        $allowedMimes = ['video/mp4' => 'mp4', 'video/webm' => 'webm'];
+        if (!is_string($mime) || !isset($allowedMimes[$mime])) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'UNSUPPORTED_TYPE', 'message' => 'Only MP4 and WebM videos are allowed.']]);
+        }
+
+        $ext = $allowedMimes[$mime];
+        $filename = 'video_' . $account->id . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+        $destDir = dirname(__DIR__, 2) . '/public/uploads/videos';
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0755, true);
+        }
+        $destPath = $destDir . '/' . $filename;
+        if (!move_uploaded_file($tmpPath, $destPath)) {
+            return $this->jsonResponse(500, ['error' => ['code' => 'SAVE_FAILED', 'message' => 'Could not save video file.']]);
+        }
+
+        $url = '/uploads/videos/' . $filename;
+        return $this->jsonResponse(200, ['data' => ['path' => $url, 'signed_url' => $url]]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function signedVideoUrl(Request $request): array
+    {
+        $path = isset($_GET['path']) && is_string($_GET['path']) ? trim($_GET['path']) : '';
+        if ($path === '') {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Missing path parameter.']]);
+        }
+
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/uploads/')) {
+            return $this->jsonResponse(200, ['data' => ['signed_url' => $path]]);
+        }
+
+        if ($this->media === null || !$this->media->getConfig()->isConfigured()) {
+            return $this->jsonResponse(503, ['error' => ['code' => 'STORAGE_UNAVAILABLE', 'message' => 'Storage service is not configured.']]);
+        }
+
+        $account = $this->guard->currentAccount();
+        $isAuthorized = false;
+
+        if ($account !== null && $account->role === 'admin') {
+            $isAuthorized = true;
+        } else {
+            $post = $this->posts->findByVideoPath($path);
+            if ($post !== null) {
+                if ($post['status'] === 'published') {
+                    $isAuthorized = true;
+                } elseif ($account !== null && (int) $post['author_id'] === $account->id) {
+                    $isAuthorized = true;
+                }
+            }
+        }
+
+        if (!$isAuthorized) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'FORBIDDEN', 'message' => 'You are not authorized to access this private video.']]);
+        }
+
+        try {
+            $signedUrl = $this->media->resolveSignedVideoUrl($path, 3600);
+            return $this->jsonResponse(200, ['data' => ['signed_url' => $signedUrl]]);
+        } catch (StorageException $e) {
+            return $this->jsonResponse(500, ['error' => ['code' => $e->errorCode, 'message' => $e->getMessage()]]);
+        }
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -711,6 +1120,47 @@ final class WebController
             'status' => 302,
             'type' => 'text/html; charset=utf-8',
             'body' => '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '"></head><body>Redirecting...</body></html>',
+        ];
+    }
+
+    public function resolveAvatarUrl(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
+            return $path;
+        }
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            return $this->media->resolvePublicUrl($this->media->getConfig()->bucketAvatars, $path);
+        }
+        return $path;
+    }
+
+    public function resolveBannerUrl(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return null;
+        }
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
+            return $path;
+        }
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            return $this->media->resolvePublicUrl($this->media->getConfig()->bucketBanners, $path);
+        }
+        return $path;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array{status: int, type: string, body: string}
+     */
+    private function jsonResponse(int $status, array $data): array
+    {
+        return [
+            'status' => $status,
+            'type' => 'application/json; charset=utf-8',
+            'body' => (string) json_encode($data, JSON_UNESCAPED_SLASHES),
         ];
     }
 }

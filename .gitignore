@@ -26,5 +26,13 @@ category_page_test.html
 # User uploads and local scratch
 /public/uploads/avatars/*
 !/public/uploads/avatars/.htaccess
+/public/uploads/banners/*
+!/public/uploads/banners/.htaccess
+/public/uploads/covers/*
+!/public/uploads/covers/.htaccess
+/public/uploads/inline/*
+!/public/uploads/inline/.htaccess
+/public/uploads/videos/*
+!/public/uploads/videos/.htaccess
 /Assets/
 /tools/

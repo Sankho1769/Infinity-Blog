@@ -16,12 +16,24 @@ final class PostController
     private PostRepository $posts;
     private AuthGuard $guard;
     private SessionManager $sessions;
+    private ?\InfinityBlog\Storage\MediaService $media;
 
-    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions)
+    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null)
     {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        if ($media === null) {
+            try {
+                $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+                if ($storageConfig !== null) {
+                    $client = new \InfinityBlog\Storage\SupabaseStorageClient($storageConfig);
+                    $media = new \InfinityBlog\Storage\MediaService($client, $storageConfig);
+                }
+            } catch (\Throwable) {
+            }
+        }
+        $this->media = $media;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -152,7 +164,16 @@ final class PostController
             return $this->validationError($errors);
         }
         try {
+            $current = $this->posts->findForAuthor($postId, $author->id);
             $post = $this->posts->updateForAuthor($postId, $author->id, $fields);
+            if ($this->media !== null && is_array($current)) {
+                if (array_key_exists('cover_image_path', $fields) && !empty($current['cover_image_path']) && $current['cover_image_path'] !== $fields['cover_image_path']) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketArticles, $current['cover_image_path']);
+                }
+                if (array_key_exists('video_path', $fields) && !empty($current['video_path']) && $current['video_path'] !== $fields['video_path']) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketVideos, $current['video_path']);
+                }
+            }
             return ['status' => 200, 'body' => ['data' => ['post' => self::publicPostFields($post)]]];
         } catch (PostNotFoundException) {
             return $this->notFound();
@@ -208,7 +229,15 @@ final class PostController
             return $this->validationError(['confirm' => 'Explicit deletion confirmation is required.']);
         }
         try {
-            $this->posts->deleteForAuthor($postId, $author->id);
+            $deleted = $this->posts->deleteForAuthor($postId, $author->id);
+            if ($this->media !== null && is_array($deleted)) {
+                if (!empty($deleted['cover_image_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketArticles, $deleted['cover_image_path']);
+                }
+                if (!empty($deleted['video_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketVideos, $deleted['video_path']);
+                }
+            }
             return ['status' => 200, 'body' => ['data' => ['message' => 'Post deleted.']]];
         } catch (PostNotFoundException) {
             return $this->notFound();

@@ -18,6 +18,7 @@ final class UserAccount
     public ?string $website;
     public ?string $phone;
     public ?string $avatarPath;
+    public ?string $bannerPath;
     public string $profileVisibility;
     public ?string $createdAt;
     private string $passwordHash;
@@ -37,6 +38,7 @@ final class UserAccount
         ?string $website = null,
         ?string $phone = null,
         ?string $avatarPath = null,
+        ?string $bannerPath = null,
         string $profileVisibility = 'public',
         ?string $createdAt = null
     ) {
@@ -54,6 +56,7 @@ final class UserAccount
         $this->website = $website;
         $this->phone = $phone;
         $this->avatarPath = $avatarPath;
+        $this->bannerPath = $bannerPath;
         $this->profileVisibility = $profileVisibility;
         $this->createdAt = $createdAt;
     }
@@ -101,6 +104,7 @@ final class UserAccount
             'interests' => $this->interests,
             'website' => $this->website,
             'avatar_path' => $this->avatarPath,
+            'banner_path' => $this->bannerPath,
         ];
     }
 
@@ -120,6 +124,7 @@ final class UserAccount
             'website' => $this->website,
             'phone' => $this->phone,
             'avatar_path' => $this->avatarPath,
+            'banner_path' => $this->bannerPath,
             'profile_visibility' => $this->profileVisibility,
             'created_at' => $this->createdAt,
         ];

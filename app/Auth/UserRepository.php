@@ -364,16 +364,46 @@ final class UserRepository
         }
     }
 
-    /** @return list<array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string}> */
+    public function updateBanner(int $userId, ?string $bannerPath): void
+    {
+        $user = $this->findById($userId);
+        if ($user === null) {
+            throw new RuntimeException('User not found.');
+        }
+
+        $statement = $this->pdo->prepare('UPDATE users SET banner_path = :banner_path WHERE id = :id');
+        $statement->execute([
+            'banner_path' => $bannerPath,
+            'id' => $userId,
+        ]);
+
+        try {
+            $audit = $this->pdo->prepare(
+                'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+                'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+            );
+            $audit->execute([
+                'actor_user_id' => $userId,
+                'action' => 'user.banner_updated',
+                'entity_type' => 'user',
+                'entity_id' => $userId,
+                'created_at' => gmdate('Y-m-d H:i:s'),
+            ]);
+        } catch (Throwable) {
+            // Tolerate test environments where audit_logs table is omitted
+        }
+    }
+
+    /** @return list<array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string, banner_path: ?string}> */
     public function listPublicAuthors(): array
     {
         try {
             $statement = $this->pdo->query(
-                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, COUNT(p.id) AS post_count " .
+                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
                 "WHERE u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
-                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path " .
+                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path " .
                 "HAVING post_count > 0 " .
                 "ORDER BY post_count DESC, u.display_name ASC"
             );
@@ -389,6 +419,7 @@ final class UserRepository
                 'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
                 'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
                 'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
+                'banner_path' => isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null,
             ], $statement->fetchAll(PDO::FETCH_ASSOC));
         } catch (Throwable) {
             // Fallback for schemas without profile columns
@@ -413,20 +444,21 @@ final class UserRepository
                 'interests' => null,
                 'website' => null,
                 'avatar_path' => null,
+                'banner_path' => null,
             ], $statement->fetchAll(PDO::FETCH_ASSOC));
         }
     }
 
-    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string}|null */
+    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string, banner_path: ?string}|null */
     public function findPublicAuthor(int $id): ?array
     {
         try {
             $statement = $this->pdo->prepare(
-                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, COUNT(p.id) AS post_count " .
+                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
                 "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
-                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path LIMIT 1"
+                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path LIMIT 1"
             );
             $statement->execute(['id' => $id]);
             $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -445,6 +477,7 @@ final class UserRepository
                 'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
                 'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
                 'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
+                'banner_path' => isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null,
             ];
         } catch (Throwable) {
             $statement = $this->pdo->prepare(
@@ -471,6 +504,7 @@ final class UserRepository
                 'interests' => null,
                 'website' => null,
                 'avatar_path' => null,
+                'banner_path' => null,
             ];
         }
     }
@@ -496,6 +530,7 @@ final class UserRepository
         $website = isset($row['website']) && is_string($row['website']) ? (string) $row['website'] : null;
         $phone = isset($row['phone']) && is_string($row['phone']) ? (string) $row['phone'] : null;
         $avatarPath = isset($row['avatar_path']) && is_string($row['avatar_path']) ? (string) $row['avatar_path'] : null;
+        $bannerPath = isset($row['banner_path']) && is_string($row['banner_path']) ? (string) $row['banner_path'] : null;
         $profileVisibility = isset($row['profile_visibility']) && is_string($row['profile_visibility']) ? (string) $row['profile_visibility'] : 'public';
         $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? (string) $row['created_at'] : null;
 
@@ -514,6 +549,7 @@ final class UserRepository
             $website,
             $phone,
             $avatarPath,
+            $bannerPath,
             $profileVisibility,
             $createdAt
         );

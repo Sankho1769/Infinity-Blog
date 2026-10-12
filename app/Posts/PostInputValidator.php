@@ -14,7 +14,7 @@ final class PostInputValidator
         $fields = [];
         $errors = [];
         foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id'], true)) {
+            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id', 'cover_image_path', 'video_path'], true)) {
                 $errors[$key === 'author_id' ? 'author_id' : '_request'] = $key === 'author_id'
                     ? 'The author is assigned by the authenticated session.'
                     : 'Unsupported post field.';
@@ -78,8 +78,28 @@ final class PostInputValidator
         } elseif ($creating) {
             $fields['remixed_from_post_id'] = null;
         }
+        if (array_key_exists('cover_image_path', $input)) {
+            $coverPath = $input['cover_image_path'];
+            if ($coverPath !== null && (!is_string($coverPath) || strlen($coverPath) > 255 || preg_match('/[\r\n\x00-\x1F]/', $coverPath) === 1)) {
+                $errors['cover_image_path'] = 'Enter a valid cover image path (max 255 characters).';
+            } else {
+                $fields['cover_image_path'] = $coverPath !== null ? trim($coverPath) : null;
+            }
+        } elseif ($creating) {
+            $fields['cover_image_path'] = null;
+        }
+        if (array_key_exists('video_path', $input)) {
+            $videoPath = $input['video_path'];
+            if ($videoPath !== null && (!is_string($videoPath) || strlen($videoPath) > 255 || preg_match('/[\r\n\x00-\x1F]/', $videoPath) === 1)) {
+                $errors['video_path'] = 'Enter a valid video path (max 255 characters).';
+            } else {
+                $fields['video_path'] = $videoPath !== null ? trim($videoPath) : null;
+            }
+        } elseif ($creating) {
+            $fields['video_path'] = null;
+        }
         if (!$creating && $fields === [] && $errors === []) {
-            $errors['_request'] = 'Provide a title, content, or category_id to update.';
+            $errors['_request'] = 'Provide a title, content, category_id, cover_image_path, or video_path to update.';
         }
 
         return [$fields, $errors];

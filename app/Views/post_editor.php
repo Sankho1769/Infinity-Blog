@@ -67,20 +67,70 @@
         </select>
       </div>
 
+      <!-- Article Cover Image (Supabase Storage: article-images) -->
+      <?php
+        $initialCoverPath = $post['cover_image_path'] ?? '';
+        $initialCoverUrl = !empty($initialCoverPath) ? \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post) : '';
+      ?>
       <div class="form-group">
-        <label class="form-label">Featured Image Thumbnail <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
-        <div class="featured-image-placeholder-box">
+        <label class="form-label">Article Cover Image <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional · Max 5MB · JPEG, PNG, WebP)</span></label>
+        <input type="hidden" id="post-cover-image-path" name="cover_image_path" value="<?= htmlspecialchars($initialCoverPath, ENT_QUOTES, 'UTF-8') ?>">
+
+        <div id="cover-preview-container" style="<?= empty($initialCoverUrl) ? 'display: none;' : '' ?> margin-bottom: 12px; position: relative; border-radius: var(--radius-md); overflow: hidden; max-height: 220px; border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow-sm);">
+          <img id="cover-preview-img" src="<?= htmlspecialchars($initialCoverUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Cover Image Preview" style="width: 100%; height: 220px; object-fit: cover; display: block;">
+          <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px;">
+            <button type="button" id="change-cover-btn" class="btn btn-secondary btn-sm btn-pill" style="background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);">Change</button>
+            <button type="button" id="remove-cover-btn" class="btn btn-danger btn-sm btn-pill" style="background: rgba(239,68,68,0.9);">Remove</button>
+          </div>
+        </div>
+
+        <div id="cover-upload-box" class="featured-image-placeholder-box" style="<?= !empty($initialCoverUrl) ? 'display: none;' : '' ?> cursor: pointer;" onclick="document.getElementById('cover-file-input').click()">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 6px;">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <circle cx="8.5" cy="8.5" r="1.5"></circle>
             <polyline points="21 15 16 10 5 21"></polyline>
           </svg>
-          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Editorial Visual Card</div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Standard pastel claymorphic banner will be paired automatically with this topic.</div>
+          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to Upload Cover Image</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Stored securely in Supabase Storage. Automatic fallback artwork if omitted.</div>
         </div>
+        <input type="file" id="cover-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
+        <div id="cover-upload-status" style="font-size: 0.82rem; margin-top: 6px; display: none;"></div>
       </div>
 
-      <div class="form-group">
+      <!-- Article Video (Supabase Storage: article-videos) -->
+      <?php
+        $initialVideoPath = $post['video_path'] ?? '';
+      ?>
+      <div class="form-group" style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
+        <label class="form-label">Article Video <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional · Max 50MB · MP4, WebM · Supabase Private Bucket)</span></label>
+        <input type="hidden" id="post-video-path" name="video_path" value="<?= htmlspecialchars($initialVideoPath, ENT_QUOTES, 'UTF-8') ?>">
+
+        <div id="video-preview-container" style="<?= empty($initialVideoPath) ? 'display: none;' : '' ?> margin-bottom: 10px; padding: 12px 16px; background: rgba(255, 255, 255, 0.6); border-radius: var(--radius-md); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+            <span style="font-size: 1.3rem;">🎬</span>
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <span id="video-preview-label" style="font-size: 0.88rem; font-weight: 600; color: var(--text-dark);"><?= htmlspecialchars(basename($initialVideoPath), ENT_QUOTES, 'UTF-8') ?></span>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Protected video playable via authorized signed URLs</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px; flex-shrink: 0;">
+            <button type="button" id="change-video-btn" class="btn btn-secondary btn-sm btn-pill">Change</button>
+            <button type="button" id="remove-video-btn" class="btn btn-danger btn-sm btn-pill">Remove</button>
+          </div>
+        </div>
+
+        <div id="video-upload-box" class="featured-image-placeholder-box" style="<?= !empty($initialVideoPath) ? 'display: none;' : '' ?> cursor: pointer; padding: 16px;" onclick="document.getElementById('video-file-input').click()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 4px;">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to Upload Video</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">MP4 or WebM (up to 50MB). Stored in private bucket with short-lived playback signatures.</div>
+        </div>
+        <input type="file" id="video-file-input" accept="video/mp4,video/webm" style="display: none;">
+        <div id="video-upload-status" style="font-size: 0.82rem; margin-top: 6px; display: none;"></div>
+      </div>
+
+      <div class="form-group" style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
           <label for="post-content" class="form-label" style="margin-bottom: 0;">Article Content <span style="color: var(--danger-color);">*</span></label>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -91,6 +141,8 @@
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('```\n', '\n```')" title="Code">Code</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('- ', '')" title="Bullet List">• List</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('[', '](https://)')" title="Link">🔗 Link</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="insert-image-btn" title="Upload and Insert Image">🖼️ Image</button>
+            <input type="file" id="inline-image-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
           </div>
         </div>
         <textarea id="post-content" name="content" class="form-textarea" placeholder="Write your article here..." required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
@@ -222,12 +274,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const remixedFromVal = document.getElementById('remixed-from-post-id')?.value;
     const remixedFromId = remixedFromVal && parseInt(remixedFromVal, 10) > 0 ? parseInt(remixedFromVal, 10) : null;
+    const coverPath = document.getElementById('post-cover-image-path')?.value || null;
+    const videoPath = document.getElementById('post-video-path')?.value || null;
 
     const payload = {
       title,
       content,
       category_id: categoryId,
-      remixed_from_post_id: remixedFromId
+      remixed_from_post_id: remixedFromId,
+      cover_image_path: coverPath,
+      video_path: videoPath
     };
 
     const saveDraftBtn = document.getElementById('save-draft-btn');
@@ -293,6 +349,180 @@ document.addEventListener('DOMContentLoaded', () => {
       if (publishBtn) publishBtn.disabled = false;
     }
   }
+
+  // --- Cover Image Upload Handler ---
+  const coverFileInput = document.getElementById('cover-file-input');
+  const coverUploadStatus = document.getElementById('cover-upload-status');
+  const coverPreviewContainer = document.getElementById('cover-preview-container');
+  const coverPreviewImg = document.getElementById('cover-preview-img');
+  const coverUploadBox = document.getElementById('cover-upload-box');
+  const postCoverInput = document.getElementById('post-cover-image-path');
+
+  async function uploadCoverFile(file) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Cover image size must not exceed 5MB.');
+      return;
+    }
+    coverUploadStatus.textContent = 'Uploading cover image...';
+    coverUploadStatus.style.color = 'var(--text-muted)';
+    coverUploadStatus.style.display = 'block';
+
+    const formData = new FormData();
+    formData.append('cover', file);
+    if (postCoverInput.value) {
+      formData.append('old_path', postCoverInput.value);
+    }
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value;
+    formData.append('csrf_token', csrf || '');
+
+    try {
+      const res = await fetch('/posts/upload/cover', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf || '' },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        postCoverInput.value = data.data.path;
+        coverPreviewImg.src = data.data.url;
+        coverPreviewContainer.style.display = 'block';
+        coverUploadBox.style.display = 'none';
+        coverUploadStatus.textContent = 'Cover image uploaded!';
+        coverUploadStatus.style.color = '#16a34a';
+        setTimeout(() => { coverUploadStatus.style.display = 'none'; }, 3000);
+      } else {
+        coverUploadStatus.textContent = data.error?.message || 'Failed to upload cover image.';
+        coverUploadStatus.style.color = '#dc2626';
+      }
+    } catch (err) {
+      coverUploadStatus.textContent = 'Network error during cover upload.';
+      coverUploadStatus.style.color = '#dc2626';
+    }
+  }
+
+  coverFileInput?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      uploadCoverFile(e.target.files[0]);
+    }
+  });
+  document.getElementById('change-cover-btn')?.addEventListener('click', () => coverFileInput?.click());
+  document.getElementById('remove-cover-btn')?.addEventListener('click', () => {
+    postCoverInput.value = '';
+    coverPreviewImg.src = '';
+    coverPreviewContainer.style.display = 'none';
+    coverUploadBox.style.display = 'block';
+    coverFileInput.value = '';
+  });
+
+  // --- Video Upload Handler ---
+  const videoFileInput = document.getElementById('video-file-input');
+  const videoUploadStatus = document.getElementById('video-upload-status');
+  const videoPreviewContainer = document.getElementById('video-preview-container');
+  const videoPreviewLabel = document.getElementById('video-preview-label');
+  const videoUploadBox = document.getElementById('video-upload-box');
+  const postVideoInput = document.getElementById('post-video-path');
+
+  async function uploadVideoFile(file) {
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Video file size must not exceed 50MB.');
+      return;
+    }
+    videoUploadStatus.textContent = 'Uploading video (up to 50MB, please wait)...';
+    videoUploadStatus.style.color = 'var(--text-muted)';
+    videoUploadStatus.style.display = 'block';
+
+    const formData = new FormData();
+    formData.append('video', file);
+    if (postVideoInput.value) {
+      formData.append('old_path', postVideoInput.value);
+    }
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value;
+    formData.append('csrf_token', csrf || '');
+
+    try {
+      const res = await fetch('/posts/upload/video', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf || '' },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.data) {
+        postVideoInput.value = data.data.path;
+        if (videoPreviewLabel) videoPreviewLabel.textContent = file.name;
+        videoPreviewContainer.style.display = 'flex';
+        videoUploadBox.style.display = 'none';
+        videoUploadStatus.textContent = 'Video uploaded successfully to private storage!';
+        videoUploadStatus.style.color = '#16a34a';
+        setTimeout(() => { videoUploadStatus.style.display = 'none'; }, 3000);
+      } else {
+        videoUploadStatus.textContent = data.error?.message || 'Failed to upload video.';
+        videoUploadStatus.style.color = '#dc2626';
+      }
+    } catch (err) {
+      videoUploadStatus.textContent = 'Network error during video upload.';
+      videoUploadStatus.style.color = '#dc2626';
+    }
+  }
+
+  videoFileInput?.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      uploadVideoFile(e.target.files[0]);
+    }
+  });
+  document.getElementById('change-video-btn')?.addEventListener('click', () => videoFileInput?.click());
+  document.getElementById('remove-video-btn')?.addEventListener('click', () => {
+    postVideoInput.value = '';
+    videoPreviewContainer.style.display = 'none';
+    videoUploadBox.style.display = 'block';
+    videoFileInput.value = '';
+  });
+
+  // --- Inline Image Toolbar Handler ---
+  const inlineImageBtn = document.getElementById('insert-image-btn');
+  const inlineImageInput = document.getElementById('inline-image-file-input');
+
+  inlineImageBtn?.addEventListener('click', () => inlineImageInput?.click());
+  inlineImageInput?.addEventListener('change', async (e) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Article image must not exceed 5MB.');
+      return;
+    }
+    const origText = inlineImageBtn.textContent;
+    inlineImageBtn.textContent = 'Uploading...';
+    inlineImageBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('image', file);
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value;
+    formData.append('csrf_token', csrf || '');
+
+    try {
+      const res = await fetch('/posts/upload/inline', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf || '' },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.data && data.data.url) {
+        insertMarkdown(`![${file.name.replace(/[\[\]]/g, '')}](${data.data.url})`, '');
+      } else {
+        alert(data.error?.message || 'Failed to upload image.');
+      }
+    } catch (err) {
+      alert('Network error while uploading image.');
+    } finally {
+      inlineImageBtn.textContent = origText;
+      inlineImageBtn.disabled = false;
+      inlineImageInput.value = '';
+    }
+  });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();

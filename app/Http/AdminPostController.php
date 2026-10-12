@@ -16,12 +16,24 @@ final class AdminPostController
     private PostRepository $posts;
     private AuthGuard $guard;
     private SessionManager $sessions;
+    private ?\InfinityBlog\Storage\MediaService $media;
 
-    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions)
+    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null)
     {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        if ($media === null) {
+            try {
+                $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+                if ($storageConfig !== null) {
+                    $client = new \InfinityBlog\Storage\SupabaseStorageClient($storageConfig);
+                    $media = new \InfinityBlog\Storage\MediaService($client, $storageConfig);
+                }
+            } catch (\Throwable) {
+            }
+        }
+        $this->media = $media;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -188,7 +200,15 @@ final class AdminPostController
             return $this->validationError(['confirm' => 'Explicit deletion confirmation is required.']);
         }
         try {
-            $this->posts->deleteForAdmin($postId, $admin->id);
+            $deleted = $this->posts->deleteForAdmin($postId, $admin->id);
+            if ($this->media !== null && is_array($deleted)) {
+                if (!empty($deleted['cover_image_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketArticles, $deleted['cover_image_path']);
+                }
+                if (!empty($deleted['video_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketVideos, $deleted['video_path']);
+                }
+            }
             return ['status' => 200, 'body' => ['data' => ['message' => 'Post deleted.']]];
         } catch (PostNotFoundException) {
             return $this->notFound();

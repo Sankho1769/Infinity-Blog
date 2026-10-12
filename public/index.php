@@ -61,7 +61,7 @@ try {
     }
 
     if (!headers_sent()) {
-        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
+        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
         header("X-Content-Type-Options: nosniff");
         header("X-Frame-Options: SAMEORIGIN");
         header("Referrer-Policy: strict-origin-when-cross-origin");
@@ -84,7 +84,7 @@ try {
         new ScoreRepository($pdo)
     );
 
-    // Browser POST form submissions for user profile & avatar
+    // Browser POST form submissions for user profile & media uploads
     if ($request->method === 'POST') {
         if ($request->path === '/profile/edit') {
             $webResult = $webController->editProfile($request);
@@ -100,6 +100,34 @@ try {
             echo $webResult['body'];
             return;
         }
+        if ($request->path === '/profile/banner') {
+            $webResult = $webController->uploadBanner($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/posts/upload/cover') {
+            $webResult = $webController->uploadCover($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/posts/upload/inline') {
+            $webResult = $webController->uploadInline($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/posts/upload/video') {
+            $webResult = $webController->uploadVideo($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
     }
 
     // Web Browser Views (HTML)
@@ -109,6 +137,7 @@ try {
         $webResult = match (true) {
             $request->path === '/' => $webController->home($request),
             (bool) preg_match('#^/article/([0-9]+)$#D', $request->path, $m) => $webController->article($request, (int) $m[1]),
+            $request->path === '/video/signed-url' => $webController->signedVideoUrl($request),
             $request->path === '/login' => $webController->login($request),
             $request->path === '/register' => $webController->register($request),
             $request->path === '/profile' => $webController->profile($request),

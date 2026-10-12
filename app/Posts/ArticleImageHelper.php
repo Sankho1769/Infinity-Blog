@@ -23,6 +23,21 @@ final class ArticleImageHelper
      */
     public static function resolveThumbnail(array $post, int $index = 0): string
     {
+        if (!empty($post['cover_image_path']) && is_string($post['cover_image_path'])) {
+            $cover = $post['cover_image_path'];
+            if (str_starts_with($cover, 'http://') || str_starts_with($cover, 'https://') || str_starts_with($cover, '/')) {
+                return $cover;
+            }
+            try {
+                $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+                if ($storageConfig !== null && $storageConfig->isConfigured()) {
+                    return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketArticles) . '/' . ltrim($cover, '/');
+                }
+            } catch (\Throwable) {
+            }
+            return $cover;
+        }
+
         if (!empty($post['featured_image_url']) && is_string($post['featured_image_url'])) {
             return $post['featured_image_url'];
         }
