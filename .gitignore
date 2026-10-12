@@ -2,6 +2,12 @@
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
 
 # Dependencies and generated files
 /vendor/
@@ -12,18 +18,22 @@
 /storage/logs/
 /tmp/
 *.log
+*.sql
 *.sql.gz
 *.dump
+*.bak
 
-# Operating system/editor files
+# Operating system and editor files
 .DS_Store
 Thumbs.db
 *.swp
+.vscode/
+.idea/
 powershell.cmd
 category_page_test.html
 .codex-*
 
-# User uploads and local scratch
+# User uploads, sessions, and local scratch
 /public/uploads/avatars/*
 !/public/uploads/avatars/.htaccess
 /public/uploads/banners/*
@@ -36,3 +46,6 @@ category_page_test.html
 !/public/uploads/videos/.htaccess
 /Assets/
 /tools/
+/scratch/
+cookie*.txt
+*session*.txt
