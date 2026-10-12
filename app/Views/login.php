@@ -41,20 +41,16 @@
         </div>
       </div>
 
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.85rem;">
-        <label style="display: flex; align-items: center; gap: 8px; color: var(--text-muted); cursor: pointer;">
-          <input type="checkbox" name="remember" class="custom-checkbox">
-          <span>Remember me</span>
-        </label>
-        <span style="color: var(--primary-color); font-weight: 600; font-size: 0.85rem; cursor: pointer;" title="Contact your administrator for account assistance">Forgot password?</span>
+      <div style="margin-bottom: 20px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
+        Sign in with your verified author or administrator credentials.
       </div>
 
       <button type="submit" id="login-submit-btn" class="btn btn-primary btn-full">
         Sign In
       </button>
 
-      <p style="margin-top: 24px; font-size: 0.85rem; color: var(--text-muted);">
-        Don't have an author account? <span style="color: var(--primary-color); font-weight: 600;">Contact your administrator.</span>
+      <p style="margin-top: 24px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
+        Need an author account or password assistance? <span style="color: var(--primary-color); font-weight: 600;">Contact your system administrator.</span>
       </p>
     </form>
   </div>

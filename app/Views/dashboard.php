@@ -1,8 +1,18 @@
+<?php
+  $hour = (int) date('G');
+  if ($hour >= 5 && $hour < 12) {
+      $dynamicGreeting = 'Good morning';
+  } elseif ($hour >= 12 && $hour < 17) {
+      $dynamicGreeting = 'Good afternoon';
+  } else {
+      $dynamicGreeting = 'Good evening';
+  }
+?>
 <!-- Screen 3: Author Dashboard -->
 <div class="dashboard-header">
   <div>
     <h1 class="dashboard-greeting">
-      Good morning, <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>! 👋
+      <?= $dynamicGreeting ?>, <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>! 👋
     </h1>
     <p class="dashboard-subhead">Here's what's happening with your blog.</p>
   </div>

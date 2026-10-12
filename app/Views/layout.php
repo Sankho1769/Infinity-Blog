@@ -23,7 +23,7 @@
     <nav class="nav-bar glass-panel" aria-label="Main Navigation">
       <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
         <span class="brand-logo-icon">✦</span>
-        <span>Infinity <span class="brand-text-accent">Blog</span></span>
+        <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
       </a>
 
       <!-- Desktop Navigation Links -->
@@ -65,7 +65,7 @@
           </div>
         <?php else: ?>
           <!-- Guest Sign In Button -->
-          <a href="/login" class="btn btn-primary btn-pill">Sign In</a>
+          <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 8px 18px; white-space: nowrap;">Sign In</a>
         <?php endif; ?>
 
         <!-- Mobile Navigation Toggle Button -->
@@ -108,20 +108,35 @@
 
   <!-- Flash Messages Container -->
   <div class="container flash-messages">
+    <?php if (!empty($_GET['logged_out'])): ?>
+      <div class="alert-banner alert-success alert-dismissible" role="alert">
+        <span>You have been signed out.</span>
+        <button type="button" class="alert-close-btn" aria-label="Close notification" onclick="this.closest('.alert-banner').remove()">×</button>
+      </div>
+    <?php endif; ?>
     <?php if (!empty($_GET['deleted'])): ?>
-      <div class="alert-banner alert-success">Post was permanently deleted.</div>
+      <div class="alert-banner alert-success alert-dismissible" role="alert">
+        <span>Post was permanently deleted.</span>
+        <button type="button" class="alert-close-btn" aria-label="Close notification" onclick="this.closest('.alert-banner').remove()">×</button>
+      </div>
     <?php endif; ?>
     <?php if (!empty($_GET['created'])): ?>
-      <div class="alert-banner alert-success">Post created successfully!</div>
+      <div class="alert-banner alert-success alert-dismissible" role="alert">
+        <span>Post created successfully!</span>
+        <button type="button" class="alert-close-btn" aria-label="Close notification" onclick="this.closest('.alert-banner').remove()">×</button>
+      </div>
     <?php endif; ?>
     <?php if (!empty($_GET['updated'])): ?>
-      <div class="alert-banner alert-success">Post updated successfully!</div>
+      <div class="alert-banner alert-success alert-dismissible" role="alert">
+        <span>Post updated successfully!</span>
+        <button type="button" class="alert-close-btn" aria-label="Close notification" onclick="this.closest('.alert-banner').remove()">×</button>
+      </div>
     <?php endif; ?>
     <?php if (!empty($_GET['published'])): ?>
-      <div class="alert-banner alert-success">Post published successfully!</div>
-    <?php endif; ?>
-    <?php if (!empty($_GET['logged_out'])): ?>
-      <div class="alert-banner alert-success">You have been signed out.</div>
+      <div class="alert-banner alert-success alert-dismissible" role="alert">
+        <span>Post published successfully!</span>
+        <button type="button" class="alert-close-btn" aria-label="Close notification" onclick="this.closest('.alert-banner').remove()">×</button>
+      </div>
     <?php endif; ?>
   </div>
 

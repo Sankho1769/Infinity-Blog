@@ -62,8 +62,37 @@
     return div.innerHTML;
   }
 
-  // Password Visibility Toggle
+  // Password Visibility Toggle & Setup
   document.addEventListener('DOMContentLoaded', () => {
+    // Clean transient query parameters from URL so feedback alerts never persist on refresh or subsequent visits
+    try {
+      const url = new URL(window.location.href);
+      const transients = ['logged_out', 'deleted', 'created', 'updated', 'published'];
+      let changed = false;
+      for (const p of transients) {
+        if (url.searchParams.has(p)) {
+          url.searchParams.delete(p);
+          changed = true;
+        }
+      }
+      if (changed) {
+        const cleanUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (e) {
+      // Safe fallback if history API is restricted
+    }
+
+    // Auto-dismiss static flash alert banners after 5 seconds
+    document.querySelectorAll('.alert-banner').forEach(banner => {
+      setTimeout(() => {
+        banner.style.opacity = '0';
+        banner.style.transform = 'translateY(-6px)';
+        banner.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+        setTimeout(() => banner.remove(), 400);
+      }, 5000);
+    });
+
     document.querySelectorAll('.input-toggle-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
