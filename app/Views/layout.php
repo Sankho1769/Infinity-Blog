@@ -29,16 +29,17 @@
       <!-- Desktop Navigation Links -->
       <ul class="nav-links">
         <li><a href="/" class="nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
-        <?php if (!empty($currentUser)): ?>
+        <li><a href="/categories" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
+        <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
+        <li><a href="/about" class="nav-link <?= ($activeNav ?? '') === 'about' ? 'active' : '' ?>">About</a></li>
+        <?php if (!empty($currentUser) && ($currentUser['role'] ?? '') !== 'reader'): ?>
           <li><a href="/dashboard" class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-            <li><a href="/admin/categories-page" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
+            <li><a href="/admin/categories-page" class="nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>">Categories Admin</a></li>
             <li><a href="/admin/users-page" class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>">Users</a></li>
             <li><a href="/admin/audit-logs-page" class="nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>">Audit Logs</a></li>
           <?php endif; ?>
-        <?php else: ?>
-          <li><a href="/#articles" class="nav-link">Articles</a></li>
         <?php endif; ?>
       </ul>
 
@@ -54,18 +55,19 @@
         </form>
 
         <?php if (!empty($currentUser)): ?>
-          <!-- Logged in Author / Admin Menu -->
+          <!-- Logged in Reader / Author / Admin Menu -->
           <div class="user-menu-pill">
             <div class="user-avatar" title="<?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?>">
               <?= strtoupper(substr($currentUser['display_name'] ?? $currentUser['username'], 0, 1)) ?>
             </div>
             <span class="user-display-name"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?></span>
-            <span class="user-role-badge <?= $currentUser['role'] === 'admin' ? 'admin' : '' ?>"><?= htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8') ?></span>
+            <span class="user-role-badge <?= $currentUser['role'] === 'admin' ? 'admin' : ($currentUser['role'] === 'reader' ? 'reader' : '') ?>"><?= htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8') ?></span>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 4px;">Logout</a>
           </div>
         <?php else: ?>
-          <!-- Guest Sign In Button -->
-          <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 8px 18px; white-space: nowrap;">Sign In</a>
+          <!-- Guest Navigation Buttons: Sign In | Create Account -->
+          <a href="/login" class="btn btn-secondary btn-pill btn-sm" style="padding: 7px 15px; white-space: nowrap;">Sign In</a>
+          <a href="/register" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 15px; white-space: nowrap;">Create Account</a>
         <?php endif; ?>
 
         <!-- Mobile Navigation Toggle Button -->
@@ -83,23 +85,28 @@
     <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" style="display: none;">
       <ul class="mobile-nav-list">
         <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
+        <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
+        <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
+        <li><a href="/about" class="mobile-nav-link <?= ($activeNav ?? '') === 'about' ? 'active' : '' ?>">About</a></li>
         <?php if (!empty($currentUser)): ?>
-          <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
-          <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
-          <li><a href="/posts/new" class="mobile-nav-link">Create Post</a></li>
-          <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-            <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
-            <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>">Users</a></li>
-            <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>">Audit Logs</a></li>
+          <?php if (($currentUser['role'] ?? '') !== 'reader'): ?>
+            <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
+            <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
+            <li><a href="/posts/new" class="mobile-nav-link">Create Post</a></li>
+            <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+              <li><a href="/admin/categories-page" class="mobile-nav-link">Categories Admin</a></li>
+              <li><a href="/admin/users-page" class="mobile-nav-link">Users</a></li>
+              <li><a href="/admin/audit-logs-page" class="mobile-nav-link">Audit Logs</a></li>
+            <?php endif; ?>
           <?php endif; ?>
           <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; color: var(--text-muted);"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($currentUser['role'], ENT_QUOTES, 'UTF-8') ?>)</span>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
           </li>
         <?php else: ?>
-          <li><a href="/#articles" class="mobile-nav-link">Articles</a></li>
-          <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7);">
-            <a href="/login" class="btn btn-primary btn-pill btn-full">Sign In</a>
+          <li style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; flex-direction: column; gap: 8px;">
+            <a href="/login" class="btn btn-secondary btn-pill btn-full">Sign In</a>
+            <a href="/register" class="btn btn-primary btn-pill btn-full">Create Account</a>
           </li>
         <?php endif; ?>
       </ul>

@@ -75,10 +75,16 @@ try {
             $config
         );
 
+        $wantsJson = str_contains((string) $request->header('Accept'), 'application/json');
+
         $webResult = match (true) {
             $request->path === '/' => $webController->home($request),
             (bool) preg_match('#^/article/([0-9]+)$#D', $request->path, $m) => $webController->article($request, (int) $m[1]),
             $request->path === '/login' => $webController->login($request),
+            $request->path === '/register' => $webController->register($request),
+            $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
+            $request->path === '/authors' => $webController->publicAuthors($request),
+            $request->path === '/about' => $webController->about($request),
             $request->path === '/dashboard' => $webController->dashboard($request),
             $request->path === '/posts/new' => $webController->newPost($request),
             (bool) preg_match('#^/posts/([0-9]+)/edit$#D', $request->path, $m) => $webController->editPost($request, (int) $m[1]),
@@ -131,7 +137,8 @@ try {
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
             $guard,
-            $sessions
+            $sessions,
+            $users
         );
     }
 

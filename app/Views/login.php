@@ -6,7 +6,13 @@
     </div>
 
     <h1 class="auth-title">Welcome Back</h1>
-    <p class="auth-subtitle">Sign in to your account to manage your blog.</p>
+    <p class="auth-subtitle">Sign in to your account to read, write, or manage your blog.</p>
+
+    <?php if (!empty($_GET['registered'])): ?>
+      <div class="alert-banner alert-success" style="display: flex; margin-bottom: 20px;">
+        <span>Account created successfully! Please sign in with your credentials.</span>
+      </div>
+    <?php endif; ?>
 
     <div id="login-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
@@ -14,13 +20,13 @@
       <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
       <div class="form-group">
-        <label for="identifier" class="form-label">Username or Full Name</label>
+        <label for="identifier" class="form-label">Email, Username or Full Name</label>
         <div class="input-with-icon">
           <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
-          <input type="text" id="identifier" name="identifier" class="form-input" placeholder="e.g. shubham banerjee" required autocomplete="username" autofocus>
+          <input type="text" id="identifier" name="identifier" class="form-input" placeholder="e.g. user@example.com or shubham banerjee" required autocomplete="username" autofocus>
         </div>
       </div>
 
@@ -42,15 +48,19 @@
       </div>
 
       <div style="margin-bottom: 20px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-        Sign in with your verified author or administrator credentials.
+        Sign in with your verified reader, author, or administrator credentials.
       </div>
 
       <button type="submit" id="login-submit-btn" class="btn btn-primary btn-full">
         Sign In
       </button>
 
-      <p style="margin-top: 24px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-        Need an author account or password assistance? <span style="color: var(--primary-color); font-weight: 600;">Contact your system administrator.</span>
+      <p style="margin-top: 22px; font-size: 0.88rem; color: var(--text-muted); text-align: center;">
+        Don't have an account? <a href="/register" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Create Account</a>
+      </p>
+
+      <p style="margin-top: 10px; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
+        <a href="/" style="color: var(--text-muted); text-decoration: none;">← Return to Home</a>
       </p>
     </form>
   </div>
@@ -94,7 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         // Successful login
         submitBtn.textContent = 'Signed in! Redirecting...';
-        window.location.href = '/dashboard';
+        const role = data.data?.user?.role;
+        window.location.href = role === 'reader' ? '/' : '/dashboard';
       } else {
         errorBox.textContent = data.error?.message || 'The login identifier or password is invalid.';
         errorBox.style.display = 'flex';

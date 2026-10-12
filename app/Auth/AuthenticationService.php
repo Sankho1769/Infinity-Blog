@@ -18,6 +18,11 @@ final class AuthenticationService
         $this->limiter = $limiter;
     }
 
+    public function users(): UserRepository
+    {
+        return $this->users;
+    }
+
     public function login(string $identifier, string $password, string $sourceAddress): LoginResult
     {
         $identifier = UserRepository::normalizeIdentifier($identifier);

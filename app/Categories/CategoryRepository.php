@@ -34,6 +34,24 @@ final class CategoryRepository
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /** @return list<array{id: int, name: string, slug: string, description: ?string, post_count: int}> */
+    public function listActiveWithCounts(): array
+    {
+        $statement = $this->pdo->query(
+            "SELECT c.id, c.name, c.slug, c.description, COUNT(p.id) AS post_count " .
+            "FROM categories c LEFT JOIN posts p ON p.category_id = c.id AND p.status = 'published' " .
+            "WHERE c.is_active = 1 GROUP BY c.id, c.name, c.slug, c.description ORDER BY c.name, c.id"
+        );
+
+        return array_map(static fn (array $row): array => [
+            'id' => (int) $row['id'],
+            'name' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'description' => $row['description'] === null ? null : (string) $row['description'],
+            'post_count' => (int) $row['post_count'],
+        ], $statement->fetchAll(PDO::FETCH_ASSOC));
+    }
+
     /** @return list<array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int}> */
     public function listAdmin(): array
     {

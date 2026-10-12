@@ -51,6 +51,16 @@ final class AuthGuard
         return $this->permits(['admin']);
     }
 
+    public function isAuthor(): bool
+    {
+        return $this->permits(['author']);
+    }
+
+    public function isReader(): bool
+    {
+        return $this->permits(['reader']);
+    }
+
     public function isAuthorOrAdmin(): bool
     {
         return $this->permits(['author', 'admin']);

@@ -112,8 +112,9 @@ final class WebController
     /** @return array{status: int, type: string, body: string} */
     public function login(Request $request): array
     {
-        if ($this->guard->currentAccount() !== null) {
-            return $this->redirect('/dashboard');
+        $account = $this->guard->currentAccount();
+        if ($account !== null) {
+            return $this->redirect($account->role === 'reader' ? '/' : '/dashboard');
         }
 
         return $this->render('login', [
@@ -123,11 +124,61 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function register(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account !== null) {
+            return $this->redirect($account->role === 'reader' ? '/' : '/dashboard');
+        }
+
+        return $this->render('register', [
+            'pageTitle' => 'Create Account',
+            'activeNav' => 'register',
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function publicCategories(Request $request): array
+    {
+        $categories = $this->categories->listActiveWithCounts();
+
+        return $this->render('public_categories', [
+            'pageTitle' => 'Categories',
+            'activeNav' => 'categories',
+            'categories' => $categories,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function publicAuthors(Request $request): array
+    {
+        $authors = $this->users->listPublicAuthors();
+
+        return $this->render('public_authors', [
+            'pageTitle' => 'Authors',
+            'activeNav' => 'authors',
+            'authors' => $authors,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function about(Request $request): array
+    {
+        return $this->render('about', [
+            'pageTitle' => 'About',
+            'activeNav' => 'about',
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function dashboard(Request $request): array
     {
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
+        }
+        if ($account->role === 'reader') {
+            return $this->redirect('/');
         }
 
         $counts = [];
@@ -162,6 +213,9 @@ final class WebController
         if ($account === null) {
             return $this->redirect('/login');
         }
+        if ($account->role === 'reader') {
+            return $this->redirect('/');
+        }
 
         $activeCategories = $this->categories->listActive();
 
@@ -179,6 +233,9 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
+        }
+        if ($account->role === 'reader') {
+            return $this->redirect('/');
         }
 
         $post = $account->role === 'admin'
@@ -205,6 +262,9 @@ final class WebController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login');
+        }
+        if ($account->role === 'reader') {
+            return $this->redirect('/');
         }
 
         $status = isset($_GET['status']) && in_array($_GET['status'], ['draft', 'published'], true)

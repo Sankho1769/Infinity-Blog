@@ -8,17 +8,25 @@ use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\LoginResult;
 use InfinityBlog\Auth\SessionManager;
 
+use InfinityBlog\Auth\UserRepository;
+
 final class AuthController
 {
     private AuthenticationService $authentication;
     private AuthGuard $guard;
     private SessionManager $sessions;
+    private UserRepository $users;
 
-    public function __construct(AuthenticationService $authentication, AuthGuard $guard, SessionManager $sessions)
-    {
+    public function __construct(
+        AuthenticationService $authentication,
+        AuthGuard $guard,
+        SessionManager $sessions,
+        ?UserRepository $users = null
+    ) {
         $this->authentication = $authentication;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        $this->users = $users ?? $authentication->users();
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -26,6 +34,7 @@ final class AuthController
     {
         $result = match ([$request->method, $request->path]) {
             ['POST', '/auth/login'] => $this->login($request),
+            ['POST', '/auth/register'] => $this->register($request),
             ['POST', '/auth/logout'] => $this->logout($request),
             ['GET', '/auth/me'] => $this->me(),
             ['GET', '/auth/csrf'] => $this->csrf(),
@@ -35,7 +44,7 @@ final class AuthController
             return $result;
         }
 
-        $knownPath = in_array($request->path, ['/auth/login', '/auth/logout', '/auth/me', '/auth/csrf'], true);
+        $knownPath = in_array($request->path, ['/auth/login', '/auth/register', '/auth/logout', '/auth/me', '/auth/csrf'], true);
         return $this->error(
             $knownPath ? 405 : 404,
             $knownPath ? 'METHOD_NOT_ALLOWED' : 'NOT_FOUND',
@@ -92,6 +101,70 @@ final class AuthController
             'body' => [
                 'data' => [
                     'user' => $result->account->toPublicArray(),
+                    'csrf_token' => $this->sessions->csrfToken(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function register(Request $request): array
+    {
+        $csrfToken = $request->header('X-CSRF-Token');
+        if (!$this->sessions->validateCsrfToken($csrfToken)) {
+            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+        }
+
+        $input = $request->jsonObject();
+        $displayName = $input['display_name'] ?? $input['name'] ?? null;
+        $email = $input['email'] ?? null;
+        $password = $input['password'] ?? null;
+        $confirmPassword = $input['confirm_password'] ?? $input['password_confirmation'] ?? null;
+
+        $fields = [];
+        if (!is_string($displayName) || trim($displayName) === '' || strlen($displayName) > 190
+            || preg_match('/[\x00-\x1F\x7F]/', $displayName) === 1) {
+            $fields['display_name'] = 'Enter your full name (up to 190 characters).';
+        }
+
+        if (!is_string($email) || trim($email) === '' || strlen($email) > 190
+            || filter_var($email, FILTER_VALIDATE_EMAIL) === false
+            || preg_match('/[\x00-\x1F\x7F]/', $email) === 1) {
+            $fields['email'] = 'Enter a valid email address.';
+        } elseif ($this->users->emailExists($email)) {
+            $fields['email'] = 'An account with this email address already exists.';
+        }
+
+        if (!is_string($password) || strlen($password) < 8 || strlen($password) > 1024) {
+            $fields['password'] = 'Password must be at least 8 characters long.';
+        }
+
+        if (!is_string($confirmPassword) || $confirmPassword !== $password) {
+            $fields['confirm_password'] = 'Passwords do not match.';
+        }
+
+        if ($fields !== []) {
+            return [
+                'status' => 422,
+                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', $fields),
+            ];
+        }
+
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        $newUserId = $this->users->createReader(trim($displayName), trim($email), $passwordHash);
+
+        return [
+            'status' => 201,
+            'body' => [
+                'data' => [
+                    'message' => 'Registration successful. You may now sign in.',
+                    'user' => [
+                        'id' => $newUserId,
+                        'display_name' => trim($displayName),
+                        'email' => UserRepository::normalizeIdentifier(trim($email)),
+                        'role' => 'reader',
+                        'status' => 'active',
+                    ],
                     'csrf_token' => $this->sessions->csrfToken(),
                 ],
             ],

@@ -7,6 +7,7 @@ final class UserAccount
 {
     public int $id;
     public string $username;
+    public ?string $email;
     public string $displayName;
     public string $role;
     public string $status;
@@ -20,15 +21,17 @@ final class UserAccount
         string $role,
         string $status,
         string $passwordHash,
-        int $authVersion
+        int $authVersion,
+        ?string $email = null
     ) {
         $this->id = $id;
         $this->username = $username;
         $this->displayName = $displayName;
         $this->role = $role;
         $this->status = $status;
-        $this->authVersion = $authVersion;
         $this->passwordHash = $passwordHash;
+        $this->authVersion = $authVersion;
+        $this->email = $email;
     }
 
     public function isActive(): bool
@@ -36,17 +39,33 @@ final class UserAccount
         return $this->status === 'active';
     }
 
+    public function isReader(): bool
+    {
+        return $this->role === 'reader';
+    }
+
+    public function isAuthor(): bool
+    {
+        return $this->role === 'author';
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
     public function verifyPassword(string $password): bool
     {
         return password_verify($password, $this->passwordHash);
     }
 
-    /** @return array{id: int, username: string, display_name: string, role: string} */
+    /** @return array{id: int, username: string, email: ?string, display_name: string, role: string} */
     public function toPublicArray(): array
     {
         return [
             'id' => $this->id,
             'username' => $this->username,
+            'email' => $this->email,
             'display_name' => $this->displayName,
             'role' => $this->role,
         ];

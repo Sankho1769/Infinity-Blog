@@ -38,6 +38,7 @@ use InfinityBlog\Http\AdminAuditLogController;
 use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Http\PostController;
 use InfinityBlog\Http\PublicPostController;
+use InfinityBlog\Http\WebController;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Posts\PostNotFoundException;
@@ -431,6 +432,7 @@ $createUserDatabase = static function (): PDO {
     $pdo->exec(
         'CREATE TABLE users (' .
         'id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
+        'email TEXT NULL UNIQUE COLLATE NOCASE, ' .
         'display_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, ' .
         "status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0, auth_version INTEGER NOT NULL DEFAULT 1, " .
         'last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
@@ -1795,13 +1797,131 @@ $run('auth controller rejects unauthenticated role escalation and public admin r
         $expect($sessions->currentAuthVersion() === 1, 'Client-supplied version data must not affect the server-side session.');
 
         $registration = $controller->handle(Request::fromValues('POST', '/auth/register', '192.0.2.40', [], ['role' => 'admin']));
-        $expect($registration['status'] === 404);
+        $expect($registration['status'] === 403, 'Public registration without CSRF must be rejected.');
+        $regWithCsrf = $controller->handle(Request::fromValues(
+            'POST',
+            '/auth/register',
+            '192.0.2.40',
+            ['X-CSRF-Token' => $sessions->csrfToken()],
+            ['role' => 'admin', 'display_name' => 'Alice Reader', 'email' => 'alice@test.local', 'password' => 'password123', 'confirm_password' => 'password123']
+        ));
+        $expect($regWithCsrf['status'] === 201 && $regWithCsrf['body']['data']['user']['role'] === 'reader', 'Registration must enforce reader role and reject role escalation.');
         $expect($controller->logout(Request::fromValues('POST', '/auth/logout', '192.0.2.40'))['status'] === 403);
         $sessions->start();
         $expect($controller->logout(Request::fromValues('POST', '/auth/logout', '192.0.2.40', ['X-CSRF-Token' => 'not-a-token']))['status'] === 403);
         $logout = $controller->logout(Request::fromValues('POST', '/auth/logout', '192.0.2.40', ['X-CSRF-Token' => $sessions->csrfToken()]));
         $expect($logout['status'] === 200);
         $expect($controller->me()['status'] === 401);
+    });
+});
+
+$run('reader registration validates inputs, creates readers only, and blocks readers from author/admin areas', static function () use ($withSession, $validConfiguration, $createPostDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createPostDatabase, $expect): void {
+        $config = AppConfig::fromArray($validConfiguration);
+        $pdo = $createPostDatabase();
+        $users = new UserRepository($pdo);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $controller = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            new AuthGuard($sessions, $users),
+            $sessions,
+            $users
+        );
+
+        $csrf = $sessions->csrfToken();
+
+        // 1. Validation: missing name
+        $noName = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => '', 'email' => 'valid@test.local', 'password' => 'secret1234', 'confirm_password' => 'secret1234'
+        ]));
+        $expect($noName['status'] === 422 && isset($noName['body']['error']['fields']['display_name']));
+
+        // 2. Validation: invalid email
+        $badEmail = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name', 'email' => 'not-an-email', 'password' => 'secret1234', 'confirm_password' => 'secret1234'
+        ]));
+        $expect($badEmail['status'] === 422 && isset($badEmail['body']['error']['fields']['email']));
+
+        // 3. Validation: password < 8 chars
+        $shortPass = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name', 'email' => 'valid@test.local', 'password' => 'short', 'confirm_password' => 'short'
+        ]));
+        $expect($shortPass['status'] === 422 && isset($shortPass['body']['error']['fields']['password']));
+
+        // 4. Validation: password mismatch
+        $mismatch = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name', 'email' => 'valid@test.local', 'password' => 'secret1234', 'confirm_password' => 'different123'
+        ]));
+        $expect($mismatch['status'] === 422 && isset($mismatch['body']['error']['fields']['confirm_password']));
+
+        // 5. Successful reader registration
+        $success = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Reader Bob', 'email' => 'bob@test.local', 'password' => 'secret1234', 'confirm_password' => 'secret1234', 'role' => 'admin'
+        ]));
+        $expect($success['status'] === 201);
+        $expect($success['body']['data']['user']['role'] === 'reader');
+        $expect($success['body']['data']['user']['email'] === 'bob@test.local');
+
+        // 6. Duplicate email rejected
+        $dup = $controller->register(Request::fromValues('POST', '/auth/register', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Reader Bob Two', 'email' => 'bob@test.local', 'password' => 'secret1234', 'confirm_password' => 'secret1234'
+        ]));
+        $expect($dup['status'] === 422 && isset($dup['body']['error']['fields']['email']));
+
+        // 7. Login using email works
+        $loginRes = $controller->login(Request::fromValues('POST', '/auth/login', '192.0.2.55', ['X-CSRF-Token' => $csrf], [
+            'identifier' => 'bob@test.local', 'password' => 'secret1234'
+        ]));
+        $expect($loginRes['status'] === 200 && $loginRes['body']['data']['user']['role'] === 'reader');
+
+        // 8. Reader cannot access author post API (PostController)
+        $guard = new AuthGuard($sessions, $users);
+        $readerAccount = $guard->currentAccount();
+        $expect($readerAccount !== null && $readerAccount->role === 'reader');
+        $expect(!$guard->isAuthor() && !$guard->isAdmin());
+
+        $postsRepo = new PostRepository($pdo);
+        $postCtrl = new PostController($postsRepo, $guard, $sessions);
+        $authorList = $postCtrl->handle(Request::fromValues('GET', '/author/posts', '192.0.2.55'));
+        $expect($authorList['status'] === 403);
+
+        // 9. Reader blocked from author/admin screens via WebController
+        $webController = new WebController(
+            $postsRepo,
+            new CategoryRepository($pdo),
+            $users,
+            new AdminUserRepository($pdo),
+            new AuditLogRepository($pdo),
+            $guard,
+            $sessions,
+            $config
+        );
+
+        $dash = $webController->dashboard(Request::fromValues('GET', '/dashboard', '192.0.2.55'));
+        $expect($dash['status'] === 302);
+
+        $newP = $webController->newPost(Request::fromValues('GET', '/posts/new', '192.0.2.55'));
+        $expect($newP['status'] === 302);
+
+        $manageP = $webController->managePosts(Request::fromValues('GET', '/posts/manage', '192.0.2.55'));
+        $expect($manageP['status'] === 302);
+
+        $adminC = $webController->adminCategories(Request::fromValues('GET', '/admin/categories-page', '192.0.2.55'));
+        $expect($adminC['status'] === 302);
+
+        $regRedirect = $webController->register(Request::fromValues('GET', '/register', '192.0.2.55'));
+        $expect($regRedirect['status'] === 302);
+
+        // 10. Public HTML pages render successfully
+        $catsHtml = $webController->publicCategories(Request::fromValues('GET', '/categories', '192.0.2.55'));
+        $expect($catsHtml['status'] === 200 && str_contains($catsHtml['body'], 'Explore Categories'));
+
+        $authorsHtml = $webController->publicAuthors(Request::fromValues('GET', '/authors', '192.0.2.55'));
+        $expect($authorsHtml['status'] === 200 && str_contains($authorsHtml['body'], 'Our Authors'));
+
+        $aboutHtml = $webController->about(Request::fromValues('GET', '/about', '192.0.2.55'));
+        $expect($aboutHtml['status'] === 200 && str_contains($aboutHtml['body'], 'About Infinity Blog'));
     });
 });
 
@@ -2001,6 +2121,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             '202610090002_create_login_rate_limits',
             '202610090003_add_auth_version_to_users',
             '202610090004_create_summary_rate_limits',
+            '202610120005_add_reader_role_and_email_to_users',
         ];
         if (!$freshSchema) {
             $expect(
@@ -2024,6 +2145,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         $expect(in_array('202610090002_create_login_rate_limits', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610090003_add_auth_version_to_users', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610090004_create_summary_rate_limits', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610120005_add_reader_role_and_email_to_users', $migrationRunner->appliedMigrations(), true));
         $authVersionColumn = $pdo->query(
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'auth_version'"
         )->fetchColumn();
@@ -2682,6 +2804,8 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610120005_add_reader_role_and_email_to_users');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610090004_create_summary_rate_limits');
                 $summaryLimitTables = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'summary_rate_limits'")->fetchColumn();
                 $expect($summaryLimitTables === 0, 'The summary rate-limit table should be removed by its guarded rollback.');
@@ -2705,6 +2829,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610090002_create_login_rate_limits', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610090003_add_auth_version_to_users', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610090004_create_summary_rate_limits', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610120005_add_reader_role_and_email_to_users', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 
