@@ -96,13 +96,23 @@
               <?php else: ?>
                 <span class="badge badge-published">Published</span>
               <?php endif; ?>
+              <?php if (!empty($post['remixed_from_post_id'])): ?>
+                <span class="badge badge-remix" title="Remixed from an earlier article">🔀 Remix</span>
+              <?php endif; ?>
             </div>
           </div>
 
           <div class="article-card-body">
-            <time class="article-date-meta">
-              <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
-            </time>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <time class="article-date-meta">
+                <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
+              </time>
+              <?php if (!empty($post['reader_score']['count']) && $post['reader_score']['count'] > 0): ?>
+                <span class="badge badge-score" title="Reader Score: <?= number_format($post['reader_score']['average'], 1) ?> out of 5 based on <?= (int) $post['reader_score']['count'] ?> scores">
+                  ★ <?= number_format($post['reader_score']['average'], 1) ?> (<?= (int) $post['reader_score']['count'] ?>)
+                </span>
+              <?php endif; ?>
+            </div>
 
             <h3 class="article-card-title">
               <a href="/article/<?= (int) $post['id'] ?>">
@@ -127,9 +137,14 @@
                 </a>
               </div>
 
-              <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
-                Read Story →
-              </a>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <a href="/posts/new?remix=<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 8px; font-size: 0.8rem;" title="Remix this article">
+                  🔀
+                </a>
+                <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
+                  Read Story →
+                </a>
+              </div>
             </div>
           </div>
         </article>

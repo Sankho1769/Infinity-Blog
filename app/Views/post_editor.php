@@ -16,12 +16,35 @@
   </a>
 </div>
 
+<?php
+  $remixedFromId = !empty($post['remixed_from_post_id']) ? (int) $post['remixed_from_post_id'] : (!empty($remixSource['id']) ? (int) $remixSource['id'] : null);
+  $remixedFromTitle = $post['remixed_from_title'] ?? ($remixSource['title'] ?? null);
+  $remixedFromAuthor = $post['remixed_from_author_name'] ?? ($remixSource['author_name'] ?? null);
+?>
+
+<?php if ($remixedFromId !== null): ?>
+  <div class="alert-banner" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; background: rgba(238, 242, 255, 0.7); border: 1px solid rgba(199, 210, 254, 0.85); color: #3730a3; border-radius: var(--radius-md);">
+    <span style="font-size: 1.2rem;">🔀</span>
+    <div>
+      <strong>Remix Mode:</strong> This article is based on
+      <em><?= htmlspecialchars($remixedFromTitle ?? 'Original Article', ENT_QUOTES, 'UTF-8') ?></em>
+      <?php if (!empty($remixedFromAuthor)): ?>
+        by <strong><?= htmlspecialchars($remixedFromAuthor, ENT_QUOTES, 'UTF-8') ?></strong>
+      <?php endif; ?>.
+      Original author attribution will be preserved upon publication.
+    </div>
+  </div>
+<?php endif; ?>
+
 <div id="editor-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
 <form id="post-editor-form" method="POST" action="<?= $isEdit ? '/author/posts/' . (int) $post['id'] : '/author/posts' ?>">
   <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
   <?php if ($isEdit): ?>
     <input type="hidden" id="post-id" value="<?= (int) $post['id'] ?>">
+  <?php endif; ?>
+  <?php if ($remixedFromId !== null): ?>
+    <input type="hidden" id="remixed-from-post-id" value="<?= (int) $remixedFromId ?>">
   <?php endif; ?>
 
   <div class="editor-layout">
@@ -197,10 +220,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const remixedFromVal = document.getElementById('remixed-from-post-id')?.value;
+    const remixedFromId = remixedFromVal && parseInt(remixedFromVal, 10) > 0 ? parseInt(remixedFromVal, 10) : null;
+
     const payload = {
       title,
       content,
-      category_id: categoryId
+      category_id: categoryId,
+      remixed_from_post_id: remixedFromId
     };
 
     const saveDraftBtn = document.getElementById('save-draft-btn');

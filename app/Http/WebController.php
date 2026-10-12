@@ -10,6 +10,7 @@ use InfinityBlog\Auth\UserRepository;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Users\AdminUserRepository;
 
 final class WebController
@@ -22,6 +23,7 @@ final class WebController
     private AuthGuard $guard;
     private SessionManager $sessions;
     private AppConfig $config;
+    private ?ScoreRepository $scores;
 
     public function __construct(
         PostRepository $posts,
@@ -31,7 +33,8 @@ final class WebController
         AuditLogRepository $auditLogs,
         AuthGuard $guard,
         SessionManager $sessions,
-        AppConfig $config
+        AppConfig $config,
+        ?ScoreRepository $scores = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -41,6 +44,7 @@ final class WebController
         $this->guard = $guard;
         $this->sessions = $sessions;
         $this->config = $config;
+        $this->scores = $scores;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -101,25 +105,43 @@ final class WebController
         $recentResult = $this->posts->listPublic([], 1, 5);
         $recent = array_filter($recentResult['posts'], fn($p) => (int) $p['id'] !== $id);
 
+        $account = $this->guard->currentAccount();
+        $scoreSummary = $this->scores !== null ? $this->scores->getSummary($id) : ['average' => 0.0, 'count' => 0];
+        $userScore = ($this->scores !== null && $account !== null) ? $this->scores->getUserScore($id, $account->id) : null;
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'activeNav' => 'home',
             'post' => $post,
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
+            'scoreSummary' => $scoreSummary,
+            'userScore' => $userScore,
+            'currentUser' => $account !== null ? [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'role' => $account->role,
+            ] : null,
         ]);
     }
 
     /** @return array{status: int, type: string, body: string} */
     public function login(Request $request): array
     {
+        $redirectParam = $_GET['redirect'] ?? null;
+        $dest = (is_string($redirectParam) && str_starts_with($redirectParam, '/') && !str_starts_with($redirectParam, '//'))
+            ? $redirectParam
+            : '/dashboard';
+
         $account = $this->guard->currentAccount();
         if ($account !== null) {
-            return $this->redirect('/dashboard');
+            return $this->redirect($dest);
         }
 
         return $this->render('login', [
             'pageTitle' => 'Sign In',
             'activeNav' => 'login',
+            'redirectUrl' => is_string($redirectParam) ? $redirectParam : null,
         ]);
     }
 
@@ -280,15 +302,37 @@ final class WebController
     {
         $account = $this->guard->currentAccount();
         if ($account === null) {
-            return $this->redirect('/login');
+            $currentUri = $_SERVER['REQUEST_URI'] ?? '/posts/new';
+            return $this->redirect('/login?redirect=' . urlencode($currentUri));
         }
 
         $activeCategories = $this->categories->listActive();
 
+        $remixId = isset($_GET['remix']) ? (int) $_GET['remix'] : null;
+        $remixPost = null;
+        $initialPost = [];
+
+        if ($remixId !== null && $remixId > 0) {
+            $source = $this->posts->findPublished($remixId);
+            if ($source !== null) {
+                $remixPost = $source;
+                $initialPost = [
+                    'title' => 'Remix: ' . $source['title'],
+                    'content' => $source['content'],
+                    'category_id' => $source['category_id'],
+                    'remixed_from_post_id' => $source['id'],
+                    'remixed_from_title' => $source['title'],
+                    'remixed_from_author_name' => $source['author_name'],
+                    'remixed_from_author_id' => $source['author_id'],
+                ];
+            }
+        }
+
         return $this->render('post_editor', [
-            'pageTitle' => 'Create New Post',
+            'pageTitle' => $remixPost !== null ? 'Remix: ' . $remixPost['title'] : 'Create New Post',
             'activeNav' => 'posts',
-            'post' => [],
+            'post' => $initialPost,
+            'remixSource' => $remixPost,
             'categories' => $activeCategories,
         ]);
     }

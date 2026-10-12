@@ -26,6 +26,8 @@ use InfinityBlog\Http\RequestException;
 use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Http\WebController;
 use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Scores\ScoreRepository;
+use InfinityBlog\Http\ScoreController;
 use InfinityBlog\Summaries\AiProviderConfig;
 use InfinityBlog\Summaries\DatabaseSummaryRateLimiter;
 use InfinityBlog\Summaries\OpenAiResponsesProvider;
@@ -72,7 +74,8 @@ try {
             new AuditLogRepository($pdo),
             $guard,
             $sessions,
-            $config
+            $config,
+            new ScoreRepository($pdo)
         );
 
         $wantsJson = str_contains((string) $request->header('Accept'), 'application/json');
@@ -133,6 +136,8 @@ try {
         $controller = new AdminAuditLogController(new AuditLogRepository($pdo), $guard);
     } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
         $controller = new PostController(new PostRepository($pdo), $guard, $sessions);
+    } elseif (preg_match('#^/posts/[0-9]+/score$#D', $request->path) === 1) {
+        $controller = new ScoreController(new ScoreRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {
@@ -152,8 +157,12 @@ try {
             return;
         }
         if ($result['status'] === 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
-            $userRole = $result['body']['data']['user']['role'] ?? 'reader';
-            header('Location: ' . ($userRole === 'reader' ? '/' : '/dashboard'));
+            $redirectParam = $_GET['redirect'] ?? ($_POST['redirect'] ?? null);
+            if (is_string($redirectParam) && str_starts_with($redirectParam, '/') && !str_starts_with($redirectParam, '//')) {
+                header('Location: ' . $redirectParam);
+                return;
+            }
+            header('Location: /dashboard');
             return;
         }
     }

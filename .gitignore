@@ -19,3 +19,6 @@
 .DS_Store
 Thumbs.db
 *.swp
+powershell.cmd
+category_page_test.html
+.codex-*

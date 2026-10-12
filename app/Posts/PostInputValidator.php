@@ -7,14 +7,14 @@ final class PostInputValidator
 {
     /**
      * @param array<string, mixed> $input
-     * @return array{array{title?: string, content?: string, category_id?: ?int}, array<string, string>}
+     * @return array{array{title?: string, content?: string, category_id?: ?int, remixed_from_post_id?: ?int}, array<string, string>}
      */
     public static function validate(array $input, bool $creating): array
     {
         $fields = [];
         $errors = [];
         foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['title', 'content', 'category_id', 'status'], true)) {
+            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id'], true)) {
                 $errors[$key === 'author_id' ? 'author_id' : '_request'] = $key === 'author_id'
                     ? 'The author is assigned by the authenticated session.'
                     : 'Unsupported post field.';
@@ -67,6 +67,16 @@ final class PostInputValidator
             }
         } elseif ($creating) {
             $fields['category_id'] = null;
+        }
+        if (array_key_exists('remixed_from_post_id', $input)) {
+            $remixedFrom = $input['remixed_from_post_id'];
+            if ($remixedFrom !== null && (!is_int($remixedFrom) || $remixedFrom < 1)) {
+                $errors['remixed_from_post_id'] = 'Use a positive integer post ID or null for remixed_from_post_id.';
+            } else {
+                $fields['remixed_from_post_id'] = $remixedFrom;
+            }
+        } elseif ($creating) {
+            $fields['remixed_from_post_id'] = null;
         }
         if (!$creating && $fields === [] && $errors === []) {
             $errors['_request'] = 'Provide a title, content, or category_id to update.';

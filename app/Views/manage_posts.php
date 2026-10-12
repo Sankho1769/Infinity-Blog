@@ -67,10 +67,13 @@
           <?php foreach ($posts as $post): ?>
             <tr>
               <td>
-                <div style="font-weight: 700; color: var(--text-dark); margin-bottom: 3px;">
+                <div style="font-weight: 700; color: var(--text-dark); margin-bottom: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                   <a href="/posts/<?= (int) $post['id'] ?>/edit" style="color: inherit; text-decoration: none;">
                     <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
                   </a>
+                  <?php if (!empty($post['remixed_from_post_id'])): ?>
+                    <span class="badge badge-remix" style="font-size: 0.72rem; padding: 2px 6px;">🔀 Remixed</span>
+                  <?php endif; ?>
                 </div>
                 <?php if (($currentUser['role'] ?? '') === 'admin' && !empty($post['author_name'])): ?>
                   <div style="font-size: 0.8rem; color: var(--text-muted);">

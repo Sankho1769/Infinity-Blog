@@ -43,10 +43,14 @@ final class PublicPostController
             return $this->validationError(['category_id' => 'Choose an active category.']);
         }
         $result = $this->posts->listPublic($filters, $page, $perPage);
+        $publicPosts = array_map(static function (array $post): array {
+            unset($post['author_id']);
+            return $post;
+        }, $result['posts']);
         return [
             'status' => 200,
             'body' => [
-                'data' => ['posts' => $result['posts']],
+                'data' => ['posts' => $publicPosts],
                 'meta' => [
                     'page' => $page,
                     'per_page' => $perPage,

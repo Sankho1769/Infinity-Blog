@@ -38,7 +38,7 @@ final class PostRepository
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.title, p.content, p.category_id, c.name AS category_name, u.display_name AS author_name, ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'p.summary, p.summary_status, p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
             $where . ' ORDER BY p.published_at DESC, p.id DESC LIMIT :limit OFFSET :offset'
@@ -49,19 +49,47 @@ final class PostRepository
         $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
         $statement->execute();
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+        $postIds = array_map(static fn(array $r): int => (int) $r['id'], $rows);
+        $scoreSummaries = [];
+        if ($postIds !== []) {
+            try {
+                $placeholders = implode(',', array_fill(0, count($postIds), '?'));
+                $scoreStmt = $this->pdo->prepare(
+                    "SELECT post_id, COUNT(*) AS total_scores, COALESCE(AVG(score), 0) AS avg_score " .
+                    "FROM post_scores WHERE post_id IN ({$placeholders}) GROUP BY post_id"
+                );
+                $scoreStmt->execute($postIds);
+                foreach ($scoreStmt->fetchAll(PDO::FETCH_ASSOC) as $sc) {
+                    $scoreSummaries[(int) $sc['post_id']] = [
+                        'average' => round((float) $sc['avg_score'], 1),
+                        'count' => (int) $sc['total_scores'],
+                    ];
+                }
+            } catch (Throwable) {
+                // Ignore if score table is not present in isolated unit test
+            }
+        }
+
         $posts = [];
-        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        foreach ($rows as $row) {
             $content = (string) $row['content'];
+            $postId = (int) $row['id'];
             $post = [
-                'id' => (int) $row['id'],
+                'id' => $postId,
                 'title' => (string) $row['title'],
                 'excerpt' => self::excerpt($content),
                 'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
                 'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
+                'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
+                'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
+                'author_id' => (int) $row['author_id'],
                 'author_name' => (string) $row['author_name'],
                 'summary' => self::isSummaryCurrent($row) ? (string) $row['summary'] : null,
                 'published_at' => (string) $row['published_at'],
                 'created_at' => (string) $row['created_at'],
+                'reader_score' => $scoreSummaries[$postId] ?? ['average' => 0.0, 'count' => 0],
             ];
             $posts[] = $post;
         }
@@ -107,11 +135,15 @@ final class PostRepository
     public function findPublished(int $postId): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.summary, p.summary_status, ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, p.summary, p.summary_status, ' .
             'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
-            'c.name AS category_name, u.display_name AS author_name ' .
+            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id ' .
-            'JOIN users u ON u.id = p.author_id WHERE p.id = :id AND p.status = \'published\' LIMIT 1'
+            'JOIN users u ON u.id = p.author_id ' .
+            'LEFT JOIN posts orig ON orig.id = p.remixed_from_post_id ' .
+            'LEFT JOIN users orig_u ON orig_u.id = orig.author_id ' .
+            'WHERE p.id = :id AND p.status = \'published\' LIMIT 1'
         );
         $statement->execute(['id' => $postId]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -143,7 +175,7 @@ final class PostRepository
         return hash('sha256', $title . "\n" . $content);
     }
 
-    /** @param array{title: string, content: string, category_id: ?int} $post */
+    /** @param array{title: string, content: string, category_id: ?int, remixed_from_post_id?: ?int} $post */
     public function createDraft(int $authorId, array $post): array
     {
         $this->begin();
@@ -151,18 +183,36 @@ final class PostRepository
             if ($post['category_id'] !== null) {
                 $this->requireActiveCategory($post['category_id'], true);
             }
+
+            $remixedFromId = isset($post['remixed_from_post_id']) && $post['remixed_from_post_id'] !== null
+                ? (int) $post['remixed_from_post_id']
+                : null;
+
+            if ($remixedFromId !== null) {
+                $srcStmt = $this->pdo->prepare('SELECT id, status FROM posts WHERE id = :id LIMIT 1');
+                $srcStmt->execute(['id' => $remixedFromId]);
+                $srcRow = $srcStmt->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($srcRow) || ($srcRow['status'] ?? '') !== 'published') {
+                    throw new PostValidationException(['remixed_from_post_id' => 'Only published articles can be remixed.']);
+                }
+            }
+
             $insert = $this->pdo->prepare(
-                "INSERT INTO posts (author_id, category_id, title, content, status) " .
-                "VALUES (:author_id, :category_id, :title, :content, 'draft')"
+                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, title, content, status) " .
+                "VALUES (:author_id, :category_id, :remixed_from_post_id, :title, :content, 'draft')"
             );
             $insert->execute([
                 'author_id' => $authorId,
                 'category_id' => $post['category_id'],
+                'remixed_from_post_id' => $remixedFromId,
                 'title' => $post['title'],
                 'content' => $post['content'],
             ]);
             $postId = (int) $this->pdo->lastInsertId();
-            $this->writeAudit('post.created', $postId, $authorId, ['fields' => ['title', 'content', 'category_id']]);
+            $this->writeAudit('post.created', $postId, $authorId, [
+                'fields' => ['title', 'content', 'category_id'],
+                'remixed_from_post_id' => $remixedFromId,
+            ]);
             $saved = $this->find($postId, $authorId, false);
             if ($saved === null) {
                 throw new RuntimeException('The new post could not be loaded.');
@@ -455,7 +505,7 @@ final class PostRepository
         $total = (int) $count->fetchColumn();
 
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, ' .
+            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, p.remixed_from_post_id, ' .
             'c.name AS category_name, p.status, p.published_at, p.created_at, p.updated_at, ' .
             'u.display_name AS author_name' . ($includeSummary ? ', p.summary, p.summary_status, p.summary_generated_at' : '') .
             ' FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
@@ -476,6 +526,7 @@ final class PostRepository
                 'excerpt' => self::excerpt((string) $row['preview']),
                 'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
                 'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
+                'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'status' => (string) $row['status'],
                 'published_at' => $row['published_at'] === null ? null : (string) $row['published_at'],
                 'created_at' => (string) $row['created_at'],
@@ -539,10 +590,14 @@ final class PostRepository
     {
         $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $lock = $forUpdate && $driver === 'mysql' ? ' FOR UPDATE' : '';
-        $sql = 'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.summary, p.summary_status, ' .
+        $sql = 'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.remixed_from_post_id, p.summary, p.summary_status, ' .
             'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
-            'c.name AS category_name, u.display_name AS author_name FROM posts p ' .
-            'LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id WHERE p.id = :id';
+            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
+            'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
+            'LEFT JOIN posts orig ON orig.id = p.remixed_from_post_id ' .
+            'LEFT JOIN users orig_u ON orig_u.id = orig.author_id ' .
+            'WHERE p.id = :id';
         $parameters = ['id' => $postId];
         if ($authorId !== null) {
             $sql .= ' AND p.author_id = :author_id';
@@ -606,6 +661,23 @@ final class PostRepository
      */
     private static function mapDetail(array $row): array
     {
+        $remixedFromId = !empty($row['remixed_from_post_id']) ? (int) $row['remixed_from_post_id'] : null;
+        $remixedFromTitle = null;
+        $remixedFromAuthorId = null;
+        $remixedFromAuthorName = null;
+        $remixedFromIsPublished = false;
+
+        if ($remixedFromId !== null && isset($row['remixed_from_status'])) {
+            if ($row['remixed_from_status'] === 'published') {
+                $remixedFromTitle = (string) ($row['remixed_from_title'] ?? '');
+                $remixedFromAuthorId = isset($row['remixed_from_author_id']) ? (int) $row['remixed_from_author_id'] : null;
+                $remixedFromAuthorName = (string) ($row['remixed_from_author_name'] ?? '');
+                $remixedFromIsPublished = true;
+            } else {
+                $remixedFromIsPublished = false;
+            }
+        }
+
         return [
             'id' => (int) $row['id'],
             'author_id' => (int) $row['author_id'],
@@ -614,6 +686,12 @@ final class PostRepository
             'content' => (string) $row['content'],
             'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
             'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
+            'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
+            'remixed_from_post_id' => $remixedFromId,
+            'remixed_from_title' => $remixedFromTitle,
+            'remixed_from_author_id' => $remixedFromAuthorId,
+            'remixed_from_author_name' => $remixedFromAuthorName,
+            'remixed_from_is_published' => $remixedFromIsPublished,
             'summary' => $row['summary'] === null ? null : (string) $row['summary'],
             'summary_status' => (string) $row['summary_status'],
             'summary_source_hash' => $row['summary_source_hash'] === null ? null : (string) $row['summary_source_hash'],

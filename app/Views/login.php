@@ -108,7 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         // Successful login
         submitBtn.textContent = 'Signed in! Redirecting...';
-        window.location.href = '/dashboard';
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectParam = urlParams.get('redirect');
+        const targetUrl = (redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//'))
+          ? redirectParam
+          : '/dashboard';
+        window.location.href = targetUrl;
       } else {
         errorBox.textContent = data.error?.message || 'The login identifier or password is invalid.';
         errorBox.style.display = 'flex';

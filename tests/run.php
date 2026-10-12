@@ -44,6 +44,9 @@ use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Posts\PostNotFoundException;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Posts\PostValidationException;
+use InfinityBlog\Scores\ScoreRepository;
+use InfinityBlog\Scores\ScoreValidationException;
+use InfinityBlog\Http\ScoreController;
 use InfinityBlog\Users\AdminUserRepository;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -501,13 +504,24 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
     $pdo->exec(
         'CREATE TABLE posts (' .
         'id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, ' .
-        'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, title TEXT NOT NULL, content TEXT NOT NULL, ' .
+        'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, ' .
+        'remixed_from_post_id INTEGER NULL REFERENCES posts(id) ON DELETE SET NULL, ' .
+        'title TEXT NOT NULL, content TEXT NOT NULL, ' .
         'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
         'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
         'published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
         'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
         "CHECK (status <> 'published' OR (category_id IS NOT NULL AND published_at IS NOT NULL)), " .
         "CHECK (summary_status <> 'ready' OR (summary IS NOT NULL AND summary_source_hash IS NOT NULL AND summary_generated_at IS NOT NULL)))"
+    );
+    $pdo->exec(
+        'CREATE TABLE post_scores (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE, ' .
+        'user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' .
+        'score INTEGER NOT NULL CHECK (score >= 1 AND score <= 5), ' .
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
+        'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
+        'UNIQUE (post_id, user_id))'
     );
     $pdo->exec(
         'CREATE TABLE audit_logs (' .
@@ -1925,6 +1939,210 @@ $run('user registration validates inputs, creates normal users with authoring ac
     });
 });
 
+$run('remix feature allows drafting derivations from published posts, records attribution, blocks drafts/unpublished sources, and enforces isolation', static function () use ($createPostDatabase, $expect): void {
+    $pdo = $createPostDatabase();
+    $posts = new PostRepository($pdo);
+    $categoryRepo = new CategoryRepository($pdo);
+    $category = $categoryRepo->create('Tech', 'Technology articles', 1);
+
+    // Author 1 creates and publishes Post A
+    $postA = $posts->createDraft(1, [
+        'title' => 'Original Deep Learning Guide',
+        'content' => 'Comprehensive tutorial on neural networks and backpropagation.',
+        'category_id' => $category['id'],
+    ]);
+    $posts->publishForAuthor($postA['id'], 1);
+
+    // Author 2 remixes Post A
+    $remixDraft = $posts->createDraft(2, [
+        'title' => 'Remix: Deep Learning for Vision',
+        'content' => 'Building on the original guide, here is how convolutional layers work.',
+        'category_id' => $category['id'],
+        'remixed_from_post_id' => $postA['id'],
+    ]);
+    $expect($remixDraft['status'] === 'draft', 'Remix must start as a draft.');
+    $expect((int) $remixDraft['remixed_from_post_id'] === $postA['id'], 'Remix must store the original post ID.');
+    $expect($remixDraft['remixed_from_title'] === 'Original Deep Learning Guide', 'Attribution must populate the original title.');
+    $expect($remixDraft['remixed_from_author_name'] === 'Author One', 'Attribution must populate original author name.');
+
+    // Author 2 publishes remix
+    $publishedRemix = $posts->publishForAuthor($remixDraft['id'], 2);
+    $expect($publishedRemix['status'] === 'published');
+    $readDetail = $posts->findPublished($remixDraft['id']);
+    $expect($readDetail !== null);
+    $expect((int) $readDetail['remixed_from_post_id'] === $postA['id']);
+    $expect($readDetail['remixed_from_title'] === 'Original Deep Learning Guide');
+
+    // Attempting to remix an unpublished (draft) post must fail
+    $draftSource = $posts->createDraft(1, [
+        'title' => 'Unpublished Secret Notes',
+        'content' => 'Private unpublished thoughts.',
+        'category_id' => $category['id'],
+    ]);
+    $rejectedDraftRemix = false;
+    try {
+        $posts->createDraft(2, [
+            'title' => 'Remix of draft',
+            'content' => 'Trying to remix a draft.',
+            'category_id' => $category['id'],
+            'remixed_from_post_id' => $draftSource['id'],
+        ]);
+    } catch (PostValidationException $e) {
+        $rejectedDraftRemix = true;
+    }
+    $expect($rejectedDraftRemix, 'Attempting to remix an unpublished draft must be rejected.');
+
+    // Attempting to remix a non-existent post must fail
+    $rejectedMissing = false;
+    try {
+        $posts->createDraft(2, [
+            'title' => 'Remix of ghost',
+            'content' => 'Trying to remix non-existent post.',
+            'category_id' => $category['id'],
+            'remixed_from_post_id' => 999999,
+        ]);
+    } catch (PostValidationException $e) {
+        $rejectedMissing = true;
+    }
+    $expect($rejectedMissing, 'Attempting to remix a non-existent post must be rejected.');
+
+    // If source post is unpublished, detail suppresses source title to avoid information leak
+    $posts->unpublishForAuthor($postA['id'], 1);
+    $detailAfterUnpublish = $posts->findPublished($remixDraft['id']);
+    $expect($detailAfterUnpublish !== null);
+    $expect($detailAfterUnpublish['remixed_from_title'] === null, 'Unpublished source post title must be hidden from reader.');
+    $expect($detailAfterUnpublish['remixed_from_is_published'] === false);
+});
+
+$run('reader score system records 1-5 scores, updates user scores, forbids self-scoring, validates published status, and computes aggregates', static function () use ($createPostDatabase, $expect): void {
+    $pdo = $createPostDatabase();
+    $posts = new PostRepository($pdo);
+    $scoreRepo = new ScoreRepository($pdo);
+    $categoryRepo = new CategoryRepository($pdo);
+    $category = $categoryRepo->create('Science', 'Science articles', 1);
+
+    // Author 1 creates post
+    $post = $posts->createDraft(1, [
+        'title' => 'Quantum Computing Basics',
+        'content' => 'Introduction to qubits and superposition.',
+        'category_id' => $category['id'],
+    ]);
+    $postId = $post['id'];
+
+    // Initial score summary is empty
+    $initialSummary = $scoreRepo->getSummary($postId);
+    $expect($initialSummary['count'] === 0 && (float) $initialSummary['average'] === 0.0);
+
+    // Author 1 cannot score their own article (even if draft or published)
+    $selfScoreRejected = false;
+    try {
+        $scoreRepo->submitScore($postId, 1, 5);
+    } catch (ScoreValidationException $e) {
+        $selfScoreRejected = true;
+    }
+    $expect($selfScoreRejected, 'Authors must not be allowed to score their own articles.');
+
+    // Non-author scoring a draft post must be rejected
+    $draftScoreRejected = false;
+    try {
+        $scoreRepo->submitScore($postId, 2, 4);
+    } catch (ScoreValidationException $e) {
+        $draftScoreRejected = true;
+    }
+    $expect($draftScoreRejected, 'Scoring an unpublished draft must be rejected.');
+
+    // Publish post
+    $posts->publishForAuthor($postId, 1);
+
+    // User 2 scores 4
+    $scoreResult = $scoreRepo->submitScore($postId, 2, 4);
+    $expect($scoreResult['user_score'] === 4);
+    $expect($scoreResult['summary']['count'] === 1);
+    $expect((float) $scoreResult['summary']['average'] === 4.0);
+
+    // User 2 checking their score
+    $expect($scoreRepo->getUserScore($postId, 2) === 4);
+    $expect($scoreRepo->getUserScore($postId, 1) === null);
+
+    // Insert user 3 to score
+    $pdo->exec("INSERT INTO users (username, display_name, password_hash, role, status) VALUES ('reader three', 'Reader Three', 'hash', 'user', 'active')");
+    $user3Id = (int) $pdo->lastInsertId();
+
+    $scoreResult2 = $scoreRepo->submitScore($postId, $user3Id, 5);
+    $expect($scoreResult2['summary']['count'] === 2);
+    $expect((float) $scoreResult2['summary']['average'] === 4.5);
+
+    // User 2 updates their score from 4 to 2 (count stays 2, average becomes (2+5)/2 = 3.5)
+    $scoreUpdate = $scoreRepo->submitScore($postId, 2, 2);
+    $expect($scoreUpdate['user_score'] === 2);
+    $expect($scoreUpdate['summary']['count'] === 2, 'Updating an existing score must not increment score count.');
+    $expect((float) $scoreUpdate['summary']['average'] === 3.5);
+
+    // Invalid score values (0, 6, -1, 10) must be rejected
+    foreach ([0, 6, -1, 10] as $badScore) {
+        $badScoreRejected = false;
+        try {
+            $scoreRepo->submitScore($postId, 2, $badScore);
+        } catch (ScoreValidationException $e) {
+            $badScoreRejected = true;
+        }
+        $expect($badScoreRejected, "Score value {$badScore} must be rejected.");
+    }
+
+    // Batch summary fetching
+    $batchSummaries = $scoreRepo->getSummariesForPosts([$postId, 99999]);
+    $expect(isset($batchSummaries[$postId]));
+    $expect($batchSummaries[$postId]['count'] === 2);
+    $expect((float) $batchSummaries[$postId]['average'] === 3.5);
+    $expect(isset($batchSummaries[99999]));
+    $expect($batchSummaries[99999]['count'] === 0 && (float) $batchSummaries[99999]['average'] === 0.0);
+});
+
+$run('category expansion seeds all 12 categories idempotently and all remain active', static function () use ($createUserDatabase, $expect): void {
+    $pdo = $createUserDatabase();
+    $pdo->exec(
+        'CREATE TABLE categories (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
+        'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
+        'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT)'
+    );
+
+    $migration = require dirname(__DIR__) . '/database/migrations/202610130007_expand_categories.php';
+    ($migration['up'])($pdo);
+
+    $count = (int) $pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn();
+    $expect($count === 12, "Expected 12 categories after expansion seeding, found {$count}.");
+
+    $slugs = $pdo->query('SELECT slug FROM categories')->fetchAll(PDO::FETCH_COLUMN);
+    $requiredSlugs = [
+        'web-development',
+        'programming-software-engineering',
+        'artificial-intelligence-machine-learning',
+        'data-science-analytics',
+        'cybersecurity-privacy',
+        'career-productivity',
+        'education-learning',
+        'design-creativity',
+        'business-startups',
+        'lifestyle-wellness',
+        'science-innovation',
+        'travel-nature',
+    ];
+    foreach ($requiredSlugs as $slug) {
+        $expect(in_array($slug, $slugs, true), "Category slug {$slug} must exist.");
+    }
+
+    // Idempotency: running 'up' again must not error or duplicate
+    ($migration['up'])($pdo);
+    $countAfter = (int) $pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn();
+    $expect($countAfter === 12, 'Category seeding must be idempotent.');
+
+    // All seeded categories must be active
+    $inactiveCount = (int) $pdo->query('SELECT COUNT(*) FROM categories WHERE is_active != 1')->fetchColumn();
+    $expect($inactiveCount === 0, 'All expanded categories must be active by default.');
+});
+
 $run('initial administrators are provisioned with distinct hashes and duplicates are refused', static function () use ($expect): void {
     $pdo = new PDO('sqlite::memory:');
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -2095,6 +2313,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             'audit_logs',
             'categories',
             'login_rate_limits',
+            'post_scores',
             'posts',
             'schema_migrations',
             'summary_rate_limits',
@@ -2123,6 +2342,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             '202610090004_create_summary_rate_limits',
             '202610120005_add_reader_role_and_email_to_users',
             '202610120006_unify_user_roles',
+            '202610130007_expand_categories',
+            '202610130008_add_remix_to_posts',
+            '202610130009_create_post_scores',
         ];
         if (!$freshSchema) {
             $expect(
@@ -2130,7 +2352,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 'The existing test schema has an incomplete or unexpected migration history; it was left untouched.'
             );
             $nonEmptyTables = [];
-            foreach (['users', 'categories', 'posts', 'audit_logs', 'login_rate_limits', 'summary_rate_limits'] as $table) {
+            foreach (['users', 'categories', 'posts', 'audit_logs', 'login_rate_limits', 'summary_rate_limits', 'post_scores'] as $table) {
                 if ((int) $pdo->query('SELECT COUNT(*) FROM ' . $table)->fetchColumn() !== 0) {
                     $nonEmptyTables[] = $table;
                 }
@@ -2148,6 +2370,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         $expect(in_array('202610090004_create_summary_rate_limits', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610120005_add_reader_role_and_email_to_users', $migrationRunner->appliedMigrations(), true));
         $expect(in_array('202610120006_unify_user_roles', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610130007_expand_categories', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610130008_add_remix_to_posts', $migrationRunner->appliedMigrations(), true));
+        $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
         $authVersionColumn = $pdo->query(
             "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'auth_version'"
         )->fetchColumn();
@@ -2159,6 +2384,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             'posts:idx_posts_author_status',
             'posts:idx_posts_status_published',
             'posts:idx_posts_category_status',
+            'posts:idx_posts_remixed_from',
+            'post_scores:idx_post_scores_post',
+            'post_scores:idx_post_scores_user',
             'audit_logs:idx_audit_logs_actor_created',
             'audit_logs:idx_audit_logs_entity',
             'audit_logs:idx_audit_logs_action_created',
@@ -2806,6 +3034,16 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130009_create_post_scores');
+                $postScoreTables = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'post_scores'")->fetchColumn();
+                $expect($postScoreTables === 0, 'The post_scores table should be removed by rollback.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130008_add_remix_to_posts');
+                $remixColumn = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'posts' AND column_name = 'remixed_from_post_id'")->fetchColumn();
+                $expect($remixColumn === 0, 'The remixed_from_post_id column should be removed by rollback.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130007_expand_categories');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610120006_unify_user_roles');
                 $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610120005_add_reader_role_and_email_to_users');
@@ -2835,6 +3073,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610090004_create_summary_rate_limits', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610120005_add_reader_role_and_email_to_users', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610120006_unify_user_roles', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130007_expand_categories', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130008_add_remix_to_posts', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 
