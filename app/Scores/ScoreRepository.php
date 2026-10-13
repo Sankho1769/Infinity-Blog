@@ -166,6 +166,22 @@ final class ScoreRepository
             $summary = $this->getSummary($postId);
             $this->pdo->commit();
 
+            try {
+                $authorId = (int) ($post['author_id'] ?? 0);
+                if ($authorId > 0 && $authorId !== $userId) {
+                    $notifs = new \InfinityBlog\Social\NotificationRepository($this->pdo);
+                    $notifs->createNotification(
+                        $authorId,
+                        $userId,
+                        'score',
+                        $postId,
+                        "A reader rated your article {$score}/5 stars."
+                    );
+                }
+            } catch (\Throwable) {
+                // Ignore notification failure
+            }
+
             return [
                 'user_score' => $score,
                 'summary' => $summary,

@@ -100,6 +100,16 @@
               Edit Post
             </a>
           <?php endif; ?>
+
+          <?php if (!empty($currentUser) && (int) $currentUser['id'] !== (int) ($post['author_id'] ?? 0)): ?>
+            <button type="button" class="btn btn-secondary btn-sm btn-pill btn-report-article" onclick="openReportPostModal()" title="Report this article to moderators" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+              <span aria-hidden="true">🚩</span> Report
+            </button>
+          <?php elseif (empty($currentUser)): ?>
+            <a href="/login?redirect=<?= urlencode('/article/' . (int) $post['id']) ?>" class="btn btn-secondary btn-sm btn-pill btn-report-article" title="Sign in to report this article" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+              <span aria-hidden="true">🚩</span> Report
+            </a>
+          <?php endif; ?>
         </div>
       </div>
     </header>
@@ -244,6 +254,15 @@
       <button type="button" class="btn btn-primary btn-sm btn-pill" id="shareArticleBtn" onclick="triggerNativeShare('<?= htmlspecialchars($canonicalUrl ?? (($baseUrl ?? '') . '/article/' . (int) $post['id']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($metaDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>')">
         🔗 Share Article
       </button>
+      <?php if (!empty($currentUser) && (int) $currentUser['id'] !== (int) ($post['author_id'] ?? 0)): ?>
+        <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="openReportPostModal()" title="Report inappropriate content" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+          🚩 Report Post
+        </button>
+      <?php elseif (empty($currentUser)): ?>
+        <a href="/login?redirect=<?= urlencode('/article/' . (int) $post['id']) ?>" class="btn btn-secondary btn-sm btn-pill" title="Sign in to report this article" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.35);">
+          🚩 Report Post
+        </a>
+      <?php endif; ?>
     </div>
 
     <!-- Reader Score Section -->
@@ -624,6 +643,61 @@
       </div>
       <span id="share-copy-tooltip" style="display: none; font-size: 0.8rem; color: #16a34a; font-weight: 600; margin-top: 6px;">✓ Link copied to clipboard!</span>
     </div>
+  </div>
+</div>
+
+<!-- Report Article Modal -->
+<div class="modal-backdrop" id="report-article-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
+  <div class="modal-card" style="max-width: 520px; width: 100%; border-radius: var(--radius-xl); background: #ffffff; padding: 28px; box-shadow: var(--glass-shadow-dropdown); position: relative;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.4rem;">🚩</span>
+        <div>
+          <h3 id="reportModalTitle" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark);">Report Article</h3>
+          <p style="margin: 2px 0 0; font-size: 0.84rem; color: var(--text-muted);">
+            Help keep Infinity Blog safe, trustworthy, and constructive.
+          </p>
+        </div>
+      </div>
+      <button type="button" class="alert-close-btn" onclick="closeReportPostModal()" aria-label="Close report dialog" style="font-size: 1.4rem; border: none; background: transparent; cursor: pointer; color: var(--text-muted); line-height: 1;">×</button>
+    </div>
+
+    <form id="reportPostForm" onsubmit="handleReportPostSubmit(event)">
+      <div id="reportFormFeedback" style="display: none; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.88rem; font-weight: 600;"></div>
+
+      <div style="margin-bottom: 16px;">
+        <label for="reportReasonSelect" style="display: block; font-size: 0.86rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px;">
+          Reason for reporting <span style="color: #ef4444;">*</span>
+        </label>
+        <select id="reportReasonSelect" class="form-input" required style="width: 100%; font-size: 0.9rem; padding: 9px 12px; border-radius: 8px;">
+          <option value="" disabled selected>Select a violation reason...</option>
+          <option value="Spam or misleading content">Spam or misleading content</option>
+          <option value="Harassment or bullying">Harassment or bullying</option>
+          <option value="Hate or abusive content">Hate or abusive content</option>
+          <option value="Sexual or inappropriate content">Sexual or inappropriate content</option>
+          <option value="Violence or dangerous content">Violence or dangerous content</option>
+          <option value="Copyright or intellectual-property concern">Copyright or intellectual-property concern</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label for="reportExplanationTextarea" style="font-size: 0.86rem; font-weight: 700; color: var(--text-dark);">
+            Additional details (Optional)
+          </label>
+          <span id="reportCharCounter" style="font-size: 0.76rem; color: var(--text-muted);">0 / 500</span>
+        </div>
+        <textarea id="reportExplanationTextarea" class="form-input" rows="3" maxlength="500" placeholder="Provide context or specific details for our moderation team (max 500 characters)..." oninput="updateReportCharCount(this)" style="width: 100%; resize: vertical; font-size: 0.88rem; padding: 8px 12px; border-radius: 8px;"></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="closeReportPostModal()">Cancel</button>
+        <button type="submit" id="reportSubmitBtn" class="btn btn-danger btn-sm btn-pill" style="min-width: 130px;">
+          Submit Report
+        </button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -1235,5 +1309,168 @@ async function reportComment(commentId) {
   } catch (e) {
     alert('Error reporting comment.');
   }
+}
+
+// Post Reporting Handlers
+function openReportPostModal() {
+  const modal = document.getElementById('report-article-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  const reasonSelect = document.getElementById('reportReasonSelect');
+  if (reasonSelect) {
+    reasonSelect.focus();
+  }
+}
+
+function closeReportPostModal() {
+  const modal = document.getElementById('report-article-modal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  document.body.style.overflow = '';
+  const form = document.getElementById('reportPostForm');
+  if (form) form.reset();
+  const counter = document.getElementById('reportCharCounter');
+  if (counter) counter.textContent = '0 / 500';
+  const feedback = document.getElementById('reportFormFeedback');
+  if (feedback) {
+    feedback.style.display = 'none';
+    feedback.textContent = '';
+  }
+}
+
+function updateReportCharCount(textarea) {
+  const counter = document.getElementById('reportCharCounter');
+  if (counter && textarea) {
+    const len = textarea.value.length;
+    counter.textContent = `${len} / 500`;
+    if (len > 450) {
+      counter.style.color = '#ef4444';
+    } else {
+      counter.style.color = 'var(--text-muted)';
+    }
+  }
+}
+
+async function handleReportPostSubmit(event) {
+  event.preventDefault();
+  const btn = document.getElementById('reportSubmitBtn');
+  const feedback = document.getElementById('reportFormFeedback');
+  const reason = document.getElementById('reportReasonSelect')?.value;
+  const explanation = document.getElementById('reportExplanationTextarea')?.value || '';
+  const postId = <?= (int) $post['id'] ?>;
+
+  if (!reason) {
+    if (feedback) {
+      feedback.style.display = 'block';
+      feedback.style.background = '#fef2f2';
+      feedback.style.color = '#991b1b';
+      feedback.style.border = '1px solid #fecaca';
+      feedback.textContent = 'Please select a reason for reporting.';
+    }
+    return;
+  }
+
+  if (explanation.length > 500) {
+    if (feedback) {
+      feedback.style.display = 'block';
+      feedback.style.background = '#fef2f2';
+      feedback.style.color = '#991b1b';
+      feedback.style.border = '1px solid #fecaca';
+      feedback.textContent = 'Explanation must not exceed 500 characters.';
+    }
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+  }
+
+  try {
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+      csrf = await window.BlogCMS.ensureCsrfToken();
+    }
+
+    const res = await fetch(`/api/posts/${postId}/report`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      },
+      body: JSON.stringify({
+        reason: reason,
+        explanation: explanation
+      })
+    });
+
+    const data = await res.json();
+
+    if (feedback) {
+      feedback.style.display = 'block';
+      if (res.ok && data.success) {
+        if (data.duplicate) {
+          feedback.style.background = '#eff6ff';
+          feedback.style.color = '#1e40af';
+          feedback.style.border = '1px solid #bfdbfe';
+        } else {
+          feedback.style.background = '#f0fdf4';
+          feedback.style.color = '#166534';
+          feedback.style.border = '1px solid #bbf7d0';
+        }
+        feedback.textContent = data.message || 'Report received. Thank you for helping keep our community safe.';
+
+        if (btn) {
+          btn.textContent = 'Report Submitted';
+          btn.disabled = true;
+        }
+
+        setTimeout(() => {
+          closeReportPostModal();
+        }, 2200);
+      } else {
+        feedback.style.background = '#fef2f2';
+        feedback.style.color = '#991b1b';
+        feedback.style.border = '1px solid #fecaca';
+        feedback.textContent = data.error?.message || data.message || 'Unable to submit report. Please try again.';
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Submit Report';
+        }
+      }
+    }
+  } catch (err) {
+    if (feedback) {
+      feedback.style.display = 'block';
+      feedback.style.background = '#fef2f2';
+      feedback.style.color = '#991b1b';
+      feedback.style.border = '1px solid #fecaca';
+      feedback.textContent = 'A network error occurred. Please check your connection.';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Submit Report';
+    }
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('report-article-modal');
+    if (modal && modal.style.display === 'flex') {
+      closeReportPostModal();
+    }
+  }
+});
+
+const reportModalBackdrop = document.getElementById('report-article-modal');
+if (reportModalBackdrop) {
+  reportModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === reportModalBackdrop) {
+      closeReportPostModal();
+    }
+  });
 }
 </script>

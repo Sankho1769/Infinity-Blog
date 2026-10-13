@@ -18,24 +18,56 @@ final class SocialController
     private AuthGuard $guard;
     private SessionManager $sessions;
     private UserRepository $users;
+    private ?\InfinityBlog\Social\NotificationRepository $notifications;
 
     public function __construct(
         FollowRepository $follows,
         MessageRepository $messages,
         AuthGuard $guard,
         SessionManager $sessions,
-        UserRepository $users
+        UserRepository $users,
+        ?\InfinityBlog\Social\NotificationRepository $notifications = null
     ) {
         $this->follows = $follows;
         $this->messages = $messages;
         $this->guard = $guard;
         $this->sessions = $sessions;
         $this->users = $users;
+        $this->notifications = $notifications;
+    }
+
+    private function resolveNotificationRepo(): ?\InfinityBlog\Social\NotificationRepository
+    {
+        if ($this->notifications !== null) {
+            return $this->notifications;
+        }
+        if (method_exists($this->users, 'getPdo')) {
+            $this->notifications = new \InfinityBlog\Social\NotificationRepository($this->users->getPdo());
+            return $this->notifications;
+        }
+        return null;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
     public function handle(Request $request): array
     {
+        // Notification endpoints
+        if ($request->path === '/api/notifications' && $request->method === 'GET') {
+            return $this->getNotifications($request);
+        }
+        if ($request->path === '/api/notifications/count' && $request->method === 'GET') {
+            return $this->getNotificationsCount();
+        }
+        if (($request->path === '/api/notifications/read-all' || $request->path === '/api/notifications/read') && $request->method === 'POST') {
+            return $this->markAllNotificationsRead($request);
+        }
+        if (preg_match('#^/api/notifications/([0-9]+)/read$#D', $request->path, $m) === 1 && $request->method === 'POST') {
+            return $this->markNotificationRead($request, (int) $m[1]);
+        }
+        if (preg_match('#^/api/notifications/([0-9]+)$#D', $request->path, $m) === 1 && $request->method === 'DELETE') {
+            return $this->deleteNotification($request, (int) $m[1]);
+        }
+
         // Follow / Unfollow endpoints
         if (preg_match('#^/api/authors/([0-9]+)/follow$#D', $request->path, $m) === 1) {
             return $this->follow($request, (int) $m[1]);
@@ -227,12 +259,116 @@ final class SocialController
         }
     }
 
+    private function getNotifications(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to view notifications.']]];
+        }
+        $repo = $this->resolveNotificationRepo();
+        if ($repo === null) {
+            return ['status' => 200, 'body' => ['data' => ['notifications' => [], 'unread_count' => 0]]];
+        }
+
+        $limit = isset($_GET['limit']) ? max(1, min(100, (int) $_GET['limit'])) : 25;
+        $offset = isset($_GET['offset']) ? max(0, (int) $_GET['offset']) : 0;
+        $notifications = $repo->getUserNotifications($account->id, $limit, $offset);
+        $unreadCount = $repo->getUnreadCount($account->id);
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'notifications' => $notifications,
+                'unread_count' => $unreadCount,
+            ],
+        ]];
+    }
+
+    private function getNotificationsCount(): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 200, 'body' => ['data' => ['unread_count' => 0]]];
+        }
+        $repo = $this->resolveNotificationRepo();
+        $unreadCount = $repo !== null ? $repo->getUnreadCount($account->id) : 0;
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'unread_count' => $unreadCount,
+            ],
+        ]];
+    }
+
+    private function markAllNotificationsRead(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in.']]];
+        }
+        $csrfError = $this->requireCsrf($request);
+        if ($csrfError !== null) {
+            return $csrfError;
+        }
+
+        $repo = $this->resolveNotificationRepo();
+        $affected = $repo !== null ? $repo->markAllAsRead($account->id) : 0;
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'success' => true,
+                'affected' => $affected,
+            ],
+        ]];
+    }
+
+    private function markNotificationRead(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in.']]];
+        }
+        $csrfError = $this->requireCsrf($request);
+        if ($csrfError !== null) {
+            return $csrfError;
+        }
+
+        $repo = $this->resolveNotificationRepo();
+        $success = $repo !== null && $repo->markAsRead($id, $account->id);
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'success' => $success,
+            ],
+        ]];
+    }
+
+    private function deleteNotification(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in.']]];
+        }
+        $csrfError = $this->requireCsrf($request);
+        if ($csrfError !== null) {
+            return $csrfError;
+        }
+
+        $repo = $this->resolveNotificationRepo();
+        $success = $repo !== null && $repo->deleteNotification($id, $account->id);
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'success' => $success,
+            ],
+        ]];
+    }
+
     private function requireCsrf(Request $request): ?array
     {
         $token = $request->header('X-CSRF-Token');
         if (!is_string($token) || $token === '') {
             $jsonData = $request->isJson() ? $request->json() : [];
-            $token = $jsonData['csrf_token'] ?? ($_POST['csrf_token'] ?? null);
+            $token = $jsonData['csrf_token'] ?? ($_POST['csrf_token'] ?? ($_GET['csrf_token'] ?? null));
         }
 
         if (!is_string($token) || !$this->sessions->validateCsrfToken($token)) {

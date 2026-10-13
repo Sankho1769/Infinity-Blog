@@ -25,15 +25,39 @@ final class FollowRepository
             throw new InvalidArgumentException('Users cannot follow themselves.');
         }
 
-        $stmt = $this->pdo->prepare(
-            'INSERT IGNORE INTO user_follows (follower_id, following_id, created_at) VALUES (:follower_id, :following_id, NOW())'
-        );
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $insertSql = $driver === 'sqlite'
+            ? 'INSERT OR IGNORE INTO user_follows (follower_id, following_id, created_at) VALUES (:follower_id, :following_id, CURRENT_TIMESTAMP)'
+            : 'INSERT IGNORE INTO user_follows (follower_id, following_id, created_at) VALUES (:follower_id, :following_id, NOW())';
+        $stmt = $this->pdo->prepare($insertSql);
         $stmt->execute([
             'follower_id' => $followerId,
             'following_id' => $followingId,
         ]);
 
-        return $stmt->rowCount() > 0;
+        if ($stmt->rowCount() > 0) {
+            try {
+                $uStmt = $this->pdo->prepare('SELECT display_name, username FROM users WHERE id = :id LIMIT 1');
+                $uStmt->execute([':id' => $followerId]);
+                $uRow = $uStmt->fetch(PDO::FETCH_ASSOC);
+                $name = $uRow['display_name'] ?? $uRow['username'] ?? 'Someone';
+
+                $notifs = new NotificationRepository($this->pdo);
+                $notifs->createNotification(
+                    $followingId,
+                    $followerId,
+                    'follow',
+                    $followerId,
+                    "{$name} started following you."
+                );
+            } catch (Throwable) {
+                // Ignore notification failure
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

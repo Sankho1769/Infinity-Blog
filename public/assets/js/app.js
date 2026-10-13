@@ -504,6 +504,231 @@
       }
     };
 
+    // Notification Center Controls
+    function initNotifications() {
+      const notifBtn = document.getElementById('nav-notif-btn');
+      const notifDropdown = document.getElementById('nav-notif-dropdown');
+      const notifBadge = document.getElementById('nav-notif-badge');
+      const notifList = document.getElementById('nav-notif-list');
+      const notifMarkAll = document.getElementById('nav-notif-mark-all');
+      const mobileDrawerNotifLink = document.getElementById('mobile-drawer-notif-link');
+      const mobileDrawerNotifBadge = document.getElementById('mobile-drawer-notif-badge');
+
+      if (!notifBtn && !mobileDrawerNotifLink) return;
+
+      function updateBadges(count) {
+        const text = count > 99 ? '99+' : String(count);
+        const show = count > 0;
+        if (notifBadge) {
+          notifBadge.textContent = text;
+          notifBadge.style.display = show ? 'inline-flex' : 'none';
+        }
+        if (mobileDrawerNotifBadge) {
+          mobileDrawerNotifBadge.textContent = text;
+          mobileDrawerNotifBadge.style.display = show ? 'inline-flex' : 'none';
+        }
+      }
+
+      function formatTimeAgo(dateStr) {
+        try {
+          const d = new Date(dateStr.replace(' ', 'T') + 'Z');
+          const now = new Date();
+          const diffSec = Math.floor((now.getTime() - d.getTime()) / 1000);
+          if (diffSec < 60) return 'Just now';
+          if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+          if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+          if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+          return d.toLocaleDateString();
+        } catch {
+          return dateStr;
+        }
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      async function fetchUnreadCount() {
+        try {
+          const res = await fetch('/api/notifications/count', {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const count = data.data?.unread_count ?? 0;
+            updateBadges(count);
+          }
+        } catch (e) {
+          // Silent polling error
+        }
+      }
+
+      async function loadNotifications() {
+        if (!notifList) return;
+        notifList.innerHTML = '<div style="padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Loading notifications...</div>';
+        try {
+          const res = await fetch('/api/notifications?limit=25', {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!res.ok) throw new Error('Failed to load');
+          const json = await res.json();
+          const items = json.data?.notifications || [];
+          const count = json.data?.unread_count ?? 0;
+          updateBadges(count);
+
+          if (items.length === 0) {
+            notifList.innerHTML = '<div class="nav-notif-empty">No notifications yet</div>';
+            return;
+          }
+
+          notifList.innerHTML = '';
+          items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = `nav-notif-item ${item.is_read ? '' : 'unread'}`;
+            el.dataset.id = item.id;
+            el.dataset.url = item.target_url || '/';
+
+            const initial = (item.actor_name || 'U').charAt(0).toUpperCase();
+            const avatarHtml = item.actor_avatar
+              ? `<img src="${escapeHtml(item.actor_avatar)}" class="nav-notif-actor-avatar" alt="${escapeHtml(item.actor_name)}" onerror="this.outerHTML='<div class=\\\'nav-notif-avatar-fallback\\\'>${initial}</div>'">`
+              : `<div class="nav-notif-avatar-fallback">${initial}</div>`;
+
+            el.innerHTML = `
+              ${avatarHtml}
+              <div class="nav-notif-content">
+                <div class="nav-notif-msg">${escapeHtml(item.message)}</div>
+                <div class="nav-notif-time">${formatTimeAgo(item.created_at)}</div>
+              </div>
+              <button type="button" class="nav-notif-delete-btn" title="Dismiss" aria-label="Dismiss notification">&times;</button>
+            `;
+
+            // Click on item to navigate & mark read
+            el.addEventListener('click', async (e) => {
+              if (e.target.closest('.nav-notif-delete-btn')) return;
+              if (!item.is_read) {
+                const csrf = await ensureCsrfToken();
+                fetch(`/api/notifications/${item.id}/read`, {
+                  method: 'POST',
+                  headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+                }).catch(() => {});
+              }
+              closeDropdown();
+              window.location.href = item.target_url || '/';
+            });
+
+            // Delete / dismiss button
+            const delBtn = el.querySelector('.nav-notif-delete-btn');
+            if (delBtn) {
+              delBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const csrf = await ensureCsrfToken();
+                try {
+                  const delRes = await fetch(`/api/notifications/${item.id}`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+                  });
+                  if (delRes.ok) {
+                    el.remove();
+                    if (!item.is_read) {
+                      fetchUnreadCount();
+                    }
+                    if (notifList.children.length === 0) {
+                      notifList.innerHTML = '<div class="nav-notif-empty">No notifications yet</div>';
+                    }
+                  }
+                } catch {}
+              });
+            }
+
+            notifList.appendChild(el);
+          });
+        } catch (err) {
+          notifList.innerHTML = '<div style="padding: 24px 16px; text-align: center; color: #ef4444; font-size: 0.85rem;">Failed to load notifications.</div>';
+        }
+      }
+
+      function openDropdown() {
+        if (!notifDropdown) return;
+        closeAllNavDropdowns();
+        notifDropdown.style.display = 'flex';
+        notifBtn?.setAttribute('aria-expanded', 'true');
+        notifBtn?.classList.add('active');
+        loadNotifications();
+      }
+
+      function closeDropdown() {
+        if (!notifDropdown) return;
+        notifDropdown.style.display = 'none';
+        notifBtn?.setAttribute('aria-expanded', 'false');
+        notifBtn?.classList.remove('active');
+      }
+
+      function toggleDropdown() {
+        if (!notifDropdown) return;
+        if (notifDropdown.style.display === 'flex') {
+          closeDropdown();
+        } else {
+          openDropdown();
+        }
+      }
+
+      if (notifBtn) {
+        notifBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleDropdown();
+        });
+      }
+
+      if (mobileDrawerNotifLink) {
+        mobileDrawerNotifLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          closeMobileDrawer();
+          toggleDropdown();
+        });
+      }
+
+      if (notifMarkAll) {
+        notifMarkAll.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const csrf = await ensureCsrfToken();
+          try {
+            const res = await fetch('/api/notifications/read-all', {
+              method: 'POST',
+              headers: { 'X-CSRF-Token': csrf, 'Accept': 'application/json' }
+            });
+            if (res.ok) {
+              updateBadges(0);
+              notifList.querySelectorAll('.nav-notif-item.unread').forEach(el => {
+                el.classList.remove('unread');
+              });
+            }
+          } catch {}
+        });
+      }
+
+      // Close notification dropdown when clicking outside
+      document.addEventListener('click', (e) => {
+        if (notifDropdown && !notifDropdown.contains(e.target) && !notifBtn?.contains(e.target)) {
+          closeDropdown();
+        }
+      });
+
+      // Escape key handler
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && notifDropdown?.style.display === 'flex') {
+          closeDropdown();
+        }
+      });
+
+      // Fetch initial count & set interval
+      fetchUnreadCount();
+      setInterval(fetchUnreadCount, 30000);
+    }
+    initNotifications();
+
     // Escape key closes modals, dropdowns, and mobile drawer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {

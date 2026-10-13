@@ -44,7 +44,7 @@
   <link rel="stylesheet" href="/assets/css/style.css?v=<?= $cssVersion ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
 </head>
 <body>
   <!-- Ambient glow backdrop for pastel claymorphism/glassmorphism -->
@@ -93,10 +93,13 @@
           </li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
             <li class="nav-dropdown" id="admin-nav-dropdown">
-              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Administration">
+              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages', 'reported_posts']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Administration">
                 Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
               </button>
               <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
+                <a href="/admin/reported-posts-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">🚩</span> Reported Posts
+                </a>
                 <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">
                   <span class="dropdown-item-icon">📁</span> Categories Admin
                 </a>
@@ -134,6 +137,27 @@
           ?>
           <!-- Logged in User Menu -->
           <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn" title="Create a new article">+ Create Post</a>
+
+          <!-- Notification Bell Menu -->
+          <div class="nav-notif-container" id="nav-notif-container">
+            <button type="button" class="nav-notif-btn" id="nav-notif-btn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" title="Notifications">
+              <svg class="nav-notif-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              <span class="nav-notif-badge" id="nav-notif-badge" style="display: none;">0</span>
+            </button>
+            <div class="nav-notif-dropdown glass-panel" id="nav-notif-dropdown" role="menu" aria-label="Notifications Dropdown" style="display: none;">
+              <div class="nav-notif-header">
+                <span class="nav-notif-header-title">Notifications</span>
+                <button type="button" class="nav-notif-mark-all" id="nav-notif-mark-all">Mark all read</button>
+              </div>
+              <div class="nav-notif-list" id="nav-notif-list">
+                <div class="nav-notif-empty">No notifications yet</div>
+              </div>
+            </div>
+          </div>
+
           <a href="/profile" class="user-menu-pill user-profile-link" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?> — My Profile" aria-label="View user profile for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
             <?php if (!empty($navAvatarUrl)): ?>
               <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
@@ -193,6 +217,9 @@
           <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>"><span class="mobile-link-icon">🧭</span> Explore</a></li>
           <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>"><span class="mobile-link-icon">💬</span> Community Chat</a></li>
           <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
+          <?php if (!empty($currentUser)): ?>
+            <li><a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link"><span class="mobile-link-icon">🔔</span> Notifications <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none;">0</span></a></li>
+          <?php endif; ?>
         </ul>
       </div>
 
@@ -214,6 +241,7 @@
           <div class="mobile-nav-section">
             <div class="mobile-nav-section-title">Administration</div>
             <ul class="mobile-nav-list">
+              <li><a href="/admin/reported-posts-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>"><span class="mobile-link-icon">🚩</span> Reported Posts</a></li>
               <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories Admin</a></li>
               <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="mobile-link-icon">👤</span> Users Management</a></li>
               <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="mobile-link-icon">🛡️</span> Audit Logs</a></li>
@@ -366,6 +394,57 @@
       <div>Crafted with PHP, PDO &amp; MySQL.</div>
     </div>
   </footer>
+
+  <!-- Mobile Bottom Navigation (Claymorphism on Mobile) -->
+  <nav class="mobile-bottom-nav" aria-label="Mobile Quick Navigation">
+    <div class="mobile-bottom-nav-inner">
+      <a href="/" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>" aria-label="Home">
+        <span class="mobile-bottom-nav-icon">
+          <img src="/assets/images/clay-tiles/home.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🏠';">
+        </span>
+        <span class="mobile-bottom-nav-label">Home</span>
+      </a>
+
+      <a href="/explore" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>" aria-label="Explore">
+        <span class="mobile-bottom-nav-icon">
+          <img src="/assets/images/clay-tiles/search.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🔍';">
+        </span>
+        <span class="mobile-bottom-nav-label">Explore</span>
+      </a>
+
+      <a href="<?= !empty($currentUser) ? '/posts/new' : '/login?redirect=' . urlencode('/posts/new') ?>" class="mobile-bottom-nav-item mobile-bottom-center-action" aria-label="Create Post">
+        <span class="mobile-bottom-center-btn" title="Create New Post">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </span>
+      </a>
+
+      <a href="/categories" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>" aria-label="Topics">
+        <span class="mobile-bottom-nav-icon">
+          <img src="/assets/images/clay-tiles/categories.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🏷️';">
+        </span>
+        <span class="mobile-bottom-nav-label">Topics</span>
+      </a>
+
+      <?php if (!empty($currentUser)): ?>
+        <a href="/profile" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>" aria-label="Profile">
+          <span class="mobile-bottom-nav-icon">
+            <img src="/assets/images/clay-tiles/profile.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='👤';">
+          </span>
+          <span class="mobile-bottom-nav-label">Profile</span>
+        </a>
+      <?php else: ?>
+        <a href="/login" class="mobile-bottom-nav-item <?= in_array($activeNav ?? '', ['login', 'register']) ? 'active' : '' ?>" aria-label="Sign In">
+          <span class="mobile-bottom-nav-icon">
+            <img src="/assets/images/clay-tiles/profile.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='👤';">
+          </span>
+          <span class="mobile-bottom-nav-label">Sign In</span>
+        </a>
+      <?php endif; ?>
+    </div>
+  </nav>
 
   <!-- Global Delete Confirmation Modal Dialog -->
   <div id="delete-confirm-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">

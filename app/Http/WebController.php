@@ -11,12 +11,13 @@ use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
+use InfinityBlog\Contact\ContactRepository;
 use InfinityBlog\Export\EpubExporter;
 use InfinityBlog\Export\PdfExporter;
 use InfinityBlog\Library\LibraryRepository;
 use InfinityBlog\Community\CommunityRepository;
 use InfinityBlog\Ai\ArticleAssistantService;
-use InfinityBlog\Contact\ContactRepository;
+use InfinityBlog\Moderation\PostReportRepository;
 use InfinityBlog\Posts\ArticleContentRenderer;
 use InfinityBlog\Posts\ArticleImageHelper;
 use InfinityBlog\Posts\PostRepository;
@@ -53,6 +54,7 @@ final class WebController
     private ?StudioService $studio;
     private SeoService $seo;
     private ?ContactRepository $contactRepo;
+    private ?PostReportRepository $postReports;
 
     public function __construct(
         PostRepository $posts,
@@ -73,7 +75,8 @@ final class WebController
         ?ArticleAssistantService $assistant = null,
         ?StudioService $studio = null,
         ?SeoService $seo = null,
-        ?ContactRepository $contactRepo = null
+        ?ContactRepository $contactRepo = null,
+        ?PostReportRepository $postReports = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -105,6 +108,7 @@ final class WebController
         $this->studio = $studio;
         $this->seo = $seo ?? new SeoService($config->baseUrl);
         $this->contactRepo = $contactRepo;
+        $this->postReports = $postReports;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -477,8 +481,19 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
-    public function authorProfile(Request $request, int $id): array
+    public function authorProfile(Request $request, int|string $idOrUsername): array
     {
+        $id = is_numeric($idOrUsername) ? (int) $idOrUsername : null;
+        if ($id === null) {
+            $userByUsername = $this->users->findByIdentifier((string) $idOrUsername);
+            if ($userByUsername !== null) {
+                $id = $userByUsername->id;
+            }
+        }
+        if ($id === null) {
+            return $this->notFound('The requested author was not found.');
+        }
+
         $author = $this->users->findPublicAuthor($id);
         if ($author === null) {
             $user = $this->users->findById($id);
@@ -976,6 +991,121 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function adminReportedPosts(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login?redirect=' . urlencode('/admin/reported-posts-page'));
+        }
+
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $status = isset($_GET['status']) && $_GET['status'] !== '' ? (string) $_GET['status'] : null;
+        $reason = isset($_GET['reason']) && $_GET['reason'] !== '' ? (string) $_GET['reason'] : null;
+        $search = isset($_GET['search']) && trim((string) $_GET['search']) !== '' ? trim((string) $_GET['search']) : null;
+        $viewMode = ($_GET['view'] ?? 'grouped') === 'list' ? 'list' : 'grouped';
+
+        $filters = [];
+        if ($status !== null) $filters['status'] = $status;
+        if ($reason !== null) $filters['reason'] = $reason;
+        if ($search !== null) $filters['search'] = $search;
+
+        $reportsData = [];
+        $groupedData = [];
+        $stats = ['pending' => 0, 'under_review' => 0, 'dismissed' => 0, 'action_taken' => 0, 'total' => 0];
+
+        if ($this->postReports !== null) {
+            $stats = $this->postReports->getModerationStats();
+            if ($viewMode === 'list') {
+                $reportsData = $this->postReports->listReports($filters, $page, 20);
+            } else {
+                $groupedData = $this->postReports->getReportsGroupedByPost($filters, $page, 15);
+            }
+        }
+
+        return $this->render('admin_reported_posts', [
+            'pageTitle' => 'Reported Posts Moderation',
+            'metaDescription' => 'Review user reports, take moderation action, and enforce community content policies.',
+            'activeNav' => 'reported_posts',
+            'viewMode' => $viewMode,
+            'statusFilter' => $status ?? '',
+            'reasonFilter' => $reason ?? '',
+            'searchQuery' => $search ?? '',
+            'stats' => $stats,
+            'groupedPosts' => $groupedData['posts'] ?? [],
+            'reportsList' => $reportsData['reports'] ?? [],
+            'total' => $viewMode === 'list' ? ($reportsData['total'] ?? 0) : ($groupedData['total'] ?? 0),
+            'currentPage' => $page,
+            'totalPages' => $viewMode === 'list' ? ($reportsData['total_pages'] ?? 1) : ($groupedData['total_pages'] ?? 1),
+            'allowedReasons' => PostReportRepository::ALLOWED_REASONS,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminUpdateReportStatus(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login');
+        }
+
+        $token = $_POST['csrf_token'] ?? '';
+        if (!$this->sessions->validateCsrfToken(is_string($token) ? $token : null)) {
+            return $this->redirect('/admin/reported-posts-page');
+        }
+
+        $status = trim((string) ($_POST['status'] ?? 'under_review'));
+        $notes = isset($_POST['notes']) ? trim((string) $_POST['notes']) : null;
+
+        if ($this->postReports !== null) {
+            $this->postReports->updateReportStatus($id, $status, $account->id, $notes);
+        }
+
+        return $this->redirect('/admin/reported-posts-page');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminUnpublishReportedPost(Request $request, int $postId): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login');
+        }
+
+        $token = $_POST['csrf_token'] ?? '';
+        if (!$this->sessions->validateCsrfToken(is_string($token) ? $token : null)) {
+            return $this->redirect('/admin/reported-posts-page');
+        }
+
+        $reason = trim((string) ($_POST['reason'] ?? 'Content moderation violation'));
+
+        if ($this->postReports !== null) {
+            $this->postReports->hideOrUnpublishPost($postId, $account->id, $reason);
+        }
+
+        return $this->redirect('/admin/reported-posts-page');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminRestoreReportedPost(Request $request, int $postId): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login');
+        }
+
+        $token = $_POST['csrf_token'] ?? '';
+        if (!$this->sessions->validateCsrfToken(is_string($token) ? $token : null)) {
+            return $this->redirect('/admin/reported-posts-page');
+        }
+
+        if ($this->postReports !== null) {
+            $this->postReports->restorePost($postId, $account->id);
+        }
+
+        return $this->redirect('/admin/reported-posts-page');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function logout(Request $request): array
     {
         if ($this->guard->currentAccount() !== null) {
@@ -1004,6 +1134,11 @@ final class WebController
         $remixCount = count(array_filter($allUserPosts['posts'], static fn($p) => !empty($p['remixed_from_post_id'])));
         $recent = array_slice($allUserPosts['posts'], 0, 6);
 
+        $followerCount = $this->follows !== null ? $this->follows->getFollowerCount($account->id) : 0;
+        $followingCount = $this->follows !== null ? $this->follows->getFollowingCount($account->id) : 0;
+        $followers = $this->follows !== null ? $this->follows->getFollowers($account->id, 50) : [];
+        $following = $this->follows !== null ? $this->follows->getFollowing($account->id, 50) : [];
+
         $userData = $user->toPrivateArray();
         $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
         $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
@@ -1016,7 +1151,11 @@ final class WebController
                 'published_count' => $published['total'],
                 'draft_count' => $drafts['total'],
                 'remix_count' => $remixCount,
+                'follower_count' => $followerCount,
+                'following_count' => $followingCount,
             ],
+            'followers' => $followers,
+            'following' => $following,
             'userPosts' => $recent,
         ]);
     }

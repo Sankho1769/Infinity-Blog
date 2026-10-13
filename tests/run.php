@@ -57,6 +57,8 @@ use InfinityBlog\Storage\StorageException;
 use InfinityBlog\Storage\SupabaseStorageClient;
 use InfinityBlog\Storage\SupabaseStorageConfig;
 use InfinityBlog\Users\AdminUserRepository;
+use InfinityBlog\Moderation\PostReportRepository;
+use InfinityBlog\Http\ModerationController;
 
 require dirname(__DIR__) . '/autoload.php';
 ob_start();
@@ -522,7 +524,8 @@ $createUserDatabase = static function (): PDO {
         'email TEXT NULL UNIQUE COLLATE NOCASE, ' .
         'display_name TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, ' .
         "status TEXT NOT NULL DEFAULT 'active', must_change_password INTEGER NOT NULL DEFAULT 0, auth_version INTEGER NOT NULL DEFAULT 1, " .
-        'last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+        'last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, ' .
+        'mobile_number_ciphertext TEXT NULL, mobile_number_hash TEXT NULL, mobile_number_verified_at TEXT NULL)'
     );
     $insert = $pdo->prepare(
         'INSERT INTO users (username, display_name, password_hash, role, status) VALUES (?, ?, ?, ?, ?)'
@@ -3684,6 +3687,633 @@ $run('Community chat and direct messaging enforce authentication redirects and d
     });
 });
 
+$run('MobileNumberService normalizes E.164 numbers, encrypts with AES-256-GCM, blinds with HMAC, enforces uniqueness, and masks for privacy', static function () use ($expect, $createProfileTestDatabase): void {
+    $mobileService = new \InfinityBlog\Security\MobileNumberService();
+
+    // 1. Normalization
+    $expect($mobileService->normalize('9876543210') === '+919876543210');
+    $expect($mobileService->normalize('09876543210') === '+919876543210');
+    $expect($mobileService->normalize('919876543210') === '+919876543210');
+    $expect($mobileService->normalize('+91 98765 43210') === '+919876543210');
+    $expect($mobileService->normalize('+1 555-0199') === '+15550199');
+    $expect($mobileService->normalize('+44 20 7183 8750') === '+442071838750');
+
+    // Invalid rejection
+    try {
+        $mobileService->normalize('invalid123');
+        $expect(false, 'Expected InvalidArgumentException for invalid chars.');
+    } catch (\InvalidArgumentException $e) {
+        $expect(true);
+    }
+
+    try {
+        $mobileService->normalize('12345');
+        $expect(false, 'Expected InvalidArgumentException for too short number.');
+    } catch (\InvalidArgumentException $e) {
+        $expect(true);
+    }
+
+    // 2. Encryption and Decryption
+    $plaintext = '+919876543210';
+    $ciphertext = $mobileService->encrypt($plaintext);
+    $expect($ciphertext !== $plaintext);
+    $expect($mobileService->decrypt($ciphertext) === $plaintext);
+
+    // Tamper detection
+    $tampered = base64_encode(substr((string) base64_decode($ciphertext), 0, -2) . 'xx');
+    $expect($mobileService->decrypt($tampered) === null, 'Tampered ciphertext must fail decryption and return null.');
+
+    // 3. Masking
+    $expect($mobileService->mask('+919876543210') === '+91 ••••• •3210');
+    $expect($mobileService->mask('+15550199') === '+15 ••••• •0199');
+
+    // 4. SMS status when unconfigured
+    $expect($mobileService->isSmsConfigured() === false);
+
+    // 5. Database uniqueness enforcement and clearing
+    $pdo = $createProfileTestDatabase();
+    $userRepo = new UserRepository($pdo);
+    $u1 = $userRepo->createUser('User One', 'u1@example.com', password_hash('pass', PASSWORD_DEFAULT));
+    $u2 = $userRepo->createUser('User Two', 'u2@example.com', password_hash('pass', PASSWORD_DEFAULT));
+
+    // User 1 sets mobile
+    $u1Updated = $userRepo->updateProfile($u1, ['mobile_number' => '9876543210']);
+    $priv1 = $u1Updated->toPrivateArray();
+    $pub1 = $u1Updated->toPublicArray();
+    $expect($priv1['mobile_number'] === '+919876543210');
+    $expect($priv1['mobile_number_masked'] === '+91 ••••• •3210');
+    $expect(!isset($pub1['mobile_number']) && !isset($pub1['phone']), 'Public profile must never leak mobile number.');
+
+    // User 2 tries to set duplicate mobile
+    $duplicateCaught = false;
+    try {
+        $userRepo->updateProfile($u2, ['mobile_number' => '+91 98765 43210']);
+    } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+        $duplicateCaught = true;
+        $expect(isset($e->errors['phone']));
+    }
+    $expect($duplicateCaught, 'Duplicate mobile number must be rejected.');
+
+    // User 1 clears mobile
+    $u1Cleared = $userRepo->updateProfile($u1, ['mobile_number' => '']);
+    $priv1Cleared = $u1Cleared->toPrivateArray();
+    $expect($priv1Cleared['mobile_number'] === null);
+    $expect($priv1Cleared['mobile_number_masked'] === null);
+
+    // Now User 2 can set that mobile
+    $u2Updated = $userRepo->updateProfile($u2, ['mobile_number' => '9876543210']);
+    $expect($u2Updated->toPrivateArray()['mobile_number'] === '+919876543210');
+});
+
+$run('Login email verification challenges users with email, enforces 5-attempt rate limit and expiry, and provides recovery bypass for null-email admins', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
+        $pdo = $createUserDatabase();
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS auth_challenges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                challenge_token TEXT NOT NULL UNIQUE,
+                otp_hash TEXT NOT NULL,
+                destination_email TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 5,
+                expires_at TEXT NOT NULL,
+                verified_at TEXT NULL,
+                created_at TEXT NOT NULL
+            )"
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+
+        $users = new UserRepository($pdo);
+        $config = AppConfig::fromArray($validConfiguration);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+        $challenges = new \InfinityBlog\Auth\LoginChallengeService($pdo);
+
+        // 1. Create a user with email
+        $userWithEmailId = $users->createUser('Alice Reader', 'alice@example.com', password_hash('alice-pass-1234', PASSWORD_DEFAULT));
+        $alice = $users->findById($userWithEmailId);
+        $expect($alice !== null);
+
+        // shouldChallenge checks
+        $expect($challenges->shouldChallenge($alice) === true);
+
+        // Admin account with null email ('admin one' seeded in createUserDatabase with email = null)
+        $adminNullEmail = $users->findByIdentifier('admin one');
+        $expect($adminNullEmail !== null && $adminNullEmail->email === null && $adminNullEmail->isAdmin());
+        $expect($challenges->shouldChallenge($adminNullEmail) === false, 'Admin with null email must not be challenged.');
+
+        // 2. Direct challenge unit tests
+        $challengeData = $challenges->createChallenge($alice);
+        $expect($challengeData['challenge_required'] === true);
+        $expect(strlen($challengeData['challenge_token']) === 64);
+        $expect($challengeData['masked_email'] === 'a***e@example.com');
+        $expect(isset($challengeData['dev_code']) && strlen($challengeData['dev_code']) === 6);
+        $correctOtp = $challengeData['dev_code'];
+
+        // Formatting rejection
+        $badFormat = $challenges->verifyChallenge($challengeData['challenge_token'], '123');
+        $expect($badFormat['success'] === false && $badFormat['error'] === 'INVALID_FORMAT');
+
+        // Wrong OTP increments attempts
+        $wrongOtp = $challenges->verifyChallenge($challengeData['challenge_token'], '999999');
+        $expect($wrongOtp['success'] === false && $wrongOtp['error'] === 'INVALID_CODE');
+        $expect($wrongOtp['remaining_attempts'] === 4);
+
+        // Correct OTP succeeds
+        $verified = $challenges->verifyChallenge($challengeData['challenge_token'], $correctOtp);
+        $expect($verified['success'] === true && $verified['user_id'] === $alice->id);
+
+        // Replay of used challenge is rejected
+        $replay = $challenges->verifyChallenge($challengeData['challenge_token'], $correctOtp);
+        $expect($replay['success'] === false && $replay['error'] === 'CHALLENGE_ALREADY_USED');
+
+        // 3. Test 5-attempt rate limit exhaustion
+        $secondChallenge = $challenges->createChallenge($alice);
+        for ($i = 0; $i < 5; $i++) {
+            $challenges->verifyChallenge($secondChallenge['challenge_token'], '000000');
+        }
+        $lockedOut = $challenges->verifyChallenge($secondChallenge['challenge_token'], $secondChallenge['dev_code']);
+        $expect($lockedOut['success'] === false && $lockedOut['error'] === 'MAX_ATTEMPTS_EXCEEDED');
+
+        // 4. AuthController integration: user with email receives challenge
+        $authController = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            $guard,
+            $sessions,
+            $users,
+            $challenges
+        );
+        $csrf = $sessions->csrfToken();
+
+        $loginAttempt = $authController->login(Request::fromValues('POST', '/auth/login', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'identifier' => 'alice@example.com',
+            'password' => 'alice-pass-1234'
+        ]));
+        $expect($loginAttempt['status'] === 200);
+        $expect(!empty($loginAttempt['body']['data']['challenge_required']));
+        $cToken = $loginAttempt['body']['data']['challenge_token'];
+        $cCode = $loginAttempt['body']['data']['dev_code'];
+        $expect($sessions->currentUserId() === null, 'Session must not be established before verifying challenge.');
+
+        // Wrong code fails via endpoint
+        $wrongVerify = $authController->verifyChallenge(Request::fromValues('POST', '/auth/challenge/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $cToken,
+            'code' => '000000'
+        ]));
+        $expect($wrongVerify['status'] === 401);
+
+        // Correct code succeeds and establishes session
+        $goodVerify = $authController->verifyChallenge(Request::fromValues('POST', '/auth/challenge/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $cToken,
+            'code' => $cCode
+        ]));
+        $expect($goodVerify['status'] === 200 && (int) $goodVerify['body']['data']['user']['id'] === $alice->id);
+        $expect($sessions->currentUserId() === $alice->id, 'Session must be established upon challenge verification.');
+
+        // 5. Administrator recovery path: admin with null email logs in directly without challenge
+        $sessions->clearAuthentication();
+        $csrf = $sessions->csrfToken();
+        $adminLogin = $authController->login(Request::fromValues('POST', '/auth/login', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'identifier' => 'admin one',
+            'password' => 'admin-pass-1234'
+        ]));
+        $expect($adminLogin['status'] === 200);
+        $expect(empty($adminLogin['body']['data']['challenge_required']), 'Admin with null email must not be challenged.');
+        $expect($adminLogin['body']['data']['user']['username'] === 'admin one');
+        $expect($sessions->currentUserId() === $adminNullEmail->id, 'Admin must be immediately signed in via recovery bypass.');
+        $expect(!empty($adminLogin['body']['data']['notice']), 'Admin recovery login must include recovery notice.');
+    });
+});
+
+$run('Persistent notification center delivers notifications on follow, messages, ratings, comments, and supports count, read, and delete endpoints', static function () use ($withSession, $validConfiguration, $createProfileTestDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createProfileTestDatabase, $expect): void {
+        $pdo = $createProfileTestDatabase();
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS user_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                actor_id INTEGER NULL,
+                type TEXT NOT NULL,
+                reference_id INTEGER NULL,
+                message TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS user_follows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                follower_user_id INTEGER NOT NULL,
+                following_user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS direct_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                recipient_id INTEGER NOT NULL,
+                body TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS post_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NULL
+            )"
+        );
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                author_id INTEGER NOT NULL,
+                category_id INTEGER NOT NULL DEFAULT 1,
+                title TEXT NOT NULL,
+                slug TEXT NOT NULL,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'published',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NULL
+            )"
+        );
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS post_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'published',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+
+        $users = new UserRepository($pdo);
+        $authorId = $users->createUser('Bob Author', 'author_bob', password_hash('pass123', PASSWORD_DEFAULT));
+        $readerId = $users->createUser('Charlie Reader', 'reader_charlie', password_hash('pass123', PASSWORD_DEFAULT));
+
+        $notifRepo = new \InfinityBlog\Social\NotificationRepository($pdo);
+
+        // 1. Repository creation and self-notification prevention
+        $nId = $notifRepo->createNotification($authorId, $readerId, 'follow', null, 'Charlie Reader started following you.');
+        $expect($nId !== null && $nId > 0, 'Notification must be created.');
+
+        $selfNotif = $notifRepo->createNotification($authorId, $authorId, 'follow', null, 'Self notification.');
+        $expect($selfNotif === null, 'Self-notifications must be ignored.');
+
+        $unread = $notifRepo->getUnreadCount($authorId);
+        $expect($unread === 1, 'Unread count should be 1.');
+
+        $list = $notifRepo->getUserNotifications($authorId);
+        $expect(count($list) === 1);
+        $expect($list[0]['message'] === 'Charlie Reader started following you.');
+        $expect($list[0]['target_url'] === '/authors/reader_charlie');
+        $expect($list[0]['is_read'] === false);
+
+        // 2. Mark single notification as read
+        $marked = $notifRepo->markAsRead($nId, $authorId);
+        $expect($marked === true);
+        $expect($notifRepo->getUnreadCount($authorId) === 0);
+
+        // 3. Mark all as read
+        $notifRepo->createNotification($authorId, $readerId, 'score', 42, 'A reader rated your article 5/5 stars.');
+        $notifRepo->createNotification($authorId, $readerId, 'comment', 42, 'Charlie commented on your post.');
+        $expect($notifRepo->getUnreadCount($authorId) === 2);
+        $affected = $notifRepo->markAllAsRead($authorId);
+        $expect($affected === 2);
+        $expect($notifRepo->getUnreadCount($authorId) === 0);
+
+        // 4. Delete notification
+        $deleted = $notifRepo->deleteNotification($nId, $authorId);
+        $expect($deleted === true);
+        $afterList = $notifRepo->getUserNotifications($authorId);
+        $expect(count($afterList) === 2);
+
+        // 5. SocialController endpoints
+        $sessions = new SessionManager(\InfinityBlog\Config\AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+        $follows = new \InfinityBlog\Social\FollowRepository($pdo);
+        $messages = new \InfinityBlog\Social\MessageRepository($pdo);
+        $controller = new \InfinityBlog\Http\SocialController($follows, $messages, $guard, $sessions, $users, $notifRepo);
+
+        // Unauthenticated access
+        $unauthRes = $controller->handle(Request::fromValues('GET', '/api/notifications', '192.0.2.1'));
+        $expect($unauthRes['status'] === 401);
+
+        // Authenticated as author
+        $sessions->establish($users->findById($authorId));
+        $authRes = $controller->handle(Request::fromValues('GET', '/api/notifications', '192.0.2.1'));
+        $expect($authRes['status'] === 200);
+        $expect(count($authRes['body']['data']['notifications']) === 2);
+
+        $countRes = $controller->handle(Request::fromValues('GET', '/api/notifications/count', '192.0.2.1'));
+        $expect($countRes['status'] === 200);
+        $expect($countRes['body']['data']['unread_count'] === 0);
+
+        // Mark all read via POST endpoint
+        $csrf = $sessions->csrfToken();
+        $readAllRes = $controller->handle(Request::fromValues('POST', '/api/notifications/read-all', '192.0.2.1', ['X-CSRF-Token' => $csrf]));
+        $expect($readAllRes['status'] === 200 && $readAllRes['body']['data']['success'] === true);
+
+        // Delete endpoint
+        $firstId = $afterList[0]['id'];
+        $delRes = $controller->handle(Request::fromValues('DELETE', "/api/notifications/{$firstId}", '192.0.2.1', ['X-CSRF-Token' => $csrf]));
+        $expect($delRes['status'] === 200 && $delRes['body']['data']['success'] === true);
+    });
+});
+
+$run('Author and profile views provide follower and following counts, lists, and multi-identifier author profile routing', static function () use ($withSession, $validConfiguration, $createProfileTestDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createProfileTestDatabase, $expect): void {
+        $pdo = $createProfileTestDatabase();
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS user_follows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                follower_id INTEGER NOT NULL,
+                following_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+
+        $users = new UserRepository($pdo);
+        $userAId = $users->createUser('Author One', 'author_one', password_hash('pass123', PASSWORD_DEFAULT), ['bio' => 'Bio of author one']);
+        $userBId = $users->createUser('Author Two', 'author_two', password_hash('pass123', PASSWORD_DEFAULT), ['bio' => 'Bio of author two']);
+
+        $follows = new \InfinityBlog\Social\FollowRepository($pdo);
+        $follows->follow($userBId, $userAId); // User B follows User A
+
+        $expect($follows->getFollowerCount($userAId) === 1);
+        $expect($follows->getFollowingCount($userBId) === 1);
+        $expect($follows->isFollowing($userBId, $userAId) === true);
+        $expect($follows->isFollowing($userAId, $userBId) === false);
+
+        $aFollowers = $follows->getFollowers($userAId);
+        $expect(count($aFollowers) === 1 && (int) $aFollowers[0]['id'] === $userBId);
+
+        $bFollowing = $follows->getFollowing($userBId);
+        $expect(count($bFollowing) === 1 && (int) $bFollowing[0]['id'] === $userAId);
+
+        $sessions = new SessionManager(\InfinityBlog\Config\AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+
+        $webController = new WebController(
+            new PostRepository($pdo),
+            new CategoryRepository($pdo),
+            $users,
+            new AdminUserRepository($pdo),
+            new AuditLogRepository($pdo),
+            $guard,
+            $sessions,
+            \InfinityBlog\Config\AppConfig::fromArray($validConfiguration),
+            new ScoreRepository($pdo),
+            null,
+            $follows
+        );
+
+        // 1. Author profile by numeric ID
+        $reqId = Request::fromValues('GET', "/author/{$userAId}", '192.0.2.1');
+        $resId = $webController->authorProfile($reqId, $userAId);
+        $expect($resId['status'] === 200);
+        $expect(str_contains($resId['body'], 'Author One'));
+        $expect(str_contains($resId['body'], 'Followers ('));
+
+        // 2. Author profile by username string
+        $reqUser = Request::fromValues('GET', '/authors/author_one', '192.0.2.1');
+        $resUser = $webController->authorProfile($reqUser, 'author_one');
+        $expect($resUser['status'] === 200);
+        $expect(str_contains($resUser['body'], 'Author One'));
+
+        // 3. Own profile stats and lists
+        $sessions->establish($users->findById($userAId));
+        $profileRes = $webController->profile(Request::fromValues('GET', '/profile', '192.0.2.1'));
+        $expect($profileRes['status'] === 200);
+        $expect(str_contains($profileRes['body'], 'Followers'));
+        $expect(str_contains($profileRes['body'], 'Following'));
+        $expect(str_contains($profileRes['body'], 'Author Two'));
+    });
+});
+
+$run('Post report repository and moderation system enforce permissions, rate limits, duplicates, audit logs, and lifecycle transitions', static function () use ($withSession, $validConfiguration, $createProfileTestDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createProfileTestDatabase, $expect): void {
+        $pdo = $createProfileTestDatabase();
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS post_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                reporter_id INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                explanation TEXT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                moderation_notes TEXT NULL,
+                reviewed_by INTEGER NULL,
+                reviewed_at TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )"
+        );
+
+        $users = new UserRepository($pdo);
+        $adminId = $users->createUser('Admin Boss', 'admin_boss@example.com', password_hash('pass123', PASSWORD_DEFAULT));
+        $pdo->exec("UPDATE users SET role = 'admin' WHERE id = {$adminId}");
+        $authorId = $users->createUser('Author Alice', 'author_alice@example.com', password_hash('pass123', PASSWORD_DEFAULT));
+        $pdo->exec("UPDATE users SET role = 'author' WHERE id = {$authorId}");
+        $reporter1Id = $users->createUser('Reader Bob', 'reader_bob@example.com', password_hash('pass123', PASSWORD_DEFAULT));
+        $reporter2Id = $users->createUser('Reader Carol', 'reader_carol@example.com', password_hash('pass123', PASSWORD_DEFAULT));
+
+        $pdo->exec("INSERT INTO posts (author_id, title, content, status) VALUES ({$authorId}, 'My Story', 'Content here', 'published')");
+        $postId = (int) $pdo->lastInsertId();
+
+        $auditLogs = new AuditLogRepository($pdo);
+        $reportRepo = new PostReportRepository($pdo, $auditLogs);
+
+        // 1. Repository: invalid reason validation
+        $invalidRes = $reportRepo->createReport($postId, $reporter1Id, 'Fake Reason', 'Details');
+        $expect($invalidRes['status'] === 'invalid_reason', 'Invalid report reason must be rejected.');
+
+        // 2. Repository: explanation too long (> 500 chars)
+        $longExpRes = $reportRepo->createReport($postId, $reporter1Id, 'Spam or misleading content', str_repeat('a', 501));
+        $expect($longExpRes['status'] === 'explanation_too_long', 'Explanation over 500 characters must be rejected.');
+
+        // 3. Repository: self-reporting forbidden
+        $selfRes = $reportRepo->createReport($postId, $authorId, 'Spam or misleading content', 'Reporting my own post');
+        $expect($selfRes['status'] === 'forbidden', 'Users must not be allowed to report their own posts.');
+
+        // 4. Repository: non-existent post rejected
+        $missingRes = $reportRepo->createReport(99999, $reporter1Id, 'Spam or misleading content');
+        $expect($missingRes['status'] === 'not_found', 'Reporting non-existent post must be rejected.');
+
+        // 5. Repository: successfully create report
+        $createRes1 = $reportRepo->createReport($postId, $reporter1Id, 'Spam or misleading content', 'This is spam affiliate link.');
+        $expect($createRes1['status'] === 'created' && isset($createRes1['report_id']), 'Report must be created successfully.');
+        $report1Id = (int) $createRes1['report_id'];
+        $expect($report1Id > 0, 'Report ID must be a positive integer.');
+
+        $singleReport = $reportRepo->getReportById($report1Id);
+        $expect($singleReport !== null);
+        $expect($singleReport['reason'] === 'Spam or misleading content');
+        $expect($singleReport['explanation'] === 'This is spam affiliate link.');
+        $expect($singleReport['status'] === 'pending');
+        $expect((int) $singleReport['reporter_id'] === $reporter1Id);
+        $expect((int) $singleReport['post_id'] === $postId);
+
+        // 6. Repository: duplicate active report rejected
+        $dupRes = $reportRepo->createReport($postId, $reporter1Id, 'Harassment or bullying', 'Another report');
+        $expect($dupRes['status'] === 'duplicate', 'Duplicate active report by same user must be prevented.');
+
+        // 7. Second user can report the same post
+        $createRes2 = $reportRepo->createReport($postId, $reporter2Id, 'Harassment or bullying', 'Bullying tone');
+        $expect($createRes2['status'] === 'created' && isset($createRes2['report_id']), 'Check 7a: Second report created');
+        $report2Id = (int) $createRes2['report_id'];
+        $expect($report2Id > 0 && $report2Id !== $report1Id, 'Check 7b: Second report distinct ID');
+
+        // 8. Stats and counts
+        $expect($reportRepo->getPendingCount() === 2, 'Check 8a: Pending count 2');
+        $stats = $reportRepo->getModerationStats();
+        $expect($stats['pending'] === 2, 'Check 8b: Stats pending 2');
+        $expect($stats['total'] === 2, 'Check 8c: Stats total 2');
+        $expect($stats['reported_posts_count'] === 1, 'Check 8d: Stats reported posts 1');
+
+        // 9. Grouped reports by post
+        $grouped = $reportRepo->getReportsGroupedByPost();
+        $expect(count($grouped['posts']) === 1, 'Check 9a: Grouped posts count 1');
+        $expect((int) $grouped['posts'][0]['post_id'] === $postId, 'Check 9b: Grouped post ID matches');
+        $expect((int) $grouped['posts'][0]['total_reports'] === 2, 'Check 9c: Grouped total reports 2');
+        $expect($grouped['total'] === 1, 'Check 9d: Grouped total distinct posts 1');
+
+        // 10. Update report status to under_review
+        $updated = $reportRepo->updateReportStatus($report1Id, 'under_review', $adminId, 'Checking this post out');
+        $expect($updated === true, 'Check 10a: Status update succeeded');
+        $refreshed1 = $reportRepo->getReportById($report1Id);
+        $expect($refreshed1['status'] === 'under_review', 'Check 10b: Refreshed status under_review');
+        $expect((int) $refreshed1['reviewed_by'] === $adminId, 'Check 10c: Refreshed reviewer admin');
+        $expect($refreshed1['moderation_notes'] === 'Checking this post out', 'Check 10d: Refreshed moderation notes');
+
+        // Check audit log for status update
+        $recentAudit = $pdo->query("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+        $expect($recentAudit !== false, 'Check 10e: Audit log entry exists');
+        $expect($recentAudit['action'] === 'moderation_report_status_update', 'Check 10f: Audit action moderation_report_status_update');
+        $expect((int) $recentAudit['actor_user_id'] === $adminId, 'Check 10g: Audit actor is admin');
+
+        // 11. Rate limiting check (10 reports/hour per user)
+        for ($p = 2; $p <= 11; $p++) {
+            $pdo->exec("INSERT INTO posts (author_id, title, content, status) VALUES ({$authorId}, 'Story {$p}', 'Content', 'published')");
+        }
+        $rateLimitUser = $users->createUser('Rate Spammer', 'rate_spammer@example.com', password_hash('pass123', PASSWORD_DEFAULT));
+        for ($r = 2; $r <= 11; $r++) {
+            $reportRepo->createReport($r, $rateLimitUser, 'Spam or misleading content');
+        }
+        $pdo->exec("INSERT INTO posts (author_id, title, content, status) VALUES ({$authorId}, 'Story 12', 'Content', 'published')");
+        $rateRes = $reportRepo->createReport(12, $rateLimitUser, 'Spam or misleading content');
+        $expect($rateRes['status'] === 'rate_limited', 'Check 11a: Rate limiting triggers on 11th report in hour');
+
+        // 12. Hide / Unpublish Post
+        $unpublishSuccess = $reportRepo->hideOrUnpublishPost($postId, $adminId, 'Violates safety guidelines');
+        $expect($unpublishSuccess === true, 'Check 12a: Unpublish post succeeded');
+        $postStatus = $pdo->query("SELECT status FROM posts WHERE id = {$postId}")->fetchColumn();
+        $expect($postStatus === 'draft', 'Check 12b: Post status is draft');
+
+        // Reports on the unpublished post should be marked action_taken
+        $postReports = $reportRepo->getReportsForPost($postId);
+        foreach ($postReports as $pr) {
+            $expect($pr['status'] === 'action_taken', 'Check 12c: Report updated to action_taken');
+        }
+
+        // 13. Restore Post
+        $restoreSuccess = $reportRepo->restorePost($postId, $adminId);
+        $expect($restoreSuccess === true, 'Check 13a: Restore post succeeded');
+        $postStatusRestored = $pdo->query("SELECT status FROM posts WHERE id = {$postId}")->fetchColumn();
+        $expect($postStatusRestored === 'published', 'Check 13b: Post restored to published');
+
+        // 14. HTTP Controller tests (CSRF, AuthGuard, Role check, API envelope)
+        $appConfig = \InfinityBlog\Config\AppConfig::fromArray($validConfiguration);
+        $sessionManager = new SessionManager($appConfig);
+        $sessionManager->start();
+        $authGuard = new AuthGuard($sessionManager, $users);
+        $postRepo = new PostRepository($pdo);
+        $modController = new ModerationController($reportRepo, $authGuard, $sessionManager);
+
+        // A. Public report endpoint unauthenticated -> 401
+        $reqUnauth = Request::fromValues('POST', "/api/posts/{$postId}/report", '192.0.2.1', [], ['reason' => 'Spam or misleading content']);
+        $resUnauth = $modController->handle($reqUnauth);
+        $expect($resUnauth['status'] === 401, 'Unauthenticated report submission must return 401.');
+
+        // B. Authenticated author reports own post -> 403
+        $sessionManager->establish($users->findById($authorId));
+        $validCsrf = $sessionManager->csrfToken();
+        $reqSelf = Request::fromValues(
+            'POST',
+            "/api/posts/{$postId}/report",
+            '192.0.2.1',
+            ['X-CSRF-Token' => $validCsrf],
+            ['reason' => 'Spam or misleading content']
+        );
+        $resSelf = $modController->handle($reqSelf);
+        $expect($resSelf['status'] === 403, 'Self-reporting must return 403.');
+
+        // C. Authenticated reader reports valid post -> 201
+        $sessionManager->establish($users->findById($reporter1Id));
+        $validCsrf = $sessionManager->csrfToken();
+        $reqValid = Request::fromValues(
+            'POST',
+            "/api/posts/12/report",
+            '192.0.2.1',
+            ['X-CSRF-Token' => $validCsrf],
+            ['reason' => 'Hate or abusive content', 'explanation' => 'Harsh words used.']
+        );
+        $resValid = $modController->handle($reqValid);
+        $expect($resValid['status'] === 201, 'Valid report submission must return 201.');
+        $expect($resValid['body']['data']['success'] === true, 'Valid response success true');
+        $expect(($resValid['body']['data']['duplicate'] ?? false) === false, 'Valid response duplicate false');
+
+        // D. Duplicate report by same reader -> 200 with duplicate flag
+        $resDup = $modController->handle($reqValid);
+        $expect($resDup['status'] === 200, 'Duplicate submission returns HTTP 200 gracefully.');
+        $expect($resDup['body']['data']['success'] === true, 'Duplicate response success true');
+        $expect($resDup['body']['data']['duplicate'] === true, 'Duplicate response duplicate true');
+
+        // E. Admin API access control: non-admin gets 403
+        $sessionManager->establish($users->findById($reporter1Id));
+        $reqAdminDeny = Request::fromValues('GET', '/api/admin/reports', '192.0.2.1');
+        $resAdminDeny = $modController->handle($reqAdminDeny);
+        $expect($resAdminDeny['status'] === 403, 'Non-admin must be forbidden from admin reports API.');
+
+        // F. Admin API access control: admin gets 200
+        $sessionManager->establish($users->findById($adminId));
+        $reqAdminAllow = Request::fromValues('GET', '/api/admin/reports', '192.0.2.1');
+        $resAdminAllow = $modController->handle($reqAdminAllow);
+        $expect($resAdminAllow['status'] === 200, 'Admin can list reports.');
+        $expect(count($resAdminAllow['body']['data']['reports']) > 0, 'Admin reports list has items');
+
+        // G. Admin WebController page renders correctly
+        $webController = new WebController(
+            posts: $postRepo,
+            categories: new CategoryRepository($pdo),
+            users: $users,
+            adminUsers: new AdminUserRepository($pdo),
+            auditLogs: $auditLogs,
+            guard: $authGuard,
+            sessions: $sessionManager,
+            config: $appConfig,
+            postReports: $reportRepo
+        );
+
+        $adminPageViewReq = Request::fromValues('GET', '/admin/reported-posts-page', '192.0.2.1');
+        $adminPageViewRes = $webController->adminReportedPosts($adminPageViewReq);
+        $expect($adminPageViewRes['status'] === 200, 'Check 14g1: Admin page returns 200');
+        $expect(str_contains($adminPageViewRes['body'], 'Reported Posts') || str_contains($adminPageViewRes['body'], 'Moderation'), 'Check 14g2: Admin page contains Reported Posts');
+        $expect(str_contains($adminPageViewRes['body'], 'Pending Review'), 'Check 14g3: Admin page contains Pending Review');
+    });
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [
@@ -4507,7 +5137,14 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             try {
                 $migrationRunner->rollbackLast(false);
             } catch (InvalidArgumentException $exception) {
-                $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130023_create_post_reports');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130022_create_auth_challenges');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130021_add_secure_mobile_fields_to_users');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130020_add_icon_fields_to_categories');
                 $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610130019_add_audio_source_hash_to_posts');
                 $rolledBack = $migrationRunner->rollbackLast(true);
@@ -4586,6 +5223,9 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130018_create_contact_messages_schema', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130019_add_audio_source_hash_to_posts', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130020_add_icon_fields_to_categories', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130021_add_secure_mobile_fields_to_users', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130022_create_auth_challenges', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130023_create_post_reports', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

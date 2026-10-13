@@ -19,6 +19,9 @@ final class UserAccount
     public ?string $interests;
     public ?string $website;
     public ?string $phone;
+    public ?string $mobileNumberCiphertext;
+    public ?string $mobileNumberHash;
+    public ?string $mobileNumberVerifiedAt;
     public ?string $avatarPath;
     public ?string $bannerPath;
     public string $profileVisibility;
@@ -42,7 +45,10 @@ final class UserAccount
         ?string $avatarPath = null,
         ?string $bannerPath = null,
         string $profileVisibility = 'public',
-        ?string $createdAt = null
+        ?string $createdAt = null,
+        ?string $mobileNumberCiphertext = null,
+        ?string $mobileNumberHash = null,
+        ?string $mobileNumberVerifiedAt = null
     ) {
         $this->id = $id;
         $this->username = $username;
@@ -57,6 +63,9 @@ final class UserAccount
         $this->interests = $interests;
         $this->website = $website;
         $this->phone = $phone;
+        $this->mobileNumberCiphertext = $mobileNumberCiphertext;
+        $this->mobileNumberHash = $mobileNumberHash;
+        $this->mobileNumberVerifiedAt = $mobileNumberVerifiedAt;
         $this->avatarPath = $avatarPath;
         $this->bannerPath = $bannerPath;
         $this->profileVisibility = $profileVisibility;
@@ -115,6 +124,12 @@ final class UserAccount
     /** @return array<string, mixed> */
     public function toPrivateArray(): array
     {
+        $mobileService = new \InfinityBlog\Security\MobileNumberService();
+        $decryptedMobile = $this->mobileNumberCiphertext !== null
+            ? $mobileService->decrypt($this->mobileNumberCiphertext)
+            : ($this->phone !== null && str_starts_with($this->phone, '+') ? $this->phone : null);
+        $maskedMobile = $decryptedMobile !== null ? $mobileService->mask($decryptedMobile) : null;
+
         return [
             'id' => $this->id,
             'username' => $this->username,
@@ -126,7 +141,10 @@ final class UserAccount
             'location' => $this->location,
             'interests' => $this->interests,
             'website' => $this->website,
-            'phone' => $this->phone,
+            'phone' => $decryptedMobile ?? $this->phone,
+            'mobile_number' => $decryptedMobile,
+            'mobile_number_masked' => $maskedMobile,
+            'mobile_number_verified_at' => $this->mobileNumberVerifiedAt,
             'avatar_path' => $this->avatarPath,
             'banner_path' => $this->bannerPath,
             'avatar_url' => ArticleImageHelper::resolveAvatarUrl($this->avatarPath),

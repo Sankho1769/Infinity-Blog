@@ -131,6 +131,7 @@ try {
 
     $ttsProvider = $aiConfig !== null ? new \InfinityBlog\Audio\OpenAiTtsProvider($aiConfig->apiKey) : null;
     $tts = new TtsService($postsRepo, $ttsProvider, $aiConfig, $storageConfig, $mediaService, $storageClient);
+    $postReports = new \InfinityBlog\Moderation\PostReportRepository($pdo);
 
     $webController = new WebController(
         $postsRepo,
@@ -151,7 +152,8 @@ try {
         $assistant,
         $studio,
         null,
-        $contactRepo
+        $contactRepo,
+        $postReports
     );
 
     // Browser POST form submissions for user profile & media uploads
@@ -226,6 +228,27 @@ try {
             echo $webResult['body'];
             return;
         }
+        if (preg_match('#^/admin/reports/([0-9]+)/status$#D', $request->path, $m)) {
+            $webResult = $webController->adminUpdateReportStatus($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/reports/posts/([0-9]+)/unpublish$#D', $request->path, $m)) {
+            $webResult = $webController->adminUnpublishReportedPost($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/reports/posts/([0-9]+)/restore$#D', $request->path, $m)) {
+            $webResult = $webController->adminRestoreReportedPost($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
     }
 
     // Web Browser Views (HTML)
@@ -247,12 +270,12 @@ try {
             $request->path === '/terms' => $webController->terms($request),
             $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
             $request->path === '/authors' => $webController->publicAuthors($request),
-            (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
+            (bool) preg_match('#^/(?:author|authors)/([^/]+)$#D', $request->path, $m) => $webController->authorProfile($request, $m[1]),
             $request->path === '/explore' => $webController->explore($request),
             $request->path === '/library' => $webController->library($request),
             $request->path === '/following' => $webController->followingFeed($request),
-            $request->path === '/chat' => $webController->chat($request),
-            (bool) preg_match('#^/chat/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
+            $request->path === '/community' || $request->path === '/chat' => $webController->chat($request),
+            (bool) preg_match('#^/(?:chat|community)/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
             $request->path === '/sitemap.xml' => $webController->sitemap($request),
             $request->path === '/robots.txt' => $webController->robots($request),
             $request->path === '/messages' => $webController->messages($request),
@@ -266,6 +289,7 @@ try {
             $request->path === '/admin/users-page' => $webController->adminUsers($request),
             $request->path === '/admin/audit-logs-page' => $webController->adminAuditLogs($request),
             $request->path === '/admin/contact-messages-page' => $webController->adminContactMessages($request),
+            $request->path === '/admin/reported-posts-page' => $webController->adminReportedPosts($request),
             $request->path === '/logout' => $webController->logout($request),
             default => null,
         };
@@ -298,16 +322,18 @@ try {
 
     if (str_starts_with($request->path, '/api/library')) {
         $controller = new LibraryController($library, $guard, $sessions, $postsRepo);
+    } elseif (preg_match('#^/api/posts/[0-9]+/report$#D', $request->path) === 1 || str_starts_with($request->path, '/api/admin/reports')) {
+        $controller = new \InfinityBlog\Http\ModerationController($postReports, $guard, $sessions);
     } elseif (str_starts_with($request->path, '/api/posts/') && str_ends_with($request->path, '/comments')) {
         $controller = new CommunityController($community, $guard, $sessions, $postsRepo);
-    } elseif (str_starts_with($request->path, '/api/comments') || str_starts_with($request->path, '/api/chat') || str_starts_with($request->path, '/api/notifications') || (str_starts_with($request->path, '/api/users/') && (str_ends_with($request->path, '/block') || str_ends_with($request->path, '/unblock') || str_ends_with($request->path, '/report')))) {
+    } elseif (str_starts_with($request->path, '/api/comments') || str_starts_with($request->path, '/api/chat') || (str_starts_with($request->path, '/api/users/') && (str_ends_with($request->path, '/block') || str_ends_with($request->path, '/unblock') || str_ends_with($request->path, '/report')))) {
         $controller = new CommunityController($community, $guard, $sessions, $postsRepo);
     } elseif ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions, $mediaService);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
-    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/')) {
-        $controller = new SocialController($follows, $messages, $guard, $sessions, $users);
+    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/') || str_starts_with($request->path, '/api/notifications')) {
+        $controller = new SocialController($follows, $messages, $guard, $sessions, $users, new \InfinityBlog\Social\NotificationRepository($pdo));
     } elseif (preg_match('#^/(author|admin)/posts/[0-9]+/summary$#D', $request->path) === 1) {
         try {
             $aiConfig = AiProviderConfig::fromEnvironment();
@@ -352,7 +378,8 @@ try {
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
             $guard,
             $sessions,
-            $users
+            $users,
+            new \InfinityBlog\Auth\LoginChallengeService($pdo)
         );
     }
 

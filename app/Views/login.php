@@ -69,14 +69,80 @@
         <a href="/" style="color: var(--text-muted); text-decoration: none;">← Return to Home</a>
       </p>
     </form>
+
+    <!-- Step 2: Verification Challenge Form -->
+    <form id="challenge-form" style="display: none;" novalidate>
+      <input type="hidden" id="challenge_token" name="challenge_token" value="">
+
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 2.2rem; margin-bottom: 8px;">🔐</div>
+        <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">
+          Two-Step Verification
+        </h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.45;">
+          Enter the 6-digit code sent to your registered email:
+          <strong id="challenge-masked-email" style="display: block; color: var(--primary-color); margin-top: 4px; font-family: monospace; font-size: 0.95rem;"></strong>
+        </p>
+      </div>
+
+      <div id="challenge-delivery-notice" style="display: none; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); padding: 10px 14px; border-radius: 10px; font-size: 0.82rem; margin-bottom: 18px; color: var(--text-body);">
+        <span id="challenge-delivery-text"></span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 20px;">
+        <label for="challenge_code" class="form-label" style="text-align: center; display: block; font-weight: 600;">
+          Verification Code
+        </label>
+        <input type="text" id="challenge_code" name="code" class="form-input" style="font-size: 1.75rem; letter-spacing: 0.35em; text-align: center; font-weight: 700; font-family: monospace;" placeholder="••••••" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" required>
+      </div>
+
+      <button type="submit" id="challenge-submit-btn" class="btn btn-primary btn-full">
+        Verify & Sign In
+      </button>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; font-size: 0.85rem;">
+        <button type="button" id="challenge-back-btn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; padding: 0;">
+          ← Back to Login
+        </button>
+        <button type="button" id="challenge-resend-btn" style="background: none; border: none; color: var(--primary-color); font-weight: 600; cursor: pointer; padding: 0;">
+          Resend Code
+        </button>
+      </div>
+    </form>
   </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('login-form');
+  const challengeForm = document.getElementById('challenge-form');
   const errorBox = document.getElementById('login-error-alert');
   const submitBtn = document.getElementById('login-submit-btn');
+  const challengeSubmitBtn = document.getElementById('challenge-submit-btn');
+  const challengeTokenInput = document.getElementById('challenge_token');
+  const challengeCodeInput = document.getElementById('challenge_code');
+  const challengeMaskedEmail = document.getElementById('challenge-masked-email');
+  const challengeDeliveryNotice = document.getElementById('challenge-delivery-notice');
+  const challengeDeliveryText = document.getElementById('challenge-delivery-text');
+  const challengeBackBtn = document.getElementById('challenge-back-btn');
+  const challengeResendBtn = document.getElementById('challenge-resend-btn');
+
+  const getCsrfToken = async () => {
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value;
+    if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+      csrf = await window.BlogCMS.ensureCsrfToken();
+    }
+    return csrf || '';
+  };
+
+  const getTargetUrl = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectParam = urlParams.get('redirect');
+    return (redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//'))
+      ? redirectParam
+      : '/dashboard';
+  };
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -95,31 +161,43 @@ document.addEventListener('DOMContentLoaded', () => {
     submitBtn.textContent = 'Verifying credentials...';
 
     try {
-      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || document.querySelector('input[name="csrf_token"]')?.value;
-      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
-        csrf = await window.BlogCMS.ensureCsrfToken();
-      }
+      const csrf = await getCsrfToken();
       const res = await fetch('/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-Token': csrf || ''
+          'X-CSRF-Token': csrf
         },
         body: JSON.stringify({ identifier, password })
       });
 
       const data = await res.json();
       if (res.ok) {
-        // Successful login
-        submitBtn.textContent = 'Signed in! Redirecting...';
-        const urlParams = new URLSearchParams(window.location.search);
-        const redirectParam = urlParams.get('redirect');
-        const targetUrl = (redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//'))
-          ? redirectParam
-          : '/dashboard';
-        window.location.href = targetUrl;
+        if (data.data?.challenge_required) {
+          // Two-step challenge triggered
+          challengeTokenInput.value = data.data.challenge_token;
+          challengeMaskedEmail.textContent = data.data.masked_email;
+          if (data.data.delivery_status === 'BLOCKED') {
+            challengeDeliveryNotice.style.display = 'block';
+            if (data.data.dev_code) {
+              challengeDeliveryText.innerHTML = '⚡ Local Dev Mode: Email gateway is unconfigured. Your verification code is: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
+              challengeCodeInput.value = data.data.dev_code;
+            } else {
+              challengeDeliveryText.textContent = 'Notice: Email delivery is simulated in this environment.';
+            }
+          } else {
+            challengeDeliveryNotice.style.display = 'none';
+          }
+
+          form.style.display = 'none';
+          challengeForm.style.display = 'block';
+          challengeCodeInput.focus();
+        } else {
+          // Direct login (null email / recovery path)
+          submitBtn.textContent = 'Signed in! Redirecting...';
+          window.location.href = getTargetUrl();
+        }
       } else {
         errorBox.textContent = data.error?.message || 'The login identifier or password is invalid.';
         errorBox.style.display = 'flex';
@@ -132,6 +210,114 @@ document.addEventListener('DOMContentLoaded', () => {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Sign In';
     }
+  });
+
+  // Handle Challenge Verification
+  challengeForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBox.style.display = 'none';
+
+    const challenge_token = challengeTokenInput.value.trim();
+    const code = challengeCodeInput.value.trim();
+
+    if (!code || code.length !== 6) {
+      errorBox.textContent = 'Please enter the complete 6-digit verification code.';
+      errorBox.style.display = 'flex';
+      return;
+    }
+
+    challengeSubmitBtn.disabled = true;
+    challengeSubmitBtn.textContent = 'Verifying code...';
+
+    try {
+      const csrf = await getCsrfToken();
+      const res = await fetch('/auth/challenge/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrf
+        },
+        body: JSON.stringify({ challenge_token, code })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        challengeSubmitBtn.textContent = 'Verified! Redirecting...';
+        window.location.href = getTargetUrl();
+      } else {
+        errorBox.textContent = data.error?.message || 'The verification code is incorrect or has expired.';
+        errorBox.style.display = 'flex';
+        challengeSubmitBtn.disabled = false;
+        challengeSubmitBtn.textContent = 'Verify & Sign In';
+        challengeCodeInput.select();
+      }
+    } catch (err) {
+      errorBox.textContent = 'Connection error. Please try again.';
+      errorBox.style.display = 'flex';
+      challengeSubmitBtn.disabled = false;
+      challengeSubmitBtn.textContent = 'Verify & Sign In';
+    }
+  });
+
+  // Handle Challenge Resend
+  challengeResendBtn.addEventListener('click', async () => {
+    const challenge_token = challengeTokenInput.value.trim();
+    if (!challenge_token) return;
+
+    challengeResendBtn.disabled = true;
+    challengeResendBtn.textContent = 'Sending...';
+
+    try {
+      const csrf = await getCsrfToken();
+      const res = await fetch('/auth/challenge/resend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrf
+        },
+        body: JSON.stringify({ challenge_token })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.data?.challenge_token) {
+        challengeTokenInput.value = data.data.challenge_token;
+        if (data.data.dev_code) {
+          challengeDeliveryText.innerHTML = '⚡ New code generated: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
+          challengeCodeInput.value = data.data.dev_code;
+        }
+        let countdown = 60;
+        challengeResendBtn.textContent = `Resend in ${countdown}s`;
+        const interval = setInterval(() => {
+          countdown--;
+          if (countdown <= 0) {
+            clearInterval(interval);
+            challengeResendBtn.disabled = false;
+            challengeResendBtn.textContent = 'Resend Code';
+          } else {
+            challengeResendBtn.textContent = `Resend in ${countdown}s`;
+          }
+        }, 1000);
+      } else {
+        challengeResendBtn.disabled = false;
+        challengeResendBtn.textContent = 'Resend Code';
+        errorBox.textContent = data.error?.message || 'Failed to resend code.';
+        errorBox.style.display = 'flex';
+      }
+    } catch {
+      challengeResendBtn.disabled = false;
+      challengeResendBtn.textContent = 'Resend Code';
+    }
+  });
+
+  // Back to step 1
+  challengeBackBtn.addEventListener('click', () => {
+    challengeForm.style.display = 'none';
+    form.style.display = 'block';
+    errorBox.style.display = 'none';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Sign In';
   });
 });
 </script>

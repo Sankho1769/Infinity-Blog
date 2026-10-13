@@ -166,9 +166,19 @@ $errors = $errors ?? [];
 
           <div>
             <label for="phone" class="form-label" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; display: block;">
-              Phone Number <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: normal;">(Private, optional)</span>
+              Mobile / Phone Number <span style="color: var(--text-muted); font-size: 0.8rem; font-weight: normal;">(🔒 Private & Encrypted)</span>
             </label>
-            <input type="tel" id="phone" name="phone" class="form-input <?= !empty($errors['phone']) ? 'input-error' : '' ?>" value="<?= htmlspecialchars($_POST['phone'] ?? $user['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="+1 555-0199" maxlength="30">
+            <?php if (!empty($user['mobile_number_masked'])): ?>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.82rem; background: rgba(59, 130, 246, 0.08); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2); flex-wrap: wrap;">
+                <span style="font-weight: 600; color: var(--text-heading);">Current:</span>
+                <span style="font-family: monospace; letter-spacing: 0.05em; font-weight: 700; color: var(--primary-color);"><?= htmlspecialchars($user['mobile_number_masked'], ENT_QUOTES, 'UTF-8') ?></span>
+                <span style="font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; background: rgba(239, 68, 68, 0.1); color: #dc2626; font-weight: 600;">SMS BLOCKED (Provider unconfigured)</span>
+              </div>
+            <?php endif; ?>
+            <input type="tel" id="phone" name="phone" class="form-input <?= !empty($errors['phone']) ? 'input-error' : '' ?>" value="<?= htmlspecialchars($_POST['phone'] ?? $user['mobile_number'] ?? $user['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="+91 98765 43210 or +1 555-0199" maxlength="30">
+            <span style="display: block; font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+              Supports 10-digit Indian numbers (with/without +91) or international E.164 (+&lt;country&gt;&lt;digits&gt;). AES-256 encrypted. Leave blank to remove.
+            </span>
             <?php if (!empty($errors['phone'])): ?>
               <p style="color: #dc2626; font-size: 0.85rem; margin-top: 4px;"><?= htmlspecialchars($errors['phone'], ENT_QUOTES, 'UTF-8') ?></p>
             <?php endif; ?>

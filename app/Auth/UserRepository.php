@@ -16,6 +16,11 @@ final class UserRepository
         $this->pdo = $pdo;
     }
 
+    public function getPdo(): PDO
+    {
+        return $this->pdo;
+    }
+
     public function findByIdentifier(string $identifier): ?UserAccount
     {
         $normalized = self::normalizeIdentifier($identifier);
@@ -276,18 +281,43 @@ final class UserRepository
             }
         }
 
-        if (array_key_exists('phone', $fields)) {
-            $phone = is_string($fields['phone']) ? trim($fields['phone']) : null;
-            if ($phone !== null && $phone !== '') {
-                if (strlen($phone) > 30 || !preg_match('/^[+]?[\d\s\-().]{7,30}$/', $phone)) {
-                    $errors['phone'] = 'Phone number format is invalid (7 to 30 characters).';
-                } else {
-                    $updates[] = 'phone = :phone';
-                    $params['phone'] = $phone;
+        if (array_key_exists('phone', $fields) || array_key_exists('mobile_number', $fields)) {
+            $rawPhone = $fields['mobile_number'] ?? $fields['phone'] ?? null;
+            $rawPhone = is_string($rawPhone) ? trim($rawPhone) : null;
+            if ($rawPhone !== null && $rawPhone !== '') {
+                try {
+                    $mobileService = new \InfinityBlog\Security\MobileNumberService();
+                    $normalized = $mobileService->normalize($rawPhone);
+                    $hash = $mobileService->hash($normalized);
+
+                    // Uniqueness check: ensure no other user has this mobile_number_hash
+                    $stmtCheck = $this->pdo->prepare('SELECT id FROM users WHERE mobile_number_hash = :hash AND id != :id LIMIT 1');
+                    $stmtCheck->execute([':hash' => $hash, ':id' => $userId]);
+                    if ($stmtCheck->fetchColumn() !== false) {
+                        $errors['phone'] = 'This mobile number is already in use by another account.';
+                    } else {
+                        $cipher = $mobileService->encrypt($normalized);
+                        $updates[] = 'phone = :phone';
+                        $params['phone'] = $rawPhone;
+                        $updates[] = 'mobile_number_ciphertext = :mobile_cipher';
+                        $params['mobile_cipher'] = $cipher;
+                        $updates[] = 'mobile_number_hash = :mobile_hash';
+                        $params['mobile_hash'] = $hash;
+                        $updates[] = 'mobile_number_verified_at = :mobile_verified_at';
+                        $params['mobile_verified_at'] = null;
+                    }
+                } catch (\InvalidArgumentException $e) {
+                    $errors['phone'] = $e->getMessage();
                 }
             } else {
                 $updates[] = 'phone = :phone';
                 $params['phone'] = null;
+                $updates[] = 'mobile_number_ciphertext = :mobile_cipher';
+                $params['mobile_cipher'] = null;
+                $updates[] = 'mobile_number_hash = :mobile_hash';
+                $params['mobile_hash'] = null;
+                $updates[] = 'mobile_number_verified_at = :mobile_verified_at';
+                $params['mobile_verified_at'] = null;
             }
         }
 
@@ -561,6 +591,9 @@ final class UserRepository
         $bannerPath = isset($row['banner_path']) && is_string($row['banner_path']) ? (string) $row['banner_path'] : null;
         $profileVisibility = isset($row['profile_visibility']) && is_string($row['profile_visibility']) ? (string) $row['profile_visibility'] : 'public';
         $createdAt = isset($row['created_at']) && is_string($row['created_at']) ? (string) $row['created_at'] : null;
+        $mobileCipher = isset($row['mobile_number_ciphertext']) && is_string($row['mobile_number_ciphertext']) ? (string) $row['mobile_number_ciphertext'] : null;
+        $mobileHash = isset($row['mobile_number_hash']) && is_string($row['mobile_number_hash']) ? (string) $row['mobile_number_hash'] : null;
+        $mobileVerifiedAt = isset($row['mobile_number_verified_at']) && is_string($row['mobile_number_verified_at']) ? (string) $row['mobile_number_verified_at'] : null;
 
         return new UserAccount(
             (int) $id,
@@ -579,7 +612,10 @@ final class UserRepository
             $avatarPath,
             $bannerPath,
             $profileVisibility,
-            $createdAt
+            $createdAt,
+            $mobileCipher,
+            $mobileHash,
+            $mobileVerifiedAt
         );
     }
 }

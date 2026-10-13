@@ -127,6 +127,14 @@ declare(strict_types=1);
           <div style="font-size: 1.5rem; font-weight: 800; color: #10b981;"><?= (int) ($stats['remix_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Remixes</div>
         </div>
+        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6); cursor: pointer;" onclick="document.getElementById('profile-tab-followers')?.click();">
+          <div style="font-size: 1.5rem; font-weight: 800; color: #8b5cf6;" id="profile-stat-followers"><?= (int) ($stats['follower_count'] ?? 0) ?></div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Followers</div>
+        </div>
+        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6); cursor: pointer;" onclick="document.getElementById('profile-tab-following')?.click();">
+          <div style="font-size: 1.5rem; font-weight: 800; color: #ec4899;" id="profile-stat-following"><?= (int) ($stats['following_count'] ?? 0) ?></div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Following</div>
+        </div>
         <?php if (!empty($user['created_at'])): ?>
           <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6);">
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-heading); margin-top: 4px;">
@@ -144,6 +152,12 @@ declare(strict_types=1);
     <div class="segmented-tabs" role="tablist" aria-label="Profile navigation">
       <button type="button" role="tab" id="profile-tab-posts" aria-selected="true" aria-controls="profile-panel-posts" tabindex="0" class="tab-pill active">
         Articles (<?= count($userPosts) ?>)
+      </button>
+      <button type="button" role="tab" id="profile-tab-followers" aria-selected="false" aria-controls="profile-panel-followers" tabindex="-1" class="tab-pill">
+        Followers (<?= (int) ($stats['follower_count'] ?? count($followers ?? [])) ?>)
+      </button>
+      <button type="button" role="tab" id="profile-tab-following" aria-selected="false" aria-controls="profile-panel-following" tabindex="-1" class="tab-pill">
+        Following (<?= (int) ($stats['following_count'] ?? count($following ?? [])) ?>)
       </button>
       <button type="button" role="tab" id="profile-tab-about" aria-selected="false" aria-controls="profile-panel-about" tabindex="-1" class="tab-pill">
         About
@@ -256,12 +270,15 @@ declare(strict_types=1);
           </div>
         <?php endif; ?>
 
-        <?php if (!empty($user['phone'])): ?>
+        <?php if (!empty($user['mobile_number_masked']) || !empty($user['phone'])): ?>
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.1rem;" title="Phone (Private)">📞</span>
+            <span style="font-size: 1.1rem;" title="Mobile Number (Private & Encrypted)">📱</span>
             <div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">Phone (Private)</div>
-              <span><?= htmlspecialchars($user['phone'], ENT_QUOTES, 'UTF-8') ?></span>
+              <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+                <span>Mobile (Private)</span>
+                <span style="font-size: 0.68rem; background: rgba(59, 130, 246, 0.1); color: var(--primary-color); padding: 1px 5px; border-radius: 4px; font-weight: 600;">🔒 AES-256</span>
+              </div>
+              <span style="font-family: monospace; font-weight: 600; color: var(--text-heading);"><?= htmlspecialchars($user['mobile_number_masked'] ?? $user['phone'], ENT_QUOTES, 'UTF-8') ?></span>
             </div>
           </div>
         <?php endif; ?>
@@ -291,64 +308,117 @@ declare(strict_types=1);
       </div>
     </div>
   </section>
+
+  <!-- Tab Panel 3: Followers -->
+  <section id="profile-panel-followers" role="tabpanel" aria-labelledby="profile-tab-followers" class="user-followers-section" style="display: none;">
+    <?php if (empty($followers)): ?>
+      <div class="glass-card empty-state" style="padding: 48px 24px; text-align: center;">
+        <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
+        <h3 class="empty-title">No followers yet</h3>
+        <p class="empty-desc">When readers or fellow authors follow you, they'll appear here.</p>
+      </div>
+    <?php else: ?>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+        <?php foreach ($followers as $f): ?>
+          <div class="glass-card" style="padding: 16px 20px; border-radius: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+              <?= strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1)) ?>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <a href="/authors/<?= rawurlencode($f['username']) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
+              </a>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+            <a href="/authors/<?= rawurlencode($f['username']) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </section>
+
+  <!-- Tab Panel 4: Following -->
+  <section id="profile-panel-following" role="tabpanel" aria-labelledby="profile-tab-following" class="user-following-section" style="display: none;">
+    <?php if (empty($following)): ?>
+      <div class="glass-card empty-state" style="padding: 48px 24px; text-align: center;">
+        <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
+        <h3 class="empty-title">Not following anyone yet</h3>
+        <p class="empty-desc">Explore authors on Infinity Blog and follow them to see their latest work in your feed.</p>
+        <a href="/authors" class="btn btn-primary btn-pill btn-sm" style="margin-top: 14px;">Explore Authors</a>
+      </div>
+    <?php else: ?>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+        <?php foreach ($following as $f): ?>
+          <div class="glass-card" style="padding: 16px 20px; border-radius: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+              <?= strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1)) ?>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <a href="/authors/<?= rawurlencode($f['username']) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
+              </a>
+              <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+            </div>
+            <a href="/authors/<?= rawurlencode($f['username']) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  </section>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const tabPosts = document.getElementById('profile-tab-posts');
-  const tabAbout = document.getElementById('profile-tab-about');
-  const panelPosts = document.getElementById('profile-panel-posts');
-  const panelAbout = document.getElementById('profile-panel-about');
+  const tabs = {
+    posts: { tab: document.getElementById('profile-tab-posts'), panel: document.getElementById('profile-panel-posts') },
+    followers: { tab: document.getElementById('profile-tab-followers'), panel: document.getElementById('profile-panel-followers') },
+    following: { tab: document.getElementById('profile-tab-following'), panel: document.getElementById('profile-panel-following') },
+    about: { tab: document.getElementById('profile-tab-about'), panel: document.getElementById('profile-panel-about') }
+  };
 
-  if (!tabPosts || !tabAbout || !panelPosts || !panelAbout) return;
-
-  function switchTab(target) {
-    if (target === 'posts') {
-      tabPosts.classList.add('active');
-      tabPosts.setAttribute('aria-selected', 'true');
-      tabPosts.setAttribute('tabindex', '0');
-
-      tabAbout.classList.remove('active');
-      tabAbout.setAttribute('aria-selected', 'false');
-      tabAbout.setAttribute('tabindex', '-1');
-
-      panelPosts.style.display = 'block';
-      panelAbout.style.display = 'none';
-    } else {
-      tabAbout.classList.add('active');
-      tabAbout.setAttribute('aria-selected', 'true');
-      tabAbout.setAttribute('tabindex', '0');
-
-      tabPosts.classList.remove('active');
-      tabPosts.setAttribute('aria-selected', 'false');
-      tabPosts.setAttribute('tabindex', '-1');
-
-      panelAbout.style.display = 'block';
-      panelPosts.style.display = 'none';
-    }
+  function switchTab(key) {
+    Object.keys(tabs).forEach(k => {
+      const item = tabs[k];
+      if (!item.tab || !item.panel) return;
+      if (k === key) {
+        item.tab.classList.add('active');
+        item.tab.setAttribute('aria-selected', 'true');
+        item.tab.setAttribute('tabindex', '0');
+        item.panel.style.display = 'block';
+      } else {
+        item.tab.classList.remove('active');
+        item.tab.setAttribute('aria-selected', 'false');
+        item.tab.setAttribute('tabindex', '-1');
+        item.panel.style.display = 'none';
+      }
+    });
   }
 
-  tabPosts.addEventListener('click', () => switchTab('posts'));
-  tabAbout.addEventListener('click', () => switchTab('about'));
+  Object.keys(tabs).forEach(key => {
+    const item = tabs[key];
+    if (item.tab) {
+      item.tab.addEventListener('click', () => switchTab(key));
+    }
+  });
 
   // Keyboard navigation for tab list
-  const tabs = [tabPosts, tabAbout];
-  tabs.forEach((tab, index) => {
+  const tabList = Object.values(tabs).map(i => i.tab).filter(Boolean);
+  tabList.forEach((tab, index) => {
     tab.addEventListener('keydown', (e) => {
       let nextIndex = null;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        nextIndex = (index + 1) % tabs.length;
+        nextIndex = (index + 1) % tabList.length;
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        nextIndex = (index - 1 + tabs.length) % tabs.length;
+        nextIndex = (index - 1 + tabList.length) % tabList.length;
       } else if (e.key === 'Home') {
         nextIndex = 0;
       } else if (e.key === 'End') {
-        nextIndex = tabs.length - 1;
+        nextIndex = tabList.length - 1;
       }
       if (nextIndex !== null) {
         e.preventDefault();
-        tabs[nextIndex].focus();
-        tabs[nextIndex].click();
+        tabList[nextIndex].focus();
+        tabList[nextIndex].click();
       }
     });
   });

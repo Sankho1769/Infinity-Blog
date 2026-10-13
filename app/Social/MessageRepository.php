@@ -75,6 +75,24 @@ final class MessageRepository
 
         $messageId = (int) $this->pdo->lastInsertId();
 
+        try {
+            $senderStmt = $this->pdo->prepare('SELECT display_name, username FROM users WHERE id = :id LIMIT 1');
+            $senderStmt->execute([':id' => $senderId]);
+            $sRow = $senderStmt->fetch(PDO::FETCH_ASSOC);
+            $sName = $sRow['display_name'] ?? $sRow['username'] ?? 'Someone';
+
+            $notifs = new NotificationRepository($this->pdo);
+            $notifs->createNotification(
+                $recipientId,
+                $senderId,
+                'message',
+                $messageId,
+                "New direct message from {$sName}."
+            );
+        } catch (\Throwable) {
+            // Ignore notification failure
+        }
+
         $fetch = $this->pdo->prepare(
             'SELECT id, sender_id, recipient_id, body, created_at FROM direct_messages WHERE id = :id LIMIT 1'
         );

@@ -43,7 +43,34 @@ final class CommunityRepository
             ':parent' => $parentId,
             ':content' => $content,
         ]);
-        return (int) $this->pdo->lastInsertId();
+        $commentId = (int) $this->pdo->lastInsertId();
+
+        try {
+            $pStmt = $this->pdo->prepare('SELECT author_id, title FROM posts WHERE id = :id LIMIT 1');
+            $pStmt->execute([':id' => $postId]);
+            $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
+            $authorId = (int) ($pRow['author_id'] ?? 0);
+            if ($authorId > 0 && $authorId !== $userId) {
+                $uStmt = $this->pdo->prepare('SELECT display_name, username FROM users WHERE id = :id LIMIT 1');
+                $uStmt->execute([':id' => $userId]);
+                $uRow = $uStmt->fetch(PDO::FETCH_ASSOC);
+                $commenterName = $uRow['display_name'] ?? $uRow['username'] ?? 'Someone';
+                $titlePreview = mb_substr((string) ($pRow['title'] ?? 'your article'), 0, 40);
+
+                $notifs = new \InfinityBlog\Social\NotificationRepository($this->pdo);
+                $notifs->createNotification(
+                    $authorId,
+                    $userId,
+                    'comment',
+                    $postId,
+                    "{$commenterName} commented on \"{$titlePreview}\"."
+                );
+            }
+        } catch (\Throwable) {
+            // Ignore notification failure
+        }
+
+        return $commentId;
     }
 
     /**
