@@ -34,17 +34,35 @@ final class PostRepository
     public function listPublic(array $filters, int $page, int $perPage): array
     {
         [$where, $parameters] = self::where(null, $filters, 'p.status', true);
-        $count = $this->pdo->prepare('SELECT COUNT(*) FROM posts p ' . $where);
+        $count = $this->pdo->prepare('SELECT COUNT(*) FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' . $where);
         $count->execute($parameters);
         $total = (int) $count->fetchColumn();
+
+        $sort = isset($filters['sort']) && is_string($filters['sort']) ? $filters['sort'] : 'newest';
+        $scoreJoin = '';
+        if ($sort === 'popular' || $sort === 'highest_rated') {
+            $scoreJoin = ' LEFT JOIN (SELECT post_id, COUNT(*) AS total_scores, AVG(score) AS avg_score FROM post_scores GROUP BY post_id) ps ON ps.post_id = p.id ';
+        }
+        $orderBy = match ($sort) {
+            'oldest' => 'p.published_at ASC, p.id ASC',
+            'popular' => 'COALESCE(ps.total_scores, 0) DESC, p.published_at DESC, p.id DESC',
+            'highest_rated' => 'COALESCE(ps.avg_score, 0) DESC, COALESCE(ps.total_scores, 0) DESC, p.published_at DESC, p.id DESC',
+            'relevance' => !empty($filters['q']) ? 'CASE WHEN INSTR(LOWER(p.title), LOWER(:order_q)) > 0 THEN 0 ELSE 1 END, p.published_at DESC, p.id DESC' : 'p.published_at DESC, p.id DESC',
+            default => 'p.published_at DESC, p.id DESC',
+        };
+
         $statement = $this->pdo->prepare(
             'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'p.summary, p.summary_status, p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
-            $where . ' ORDER BY p.published_at DESC, p.id DESC LIMIT :limit OFFSET :offset'
+            $scoreJoin .
+            $where . ' ORDER BY ' . $orderBy . ' LIMIT :limit OFFSET :offset'
         );
         foreach ($parameters as $name => $value) {
             $statement->bindValue(':' . $name, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        if ($sort === 'relevance' && !empty($filters['q'])) {
+            $statement->bindValue(':order_q', (string) $filters['q'], PDO::PARAM_STR);
         }
         $statement->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $statement->bindValue(':offset', ($page - 1) * $perPage, PDO::PARAM_INT);
@@ -76,6 +94,9 @@ final class PostRepository
         foreach ($rows as $row) {
             $content = (string) $row['content'];
             $postId = (int) $row['id'];
+            $wordCount = str_word_count(strip_tags($content));
+            $readingMinutes = max(1, (int) ceil($wordCount / 200));
+
             $post = [
                 'id' => $postId,
                 'title' => (string) $row['title'],
@@ -85,12 +106,16 @@ final class PostRepository
                 'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
                 'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
                 'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
+                'audio_path' => isset($row['audio_path']) && is_string($row['audio_path']) ? $row['audio_path'] : null,
+                'audio_status' => isset($row['audio_status']) && is_string($row['audio_status']) ? $row['audio_status'] : 'idle',
+                'audio_duration' => isset($row['audio_duration']) && $row['audio_duration'] !== null ? (int) $row['audio_duration'] : null,
                 'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'author_id' => (int) $row['author_id'],
                 'author_name' => (string) $row['author_name'],
                 'summary' => self::isSummaryCurrent($row) ? (string) $row['summary'] : null,
                 'published_at' => (string) $row['published_at'],
                 'created_at' => (string) $row['created_at'],
+                'reading_time' => $readingMinutes,
                 'reader_score' => $scoreSummaries[$postId] ?? ['average' => 0.0, 'count' => 0],
             ];
             $posts[] = $post;
@@ -137,8 +162,7 @@ final class PostRepository
     public function findPublished(int $postId): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, p.summary, p.summary_status, ' .
-            'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
+            'SELECT p.*, ' .
             'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id ' .
@@ -604,10 +628,28 @@ final class PostRepository
             $conditions[] = 'p.author_id = :filter_author_id';
             $parameters['filter_author_id'] = (int) $filters['author_id'];
         }
-        if (isset($filters['q'])) {
-            $conditions[] = '(INSTR(LOWER(p.title), LOWER(:query_title)) > 0 OR INSTR(LOWER(p.content), LOWER(:query_content)) > 0)';
+        if (isset($filters['q']) && trim((string) $filters['q']) !== '') {
+            $conditions[] = '(INSTR(LOWER(p.title), LOWER(:query_title)) > 0 OR INSTR(LOWER(p.content), LOWER(:query_content)) > 0 OR INSTR(LOWER(COALESCE(p.summary, \'\')), LOWER(:query_summary)) > 0)';
             $parameters['query_title'] = $filters['q'];
             $parameters['query_content'] = $filters['q'];
+            $parameters['query_summary'] = $filters['q'];
+        }
+        if (!empty($filters['date_from']) && is_string($filters['date_from'])) {
+            $conditions[] = 'p.published_at >= :date_from';
+            $parameters['date_from'] = $filters['date_from'] . ' 00:00:00';
+        }
+        if (!empty($filters['date_to']) && is_string($filters['date_to'])) {
+            $conditions[] = 'p.published_at <= :date_to';
+            $parameters['date_to'] = $filters['date_to'] . ' 23:59:59';
+        }
+        if (!empty($filters['reading_time']) && is_string($filters['reading_time'])) {
+            if ($filters['reading_time'] === 'quick') {
+                $conditions[] = 'LENGTH(p.content) < 3000';
+            } elseif ($filters['reading_time'] === 'medium') {
+                $conditions[] = '(LENGTH(p.content) >= 3000 AND LENGTH(p.content) <= 7000)';
+            } elseif ($filters['reading_time'] === 'deep') {
+                $conditions[] = 'LENGTH(p.content) > 7000';
+            }
         }
 
         return [$conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions), $parameters];
@@ -618,8 +660,7 @@ final class PostRepository
     {
         $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $lock = $forUpdate && $driver === 'mysql' ? ' FOR UPDATE' : '';
-        $sql = 'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, p.summary, p.summary_status, ' .
-            'p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at, p.updated_at, ' .
+        $sql = 'SELECT p.*, ' .
             'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
@@ -717,6 +758,11 @@ final class PostRepository
             'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
             'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
             'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
+            'audio_path' => isset($row['audio_path']) && is_string($row['audio_path']) ? $row['audio_path'] : null,
+            'audio_status' => isset($row['audio_status']) && is_string($row['audio_status']) ? $row['audio_status'] : 'idle',
+            'audio_duration' => isset($row['audio_duration']) && $row['audio_duration'] !== null ? (int) $row['audio_duration'] : null,
+            'audio_generated_at' => isset($row['audio_generated_at']) && is_string($row['audio_generated_at']) ? $row['audio_generated_at'] : null,
+            'reading_time' => max(1, (int) ceil(str_word_count(strip_tags((string) $row['content'])) / 200)),
             'remixed_from_post_id' => $remixedFromId,
             'remixed_from_title' => $remixedFromTitle,
             'remixed_from_author_id' => $remixedFromAuthorId,

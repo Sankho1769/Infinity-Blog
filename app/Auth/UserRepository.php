@@ -20,11 +20,12 @@ final class UserRepository
     {
         $normalized = self::normalizeIdentifier($identifier);
         $statement = $this->pdo->prepare(
-            'SELECT * FROM users WHERE username = :identifier OR email = :identifier_email LIMIT 1'
+            'SELECT * FROM users WHERE username = :identifier OR email = :identifier_email OR LOWER(display_name) = :identifier_name LIMIT 1'
         );
         $statement->execute([
             'identifier' => $normalized,
             'identifier_email' => $normalized,
+            'identifier_name' => $normalized,
         ]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
@@ -395,18 +396,23 @@ final class UserRepository
     }
 
     /** @return list<array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string, banner_path: ?string}> */
-    public function listPublicAuthors(): array
+    public function listPublicAuthors(?string $query = null): array
     {
+        $hasQuery = ($query !== null && trim($query) !== '');
+        $qCondition = $hasQuery ? ' AND (INSTR(LOWER(u.display_name), LOWER(:q_name)) > 0 OR INSTR(LOWER(u.username), LOWER(:q_user)) > 0)' : '';
+        $params = $hasQuery ? ['q_name' => trim($query), 'q_user' => trim($query)] : [];
+
         try {
-            $statement = $this->pdo->query(
+            $statement = $this->pdo->prepare(
                 "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-                "WHERE u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
+                "WHERE u.status = 'active' AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private')" . $qCondition . " " .
                 "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path " .
                 "HAVING post_count > 0 " .
                 "ORDER BY post_count DESC, u.display_name ASC"
             );
+            $statement->execute($params);
 
             return array_map(static fn (array $row): array => [
                 'id' => (int) $row['id'],
@@ -423,15 +429,16 @@ final class UserRepository
             ], $statement->fetchAll(PDO::FETCH_ASSOC));
         } catch (Throwable) {
             // Fallback for schemas without profile columns
-            $statement = $this->pdo->query(
+            $statement = $this->pdo->prepare(
                 "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "INNER JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-                "WHERE u.status = 'active' AND u.role IN ('user', 'author') " .
+                "WHERE u.status = 'active'" . $qCondition . " " .
                 "GROUP BY u.id, u.display_name, u.username, u.role " .
                 "HAVING post_count > 0 " .
                 "ORDER BY post_count DESC, u.display_name ASC"
             );
+            $statement->execute($params);
 
             return array_map(static fn (array $row): array => [
                 'id' => (int) $row['id'],
@@ -457,7 +464,7 @@ final class UserRepository
                 "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-                "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
+                "WHERE u.id = :id AND u.status = 'active' AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
                 "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path LIMIT 1"
             );
             $statement->execute(['id' => $id]);

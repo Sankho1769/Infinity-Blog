@@ -6,6 +6,7 @@ use InfinityBlog\Auth\AuthenticationService;
 use InfinityBlog\Auth\DatabaseLoginAttemptLimiter;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Audio\TtsService;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Audit\AuditLogRepository;
 use InfinityBlog\Config\AppConfig;
@@ -23,11 +24,15 @@ use InfinityBlog\Http\PublicPostController;
 use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Http\RequestException;
+use InfinityBlog\Http\SocialController;
 use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Http\WebController;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Http\ScoreController;
+use InfinityBlog\Social\FollowRepository;
+use InfinityBlog\Social\MessageRepository;
+use InfinityBlog\Storage\SupabaseStorageConfig;
 use InfinityBlog\Summaries\AiProviderConfig;
 use InfinityBlog\Summaries\DatabaseSummaryRateLimiter;
 use InfinityBlog\Summaries\OpenAiResponsesProvider;
@@ -71,9 +76,20 @@ try {
     $pdo = ConnectionFactory::create($config->database);
     $users = new UserRepository($pdo);
     $guard = new AuthGuard($sessions, $users);
+    $follows = new FollowRepository($pdo);
+    $messages = new MessageRepository($pdo);
+    $postsRepo = new PostRepository($pdo);
+
+    $storageConfig = null;
+    try {
+        $storageConfig = SupabaseStorageConfig::fromEnvironment();
+    } catch (Throwable) {
+    }
+
+    $tts = new TtsService($postsRepo, null, $storageConfig, null);
 
     $webController = new WebController(
-        new PostRepository($pdo),
+        $postsRepo,
         new CategoryRepository($pdo),
         $users,
         new AdminUserRepository($pdo),
@@ -81,7 +97,11 @@ try {
         $guard,
         $sessions,
         $config,
-        new ScoreRepository($pdo)
+        new ScoreRepository($pdo),
+        null,
+        $follows,
+        $messages,
+        $tts
     );
 
     // Browser POST form submissions for user profile & media uploads
@@ -143,6 +163,8 @@ try {
 
         $webResult = match (true) {
             $request->path === '/' => $webController->home($request),
+            (bool) preg_match('#^/article/([0-9]+)/download/(pdf|epub)$#D', $request->path, $m) => $m[2] === 'pdf' ? $webController->downloadPdf($request, (int) $m[1]) : $webController->downloadEpub($request, (int) $m[1]),
+            (bool) preg_match('#^/article/([0-9]+)/audio-speech$#D', $request->path, $m) => $webController->articleSpeechData($request, (int) $m[1]),
             (bool) preg_match('#^/article/([0-9]+)$#D', $request->path, $m) => $webController->article($request, (int) $m[1]),
             $request->path === '/video/signed-url' => $webController->signedVideoUrl($request),
             $request->path === '/login' => $webController->login($request),
@@ -155,6 +177,8 @@ try {
             $request->path === '/authors' => $webController->publicAuthors($request),
             (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
             $request->path === '/explore' => $webController->explore($request),
+            $request->path === '/messages' => $webController->messages($request),
+            (bool) preg_match('#^/messages/([0-9]+)$#D', $request->path, $m) => $webController->messages($request, (int) $m[1]),
             $request->path === '/about' => $webController->about($request),
             $request->path === '/dashboard' => $webController->dashboard($request),
             $request->path === '/posts/new' => $webController->newPost($request),
@@ -181,6 +205,11 @@ try {
         if ($webResult !== null) {
             http_response_code($webResult['status']);
             header('Content-Type: ' . $webResult['type']);
+            if (!empty($webResult['headers']) && is_array($webResult['headers'])) {
+                foreach ($webResult['headers'] as $headerName => $headerValue) {
+                    header($headerName . ': ' . $headerValue);
+                }
+            }
             echo $webResult['body'];
             return;
         }
@@ -190,6 +219,8 @@ try {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
+    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/')) {
+        $controller = new SocialController($follows, $messages, $guard, $sessions, $users);
     } elseif (preg_match('#^/(author|admin)/posts/[0-9]+/summary$#D', $request->path) === 1) {
         try {
             $aiConfig = AiProviderConfig::fromEnvironment();

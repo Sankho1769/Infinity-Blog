@@ -69,6 +69,26 @@
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
+
+        <!-- Social Actions: Follow / Message -->
+        <div style="display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap;">
+          <?php if (!empty($isSelf)): ?>
+            <a href="/profile" class="btn btn-secondary btn-sm btn-pill">
+              ✏️ Edit Profile
+            </a>
+          <?php else: ?>
+            <button type="button" class="btn btn-primary btn-sm btn-pill btn-follow-toggle <?= !empty($isFollowing) ? 'following' : '' ?>" data-author-id="<?= (int) $author['id'] ?>" data-following="<?= !empty($isFollowing) ? '1' : '0' ?>">
+              <?php if (!empty($isFollowing)): ?>
+                <span>✓</span> Following
+              <?php else: ?>
+                <span>+</span> Follow
+              <?php endif; ?>
+            </button>
+            <a href="/messages/<?= (int) $author['id'] ?>" class="btn btn-secondary btn-sm btn-pill" title="Send direct message">
+              ✉️ Send Message
+            </a>
+          <?php endif; ?>
+        </div>
       </div>
     </div>
 
@@ -80,13 +100,13 @@
       </div>
       <div style="width: 1px; background: rgba(203, 213, 225, 0.7);"></div>
       <div style="text-align: center;">
-        <div style="font-size: 1.5rem; font-weight: 800; color: #16a34a;"><?= (int) $totalPosts ?></div>
-        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Published</div>
+        <div id="author-follower-count" class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>" style="font-size: 1.5rem; font-weight: 800; color: var(--primary-color);"><?= (int) ($followerCount ?? 0) ?></div>
+        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Followers</div>
       </div>
       <div style="width: 1px; background: rgba(203, 213, 225, 0.7);"></div>
       <div style="text-align: center;">
-        <div style="font-size: 1.5rem; font-weight: 800; color: var(--primary-color);"><?= max(12, (int) $totalPosts * 14) ?></div>
-        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Readers</div>
+        <div style="font-size: 1.5rem; font-weight: 800; color: #16a34a;"><?= (int) ($followingCount ?? 0) ?></div>
+        <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Following</div>
       </div>
     </div>
   </div>
@@ -97,6 +117,12 @@
   <div class="segmented-tabs" role="tablist" aria-label="Author Profile Sections">
     <button type="button" role="tab" id="author-tab-posts" aria-selected="true" aria-controls="author-panel-posts" tabindex="0" class="tab-pill active">
       Posts (<?= (int) $totalPosts ?>)
+    </button>
+    <button type="button" role="tab" id="author-tab-followers" aria-selected="false" aria-controls="author-panel-followers" tabindex="-1" class="tab-pill">
+      Followers (<span class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>"><?= (int) ($followerCount ?? 0) ?></span>)
+    </button>
+    <button type="button" role="tab" id="author-tab-following" aria-selected="false" aria-controls="author-panel-following" tabindex="-1" class="tab-pill">
+      Following (<?= (int) ($followingCount ?? 0) ?>)
     </button>
     <button type="button" role="tab" id="author-tab-about" aria-selected="false" aria-controls="author-panel-about" tabindex="-1" class="tab-pill">
       About
@@ -165,6 +191,60 @@
   <?php endif; ?>
 </div>
 
+<!-- Tab Panel: Followers -->
+<div id="author-panel-followers" role="tabpanel" aria-labelledby="author-tab-followers" style="display: none;">
+  <?php if (empty($followers)): ?>
+    <div class="glass-panel empty-state" style="padding: 48px 24px; text-align: center;">
+      <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
+      <h3 class="empty-title">No followers yet</h3>
+      <p class="empty-desc">Be the first to follow <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?> to stay notified about new stories.</p>
+    </div>
+  <?php else: ?>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+      <?php foreach ($followers as $f): ?>
+        <div class="glass-panel glass-panel-hover" style="padding: 16px 20px; border-radius: var(--radius-lg); display: flex; align-items: center; gap: 14px;">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0;">
+            <?= strtoupper(substr($f['display_name'] ?? $f['username'], 0, 1)) ?>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <a href="/author/<?= (int) $f['id'] ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
+            </a>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+</div>
+
+<!-- Tab Panel: Following -->
+<div id="author-panel-following" role="tabpanel" aria-labelledby="author-tab-following" style="display: none;">
+  <?php if (empty($following)): ?>
+    <div class="glass-panel empty-state" style="padding: 48px 24px; text-align: center;">
+      <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
+      <h3 class="empty-title">Not following any authors yet</h3>
+      <p class="empty-desc"><?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?> is not currently following other writers.</p>
+    </div>
+  <?php else: ?>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
+      <?php foreach ($following as $f): ?>
+        <div class="glass-panel glass-panel-hover" style="padding: 16px 20px; border-radius: var(--radius-lg); display: flex; align-items: center; gap: 14px;">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0;">
+            <?= strtoupper(substr($f['display_name'] ?? $f['username'], 0, 1)) ?>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <a href="/author/<?= (int) $f['id'] ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
+            </a>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+</div>
+
 <!-- Tab Panel: About -->
 <div id="author-panel-about" role="tabpanel" aria-labelledby="author-tab-about" style="display: none;">
   <div class="glass-panel" style="padding: 32px 28px; border-radius: var(--radius-xl);">
@@ -228,60 +308,54 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const tabPosts = document.getElementById('author-tab-posts');
-  const tabAbout = document.getElementById('author-tab-about');
-  const panelPosts = document.getElementById('author-panel-posts');
-  const panelAbout = document.getElementById('author-panel-about');
-
-  if (!tabPosts || !tabAbout || !panelPosts || !panelAbout) return;
+  const tabs = {
+    posts: { btn: document.getElementById('author-tab-posts'), panel: document.getElementById('author-panel-posts') },
+    followers: { btn: document.getElementById('author-tab-followers'), panel: document.getElementById('author-panel-followers') },
+    following: { btn: document.getElementById('author-tab-following'), panel: document.getElementById('author-panel-following') },
+    about: { btn: document.getElementById('author-tab-about'), panel: document.getElementById('author-panel-about') }
+  };
 
   function switchTab(target) {
-    if (target === 'posts') {
-      tabPosts.classList.add('active');
-      tabPosts.setAttribute('aria-selected', 'true');
-      tabPosts.setAttribute('tabindex', '0');
-
-      tabAbout.classList.remove('active');
-      tabAbout.setAttribute('aria-selected', 'false');
-      tabAbout.setAttribute('tabindex', '-1');
-
-      panelPosts.style.display = 'block';
-      panelAbout.style.display = 'none';
-    } else {
-      tabAbout.classList.add('active');
-      tabAbout.setAttribute('aria-selected', 'true');
-      tabAbout.setAttribute('tabindex', '0');
-
-      tabPosts.classList.remove('active');
-      tabPosts.setAttribute('aria-selected', 'false');
-      tabPosts.setAttribute('tabindex', '-1');
-
-      panelAbout.style.display = 'block';
-      panelPosts.style.display = 'none';
-    }
+    Object.keys(tabs).forEach(k => {
+      const t = tabs[k];
+      if (!t.btn || !t.panel) return;
+      if (k === target) {
+        t.btn.classList.add('active');
+        t.btn.setAttribute('aria-selected', 'true');
+        t.btn.setAttribute('tabindex', '0');
+        t.panel.style.display = 'block';
+      } else {
+        t.btn.classList.remove('active');
+        t.btn.setAttribute('aria-selected', 'false');
+        t.btn.setAttribute('tabindex', '-1');
+        t.panel.style.display = 'none';
+      }
+    });
   }
 
-  tabPosts.addEventListener('click', () => switchTab('posts'));
-  tabAbout.addEventListener('click', () => switchTab('about'));
+  Object.keys(tabs).forEach(k => {
+    if (tabs[k].btn) {
+      tabs[k].btn.addEventListener('click', () => switchTab(k));
+    }
+  });
 
-  // Keyboard navigation for author tabs
-  const tabs = [tabPosts, tabAbout];
-  tabs.forEach((tab, index) => {
+  const tabList = Object.values(tabs).map(t => t.btn).filter(Boolean);
+  tabList.forEach((tab, index) => {
     tab.addEventListener('keydown', (e) => {
       let nextIndex = null;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        nextIndex = (index + 1) % tabs.length;
+        nextIndex = (index + 1) % tabList.length;
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        nextIndex = (index - 1 + tabs.length) % tabs.length;
+        nextIndex = (index - 1 + tabList.length) % tabList.length;
       } else if (e.key === 'Home') {
         nextIndex = 0;
       } else if (e.key === 'End') {
-        nextIndex = tabs.length - 1;
+        nextIndex = tabList.length - 1;
       }
       if (nextIndex !== null) {
         e.preventDefault();
-        tabs[nextIndex].focus();
-        tabs[nextIndex].click();
+        tabList[nextIndex].focus();
+        tabList[nextIndex].click();
       }
     });
   });

@@ -5,48 +5,102 @@
   <p style="font-size: 1.05rem; color: var(--text-muted); max-width: 600px; margin: 10px auto 0;">
     Meet the engineers, thinkers, and creators writing stories, architectural guides, and perspectives on Infinity Blog.
   </p>
+
+  <!-- Author Search Form -->
+  <form action="/authors" method="GET" class="hero-search-bar" role="search" style="max-width: 520px; margin: 24px auto 0;">
+    <input type="search" name="search" class="hero-search-input" placeholder="Search authors by name or username..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search authors">
+    <button type="submit" class="btn btn-primary btn-pill btn-sm">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      Search
+    </button>
+  </form>
 </div>
+
+<?php if (!empty($searchQuery)): ?>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; margin-top: 10px;">
+    <span style="font-size: 0.9rem; color: var(--text-muted);">
+      Search results for "<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>" (<?= count($authors) ?> found)
+    </span>
+    <a href="/authors" class="section-link">Clear search ×</a>
+  </div>
+<?php endif; ?>
 
 <?php if (empty($authors)): ?>
   <div class="glass-panel empty-state" style="margin-top: 30px; padding: 60px 24px; text-align: center;">
     <div style="font-size: 2.5rem; margin-bottom: 12px;">✍️</div>
     <h2 class="empty-title">No Active Authors Found</h2>
-    <p class="empty-desc">Author profiles will appear here once registered.</p>
-    <a href="/" class="btn btn-primary btn-pill">Return to Home</a>
+    <p class="empty-desc">
+      <?= !empty($searchQuery) ? 'No authors matched your search criteria.' : 'Author profiles will appear here once registered.' ?>
+    </p>
+    <a href="/authors" class="btn btn-primary btn-pill">Browse All Authors</a>
   </div>
 <?php else: ?>
-  <div class="authors-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
+  <div class="authors-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 24px; margin-top: 16px;">
     <?php foreach ($authors as $author): ?>
-      <div class="glass-panel glass-panel-hover" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; border-radius: var(--radius-lg); transition: all 0.2s ease;">
+      <?php
+        $avatarSrc = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
+        $displayName = $author['display_name'] ?? $author['username'];
+      ?>
+      <div class="glass-panel glass-panel-hover" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; border-radius: var(--radius-xl); transition: all 0.2s ease;">
         <div>
           <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
-            <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3); flex-shrink: 0;">
-              <?= strtoupper(substr($author['display_name'] ?? $author['username'], 0, 1)) ?>
-            </div>
-            <div>
-              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-dark); margin: 0 0 4px 0;">
-                <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
+            <?php if (!empty($avatarSrc)): ?>
+              <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 54px; height: 54px; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25); border: 2px solid #fff; flex-shrink: 0;" onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+              <div style="display: none; width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; flex-shrink: 0;">
+                <?= strtoupper(substr($displayName, 0, 1)) ?>
+              </div>
+            <?php else: ?>
+              <div style="width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3); flex-shrink: 0;">
+                <?= strtoupper(substr($displayName, 0, 1)) ?>
+              </div>
+            <?php endif; ?>
+
+            <div style="flex: 1; min-width: 0;">
+              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-dark); margin: 0 0 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <a href="/author/<?= (int) $author['id'] ?>" style="color: inherit; text-decoration: none;">
+                  <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>
+                </a>
               </h3>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.85rem; color: var(--text-muted);">
+                <span style="font-size: 0.82rem; color: var(--text-muted);">
                   @<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
+                <?php if (!empty($author['is_self'])): ?>
+                  <span class="badge" style="background: rgba(99, 102, 241, 0.1); color: var(--primary-color); font-size: 0.72rem; padding: 1px 8px;">You</span>
+                <?php endif; ?>
               </div>
             </div>
           </div>
 
-          <div style="margin-top: 14px; padding: 12px 14px; background: var(--glass-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--glass-border-subtle); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.85rem; color: var(--text-muted);">Published Articles</span>
-            <span style="font-size: 0.95rem; font-weight: 700; color: var(--primary-color);">
-              <?= (int) $author['post_count'] ?>
-            </span>
+          <!-- Stats Row -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; padding: 12px 14px; background: var(--glass-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--glass-border-subtle); text-align: center;">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Articles</div>
+              <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-dark); margin-top: 2px;">
+                <?= (int) $author['post_count'] ?>
+              </div>
+            </div>
+            <div style="border-left: 1px solid rgba(226, 232, 240, 0.7);">
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Followers</div>
+              <div class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>" style="font-size: 1.05rem; font-weight: 800; color: var(--primary-color); margin-top: 2px;">
+                <?= (int) ($author['follower_count'] ?? 0) ?>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div style="margin-top: 20px;">
-          <a href="/author/<?= (int) $author['id'] ?>" class="btn btn-secondary btn-sm btn-full btn-pill" style="text-decoration: none;">
-            View Profile & Articles
+        <div style="margin-top: 20px; display: flex; gap: 8px; align-items: center;">
+          <a href="/author/<?= (int) $author['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="flex: 1; text-align: center; text-decoration: none;">
+            Profile
           </a>
+          <?php if (empty($author['is_self'])): ?>
+            <button type="button" class="btn btn-primary btn-sm btn-pill btn-follow-toggle <?= !empty($author['is_following']) ? 'following' : '' ?>" data-author-id="<?= (int) $author['id'] ?>" data-following="<?= !empty($author['is_following']) ? '1' : '0' ?>" style="flex: 1;">
+              <?= !empty($author['is_following']) ? '<span>✓</span> Following' : '<span>+</span> Follow' ?>
+            </button>
+          <?php endif; ?>
         </div>
       </div>
     <?php endforeach; ?>

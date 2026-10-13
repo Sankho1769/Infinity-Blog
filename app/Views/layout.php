@@ -12,6 +12,12 @@
   <?php if (!empty($ogImage)): ?>
     <meta property="og:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
   <?php endif; ?>
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="<?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog">
+  <meta name="twitter:description" content="<?= htmlspecialchars($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
+  <?php if (!empty($ogImage)): ?>
+    <meta name="twitter:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
   <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086' . ($canonicalPath ?? ($_SERVER['REQUEST_URI'] ?? '/'))), ENT_QUOTES, 'UTF-8') ?>">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -45,6 +51,7 @@
         <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
         <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
         <?php if (!empty($currentUser)): ?>
+          <li><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
           <li><a href="/dashboard" class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
@@ -127,6 +134,7 @@
         <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
         <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
         <?php if (!empty($currentUser)): ?>
+          <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
           <li><a href="/profile" class="mobile-nav-link <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>">My Profile</a></li>
           <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>

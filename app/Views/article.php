@@ -102,30 +102,122 @@
       <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" fetchpriority="high">
     </div>
 
-    <!-- Stored AI Summary Box (if present and current) -->
-    <?php if (!empty($post['summary']) && \InfinityBlog\Posts\PostRepository::isSummaryCurrent($post)): ?>
-      <aside class="ai-summary-card">
+    <!-- Reader Experience Toolbar (Reader Mode & Audio Experience) -->
+    <div class="article-reader-toolbar">
+      <div class="reader-mode-tabs" role="tablist" aria-label="Reading Experience Options">
+        <button type="button" class="reader-tab-btn active" id="tab-read-full" data-mode="read-full" role="tab" aria-selected="true">
+          <span>📖</span> Read Full
+        </button>
+        <?php if (!empty($post['summary'])): ?>
+          <button type="button" class="reader-tab-btn" id="tab-read-summary" data-mode="read-summary" role="tab" aria-selected="false">
+            <span>📝</span> Read Summary
+          </button>
+        <?php endif; ?>
+        <button type="button" class="reader-tab-btn" id="tab-listen-full" data-mode="listen-full" role="tab" aria-selected="false">
+          <span>🎧</span> Listen Full
+        </button>
+        <?php if (!empty($post['summary'])): ?>
+          <button type="button" class="reader-tab-btn" id="tab-listen-summary" data-mode="listen-summary" role="tab" aria-selected="false">
+            <span>⚡</span> Listen Summary
+          </button>
+        <?php endif; ?>
+      </div>
+
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
+          ⏱️ <?= (int) ($readingTime ?? 1) ?> min read
+        </span>
+      </div>
+    </div>
+
+    <!-- Integrated Audio Player (Hidden until Listen tab is selected or user clicks play) -->
+    <div class="article-audio-player" id="articleAudioPlayer" style="display: none;">
+      <div class="audio-player-header">
+        <div class="audio-player-title">
+          <span>🎧</span>
+          <span id="audioTrackTitle">Listening to: Full Article</span>
+        </div>
+        <span class="audio-source-badge" id="audioSourceBadge">
+          <?= !empty($speechData['has_server_audio']) ? 'Cloud Audio Stream' : '⚡ Browser Speech Synthesis' ?>
+        </span>
+      </div>
+
+      <div class="audio-player-controls">
+        <button type="button" class="audio-ctrl-btn" id="audioPlayPauseBtn" aria-label="Play or pause audio">
+          <svg id="audioPlayIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <svg id="audioPauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+        </button>
+
+        <button type="button" class="btn btn-secondary btn-sm btn-pill" id="audioStopBtn" style="padding: 6px 12px; font-size: 0.78rem;">
+          ⏹ Stop
+        </button>
+
+        <div class="audio-progress-bar-container">
+          <input type="range" class="audio-progress-range" id="audioTimelineRange" min="0" max="100" value="0" aria-label="Audio progress">
+          <div class="audio-time-row">
+            <span id="audioCurrentTime">0:00</span>
+            <span id="audioTotalDuration"><?= gmdate('i:s', (int) ($speechData['duration_seconds_est'] ?? 180)) ?></span>
+          </div>
+        </div>
+
+        <div class="audio-speed-selector">
+          <button type="button" class="audio-speed-btn active" data-rate="1">1x</button>
+          <button type="button" class="audio-speed-btn" data-rate="1.25">1.25x</button>
+          <button type="button" class="audio-speed-btn" data-rate="1.5">1.5x</button>
+          <button type="button" class="audio-speed-btn" data-rate="2">2x</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Mode Pane (Shown when user selects Read Summary) -->
+    <?php if (!empty($post['summary'])): ?>
+      <div id="summaryModePane" class="ai-summary-card" style="margin: 20px 0; display: none;">
         <div class="ai-summary-header">
           <span>✨</span>
-          <span>Article Summary</span>
+          <span>Article Key Takeaways & Summary</span>
         </div>
-        <p class="ai-summary-text"><?= nl2br(htmlspecialchars($post['summary'], ENT_QUOTES, 'UTF-8')) ?></p>
-      </aside>
-    <?php endif; ?>
-
-    <!-- Video Player (authorized signed URL from private bucket or local) -->
-    <?php if (!empty($videoSignedUrl)): ?>
-      <div class="article-video-player" style="margin: 20px 0 28px; border-radius: var(--radius-lg); overflow: hidden; background: #0f172a; box-shadow: var(--glass-shadow-sm); border: 1px solid rgba(255, 255, 255, 0.4);">
-        <video controls preload="metadata" style="width: 100%; max-height: 540px; display: block;" playsinline>
-          <source src="<?= htmlspecialchars($videoSignedUrl, ENT_QUOTES, 'UTF-8') ?>">
-          Your browser does not support the video tag.
-        </video>
+        <p class="ai-summary-text" style="font-size: 1.05rem; line-height: 1.7;"><?= nl2br(htmlspecialchars($post['summary'], ENT_QUOTES, 'UTF-8')) ?></p>
       </div>
     <?php endif; ?>
 
     <!-- Full Article Content (safely rendered from Markdown with inline media) -->
-    <div class="article-body-content">
+    <div class="article-body-content" id="articleBodyContent">
+      <!-- Stored AI Summary Box inline (if present and current) -->
+      <?php if (!empty($post['summary']) && \InfinityBlog\Posts\PostRepository::isSummaryCurrent($post)): ?>
+        <aside class="ai-summary-card" style="margin-bottom: 24px;">
+          <div class="ai-summary-header">
+            <span>✨</span>
+            <span>Article Summary</span>
+          </div>
+          <p class="ai-summary-text"><?= nl2br(htmlspecialchars($post['summary'], ENT_QUOTES, 'UTF-8')) ?></p>
+        </aside>
+      <?php endif; ?>
+
+      <!-- Video Player (authorized signed URL from private bucket or local) -->
+      <?php if (!empty($videoSignedUrl)): ?>
+        <div class="article-video-player" style="margin: 20px 0 28px; border-radius: var(--radius-lg); overflow: hidden; background: #0f172a; box-shadow: var(--glass-shadow-sm); border: 1px solid rgba(255, 255, 255, 0.4);">
+          <video controls preload="metadata" style="width: 100%; max-height: 540px; display: block;" playsinline>
+            <source src="<?= htmlspecialchars($videoSignedUrl, ENT_QUOTES, 'UTF-8') ?>">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      <?php endif; ?>
+
       <?= $renderedBody ?? (new \InfinityBlog\Posts\ArticleContentRenderer())->render($post['content']) ?>
+    </div>
+
+    <!-- Article Actions Bar: PDF, EPUB, Share -->
+    <div class="article-actions-bar">
+      <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-dark); margin-right: 4px;">Story Actions:</span>
+      <a href="/article/<?= (int) $post['id'] ?>/download/pdf" class="btn btn-secondary btn-sm btn-pill" title="Download formatted PDF">
+        📄 Download PDF
+      </a>
+      <a href="/article/<?= (int) $post['id'] ?>/download/epub" class="btn btn-secondary btn-sm btn-pill" title="Download EPUB eBook">
+        📱 Download EPUB
+      </a>
+      <button type="button" class="btn btn-primary btn-sm btn-pill" id="shareArticleBtn" onclick="triggerNativeShare('<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086/article/' . (int) $post['id']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($metaDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>')">
+        🔗 Share Article
+      </button>
     </div>
 
     <!-- Reader Score Section -->
@@ -323,3 +415,273 @@
     </div>
   </aside>
 </div>
+
+<!-- Share Article Modal -->
+<div class="modal-backdrop" id="share-article-modal">
+  <div class="modal-card share-modal-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark);">Share this Story</h3>
+      <button type="button" class="alert-close-btn" onclick="closeShareModal()" style="font-size: 1.4rem;">×</button>
+    </div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
+      Spread the word with readers, colleagues, and your network.
+    </p>
+
+    <?php
+      $shareUrl = $canonicalUrl ?? ('http://localhost:8086/article/' . (int) $post['id']);
+      $shareTitle = $post['title'];
+    ?>
+    <div class="share-options-grid">
+      <a href="https://api.whatsapp.com/send?text=<?= urlencode($shareTitle . ' ' . $shareUrl) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
+        <span style="font-size: 1.2rem;">💬</span> WhatsApp
+      </a>
+      <a href="https://www.linkedin.com/sharing/share-offsite/?url=<?= urlencode($shareUrl) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
+        <span style="font-size: 1.2rem;">💼</span> LinkedIn
+      </a>
+      <a href="https://twitter.com/intent/tweet?url=<?= urlencode($shareUrl) ?>&text=<?= urlencode($shareTitle) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
+        <span style="font-size: 1.2rem;">🐦</span> Twitter / X
+      </a>
+      <a href="mailto:?subject=<?= urlencode('Thoughtful Article: ' . $shareTitle) ?>&body=<?= urlencode('Read this article on Infinity Blog: ' . $shareUrl) ?>" class="share-option-btn">
+        <span style="font-size: 1.2rem;">✉️</span> Email
+      </a>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Story Link</label>
+      <div class="share-copy-link-wrapper">
+        <input type="text" id="share-modal-url-input" class="share-copy-input" value="<?= htmlspecialchars($shareUrl, ENT_QUOTES, 'UTF-8') ?>" readonly>
+        <button type="button" class="btn btn-primary btn-sm btn-pill" onclick="copyShareLink()">
+          Copy Link
+        </button>
+      </div>
+      <span id="share-copy-tooltip" style="display: none; font-size: 0.8rem; color: #16a34a; font-weight: 600; margin-top: 6px;">✓ Link copied to clipboard!</span>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const speechData = <?= json_encode($speechData ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+  const synth = window.speechSynthesis;
+  const bodyContent = document.getElementById('articleBodyContent');
+  const summaryPane = document.getElementById('summaryModePane');
+  const audioPlayer = document.getElementById('articleAudioPlayer');
+  const playPauseBtn = document.getElementById('audioPlayPauseBtn');
+  const playIcon = document.getElementById('audioPlayIcon');
+  const pauseIcon = document.getElementById('audioPauseIcon');
+  const stopBtn = document.getElementById('audioStopBtn');
+  const progressRange = document.getElementById('audioTimelineRange');
+  const currentTimeEl = document.getElementById('audioCurrentTime');
+  const totalDurationEl = document.getElementById('audioTotalDuration');
+  const trackTitleEl = document.getElementById('audioTrackTitle');
+  const speedBtns = document.querySelectorAll('.audio-speed-btn');
+
+  let currentAudioMode = 'full';
+  let isPlaying = false;
+  let isPaused = false;
+  let speechRate = 1.0;
+  let chunks = [];
+  let chunkIdx = 0;
+  let timerInterval = null;
+  let elapsedSec = 0;
+  let totalEstimatedSec = speechData?.duration_seconds_est || 180;
+
+  function formatTime(s) {
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
+
+  function splitIntoChunks(text) {
+    if (!text) return [];
+    const sentences = text.replace(/([.?!])\s+/g, "$1|").split("|");
+    const result = [];
+    let cur = "";
+    for (const s of sentences) {
+      if ((cur + " " + s).length > 150) {
+        if (cur.trim()) result.push(cur.trim());
+        cur = s;
+      } else {
+        cur += (cur ? " " : "") + s;
+      }
+    }
+    if (cur.trim()) result.push(cur.trim());
+    return result;
+  }
+
+  function stopAudio() {
+    if (synth) synth.cancel();
+    isPlaying = false;
+    isPaused = false;
+    chunkIdx = 0;
+    elapsedSec = 0;
+    if (timerInterval) clearInterval(timerInterval);
+    if (playIcon) playIcon.style.display = 'block';
+    if (pauseIcon) pauseIcon.style.display = 'none';
+    if (progressRange) progressRange.value = 0;
+    if (currentTimeEl) currentTimeEl.textContent = '0:00';
+  }
+
+  function playNextChunk() {
+    if (!isPlaying) return;
+    if (chunkIdx >= chunks.length) {
+      stopAudio();
+      return;
+    }
+    const chunkText = chunks[chunkIdx];
+    const utt = new SpeechSynthesisUtterance(chunkText);
+    utt.rate = speechRate;
+    utt.onend = () => {
+      chunkIdx++;
+      if (progressRange && chunks.length > 0) {
+        progressRange.value = Math.min(100, Math.round((chunkIdx / chunks.length) * 100));
+      }
+      playNextChunk();
+    };
+    utt.onerror = () => {
+      chunkIdx++;
+      playNextChunk();
+    };
+    synth.speak(utt);
+  }
+
+  function startAudio(mode = 'full') {
+    if (!synth) {
+      alert('Speech synthesis is not supported in this browser.');
+      return;
+    }
+    stopAudio();
+    currentAudioMode = mode;
+    const textToSpeak = mode === 'summary' ? (speechData.summary_text || speechData.full_text) : speechData.full_text;
+    chunks = splitIntoChunks(textToSpeak);
+    if (chunks.length === 0) return;
+
+    totalEstimatedSec = mode === 'summary'
+      ? Math.max(10, Math.round(((speechData.summary_text || '').split(/\s+/).length / 140) * 60))
+      : (speechData.duration_seconds_est || 180);
+
+    if (totalDurationEl) totalDurationEl.textContent = formatTime(totalEstimatedSec);
+    if (trackTitleEl) trackTitleEl.textContent = mode === 'summary' ? 'Listening to: Article Summary' : 'Listening to: Full Article';
+
+    isPlaying = true;
+    isPaused = false;
+    if (playIcon) playIcon.style.display = 'none';
+    if (pauseIcon) pauseIcon.style.display = 'block';
+
+    timerInterval = setInterval(() => {
+      if (isPlaying && !isPaused) {
+        elapsedSec += 1;
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(elapsedSec);
+      }
+    }, 1000);
+
+    playNextChunk();
+  }
+
+  function togglePlayPause() {
+    if (!isPlaying) {
+      startAudio(currentAudioMode);
+      return;
+    }
+    if (isPaused) {
+      synth.resume();
+      isPaused = false;
+      if (playIcon) playIcon.style.display = 'none';
+      if (pauseIcon) pauseIcon.style.display = 'block';
+    } else {
+      synth.pause();
+      isPaused = true;
+      if (playIcon) playIcon.style.display = 'block';
+      if (pauseIcon) pauseIcon.style.display = 'none';
+    }
+  }
+
+  if (playPauseBtn) playPauseBtn.addEventListener('click', togglePlayPause);
+  if (stopBtn) stopBtn.addEventListener('click', stopAudio);
+
+  speedBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      speedBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      speechRate = parseFloat(btn.getAttribute('data-rate')) || 1.0;
+      if (isPlaying && !isPaused) {
+        synth.cancel();
+        playNextChunk();
+      }
+    });
+  });
+
+  if (progressRange) {
+    progressRange.addEventListener('input', () => {
+      if (chunks.length > 0) {
+        chunkIdx = Math.floor((parseInt(progressRange.value, 10) / 100) * chunks.length);
+        if (isPlaying && !isPaused) {
+          synth.cancel();
+          playNextChunk();
+        }
+      }
+    });
+  }
+
+  const readerTabs = document.querySelectorAll('.reader-tab-btn');
+  function setActiveReaderTab(activeTab) {
+    readerTabs.forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    if (activeTab) {
+      activeTab.classList.add('active');
+      activeTab.setAttribute('aria-selected', 'true');
+    }
+  }
+
+  const tabReadFull = document.getElementById('tab-read-full');
+  const tabReadSummary = document.getElementById('tab-read-summary');
+  const tabListenFull = document.getElementById('tab-listen-full');
+  const tabListenSummary = document.getElementById('tab-listen-summary');
+
+  if (tabReadFull) {
+    tabReadFull.addEventListener('click', () => {
+      setActiveReaderTab(tabReadFull);
+      if (bodyContent) bodyContent.style.display = 'block';
+      if (summaryPane) summaryPane.style.display = 'none';
+      if (audioPlayer) audioPlayer.style.display = 'none';
+      stopAudio();
+    });
+  }
+
+  if (tabReadSummary) {
+    tabReadSummary.addEventListener('click', () => {
+      setActiveReaderTab(tabReadSummary);
+      if (bodyContent) bodyContent.style.display = 'none';
+      if (summaryPane) summaryPane.style.display = 'block';
+      if (audioPlayer) audioPlayer.style.display = 'none';
+      stopAudio();
+    });
+  }
+
+  if (tabListenFull) {
+    tabListenFull.addEventListener('click', () => {
+      setActiveReaderTab(tabListenFull);
+      if (bodyContent) bodyContent.style.display = 'block';
+      if (summaryPane) summaryPane.style.display = 'none';
+      if (audioPlayer) audioPlayer.style.display = 'block';
+      startAudio('full');
+    });
+  }
+
+  if (tabListenSummary) {
+    tabListenSummary.addEventListener('click', () => {
+      setActiveReaderTab(tabListenSummary);
+      if (bodyContent) bodyContent.style.display = 'none';
+      if (summaryPane) summaryPane.style.display = 'block';
+      if (audioPlayer) audioPlayer.style.display = 'block';
+      startAudio('summary');
+    });
+  }
+
+  window.addEventListener('beforeunload', () => {
+    if (synth) synth.cancel();
+  });
+});
+</script>

@@ -24,13 +24,25 @@
 
 <!-- Category Filter Bar -->
 <?php if (!empty($categories)): ?>
-  <div class="category-filter-bar">
-    <a href="/" class="filter-pill <?= empty($activeCategorySlug) ? 'active' : '' ?>">All</a>
-    <?php foreach ($categories as $cat): ?>
-      <a href="/?category=<?= urlencode($cat['slug']) ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
-        <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
+  <div class="category-carousel-wrapper" role="region" aria-label="Category Filters">
+    <button type="button" class="category-scroll-btn category-scroll-prev" aria-label="Scroll categories left" style="display: none;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+    </button>
+    <div class="category-filter-bar">
+      <a href="/" class="filter-pill <?= empty($activeCategorySlug) ? 'active' : '' ?>">
+        <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon(null, 15) ?>
+        <span>All</span>
       </a>
-    <?php endforeach; ?>
+      <?php foreach ($categories as $cat): ?>
+        <a href="/?category=<?= urlencode($cat['slug']) ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
+          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($cat['slug'], 15) ?>
+          <span><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></span>
+        </a>
+      <?php endforeach; ?>
+    </div>
+    <button type="button" class="category-scroll-btn category-scroll-next" aria-label="Scroll categories right">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </button>
   </div>
 <?php endif; ?>
 
@@ -83,7 +95,10 @@
             <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
-                <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="badge badge-category">
+                  <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
+                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                </span>
               <?php else: ?>
                 <span class="badge badge-published">Published</span>
               <?php endif; ?>
@@ -94,10 +109,15 @@
           </div>
 
           <div class="article-card-body">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <time class="article-date-meta">
-                <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
-              </time>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <time class="article-date-meta">
+                  <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
+                </time>
+                <span style="font-size: 0.78rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px;" title="Estimated reading time">
+                  ⏱️ <?= $post['reading_time'] ?? max(1, (int) ceil(str_word_count(strip_tags($post['content'] ?? '')) / 200)) ?> min
+                </span>
+              </div>
               <?php if (!empty($post['reader_score']['count']) && $post['reader_score']['count'] > 0): ?>
                 <span class="badge badge-score" title="Reader Score: <?= number_format($post['reader_score']['average'], 1) ?> out of 5 based on <?= (int) $post['reader_score']['count'] ?> scores">
                   ★ <?= number_format($post['reader_score']['average'], 1) ?> (<?= (int) $post['reader_score']['count'] ?>)

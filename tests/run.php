@@ -558,7 +558,7 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, ' .
         'remixed_from_post_id INTEGER NULL REFERENCES posts(id) ON DELETE SET NULL, ' .
         'title TEXT NOT NULL, content TEXT NOT NULL, ' .
-        'cover_image_path TEXT NULL, video_path TEXT NULL, ' .
+        'cover_image_path TEXT NULL, video_path TEXT NULL, audio_path TEXT NULL, audio_status TEXT NOT NULL DEFAULT \'idle\', audio_duration INTEGER NULL, audio_generated_at TEXT NULL, ' .
         'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
         'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
         'published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
@@ -3003,6 +3003,11 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             '202610130007_expand_categories',
             '202610130008_add_remix_to_posts',
             '202610130009_create_post_scores',
+            '202610130010_add_user_profile_fields',
+            '202610130011_add_storage_paths',
+            '202610130012_create_user_follows',
+            '202610130013_create_direct_messages',
+            '202610130014_add_audio_to_posts',
         ];
         if (!$freshSchema) {
             $expect(

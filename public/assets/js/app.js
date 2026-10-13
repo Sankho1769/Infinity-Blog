@@ -277,11 +277,222 @@
       });
     }
 
+    // Horizontal Category Carousel Scroll Navigation
+    function initCategoryCarousels() {
+      document.querySelectorAll('.category-carousel-wrapper').forEach(wrapper => {
+        const track = wrapper.querySelector('.category-filter-bar');
+        const prevBtn = wrapper.querySelector('.category-scroll-prev');
+        const nextBtn = wrapper.querySelector('.category-scroll-next');
+        if (!track) return;
+
+        function updateButtons() {
+          const maxScroll = track.scrollWidth - track.clientWidth;
+          if (prevBtn) {
+            if (track.scrollLeft > 6) {
+              prevBtn.style.display = 'flex';
+              prevBtn.classList.remove('hidden');
+              prevBtn.disabled = false;
+            } else {
+              prevBtn.style.display = 'none';
+              prevBtn.classList.add('hidden');
+              prevBtn.disabled = true;
+            }
+          }
+          if (nextBtn) {
+            if (maxScroll > 6 && track.scrollLeft < maxScroll - 6) {
+              nextBtn.style.display = 'flex';
+              nextBtn.classList.remove('hidden');
+              nextBtn.disabled = false;
+            } else {
+              nextBtn.style.display = 'none';
+              nextBtn.classList.add('hidden');
+              nextBtn.disabled = true;
+            }
+          }
+        }
+
+        if (prevBtn) {
+          prevBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            track.scrollBy({ left: -260, behavior: 'smooth' });
+          });
+        }
+
+        if (nextBtn) {
+          nextBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            track.scrollBy({ left: 260, behavior: 'smooth' });
+          });
+        }
+
+        track.addEventListener('scroll', updateButtons, { passive: true });
+        window.addEventListener('resize', updateButtons, { passive: true });
+
+        const activeItem = track.querySelector('.filter-pill.active');
+        if (activeItem) {
+          try {
+            activeItem.scrollIntoView({ inline: 'center', block: 'nearest' });
+          } catch (e) {}
+        }
+
+        updateButtons();
+      });
+    }
+    initCategoryCarousels();
+
+    // Social Follow / Unfollow AJAX Handler
+    document.querySelectorAll('.btn-follow-toggle').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const authorId = btn.getAttribute('data-author-id');
+        if (!authorId) return;
+
+        const isLoggedIn = !!document.querySelector('.user-profile-link');
+        if (!isLoggedIn) {
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+          return;
+        }
+
+        const isFollowing = btn.classList.contains('following') || btn.getAttribute('data-following') === '1';
+        const actionUrl = isFollowing ? `/api/authors/${authorId}/unfollow` : `/api/authors/${authorId}/follow`;
+
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        btn.textContent = isFollowing ? 'Unfollowing...' : 'Following...';
+
+        try {
+          const csrf = await ensureCsrfToken();
+          const res = await fetch(actionUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-Token': csrf
+            }
+          });
+          const data = await res.json();
+          if (res.ok) {
+            const nextFollowing = data.data?.is_following ?? !isFollowing;
+            const newCount = data.data?.follower_count;
+            if (nextFollowing) {
+              btn.classList.add('following');
+              btn.setAttribute('data-following', '1');
+              btn.innerHTML = '<span>✓</span> Following';
+            } else {
+              btn.classList.remove('following');
+              btn.setAttribute('data-following', '0');
+              btn.innerHTML = '<span>+</span> Follow';
+            }
+
+            document.querySelectorAll(`.author-follower-count[data-author-id="${authorId}"], #author-follower-count`).forEach(el => {
+              if (newCount !== undefined) {
+                el.textContent = newCount;
+              } else {
+                let cur = parseInt(el.textContent, 10) || 0;
+                el.textContent = nextFollowing ? cur + 1 : Math.max(0, cur - 1);
+              }
+            });
+          } else {
+            showAlert(data.error?.message || 'Could not update follow status.', 'error');
+            btn.innerHTML = originalText;
+          }
+        } catch (err) {
+          showAlert('Network error while updating follow status.', 'error');
+          btn.innerHTML = originalText;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
+    // Unread Direct Message Badge Poller
+    async function updateUnreadCount() {
+      const navBadge = document.getElementById('nav-unread-badge');
+      const mobBadge = document.getElementById('mobile-unread-badge');
+      if (!navBadge && !mobBadge) return;
+
+      try {
+        const res = await fetch('/api/messages/unread-count', {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const count = data.data?.unread_count || 0;
+          [navBadge, mobBadge].forEach(badge => {
+            if (badge) {
+              if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.style.display = 'inline-block';
+              } else {
+                badge.style.display = 'none';
+              }
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    if (document.querySelector('.user-profile-link')) {
+      updateUnreadCount();
+      setInterval(updateUnreadCount, 15000);
+    }
+
+    // Share Modal & Copy Link
+    window.openShareModal = function (url, title) {
+      const modal = document.getElementById('share-article-modal');
+      const input = document.getElementById('share-modal-url-input');
+      if (input && url) input.value = url;
+      if (modal) modal.classList.add('open');
+    };
+
+    window.closeShareModal = function () {
+      const modal = document.getElementById('share-article-modal');
+      if (modal) modal.classList.remove('open');
+      const tooltip = document.getElementById('share-copy-tooltip');
+      if (tooltip) tooltip.style.display = 'none';
+    };
+
+    window.copyShareLink = async function () {
+      const input = document.getElementById('share-modal-url-input');
+      const tooltip = document.getElementById('share-copy-tooltip');
+      if (!input) return;
+      try {
+        await navigator.clipboard.writeText(input.value);
+        if (tooltip) {
+          tooltip.style.display = 'inline';
+          setTimeout(() => { tooltip.style.display = 'none'; }, 2500);
+        }
+      } catch (e) {
+        input.select();
+        document.execCommand('copy');
+        if (tooltip) {
+          tooltip.style.display = 'inline';
+          setTimeout(() => { tooltip.style.display = 'none'; }, 2500);
+        }
+      }
+    };
+
+    window.triggerNativeShare = async function (url, title, text) {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: title || document.title, text: text || '', url: url || window.location.href });
+          return;
+        } catch (e) {
+          if (e.name !== 'AbortError') openShareModal(url, title);
+        }
+      } else {
+        openShareModal(url, title);
+      }
+    };
+
     // Escape key closes modals, dropdowns, and mobile drawer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (typeof window.closeDeleteModal === 'function') {
           window.closeDeleteModal();
+        }
+        if (typeof window.closeShareModal === 'function') {
+          window.closeShareModal();
         }
         closeAdminDropdown();
         closeMobileDrawer();

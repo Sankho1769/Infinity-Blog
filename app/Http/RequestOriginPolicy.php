@@ -31,7 +31,20 @@ final class RequestOriginPolicy
 
         $origin = self::normalizeOrigin($providedOrigin, false);
         $expectedOrigin = self::normalizeOrigin($applicationBaseUrl, true);
-        return $origin !== null && $expectedOrigin !== null && hash_equals($expectedOrigin, $origin);
+        if ($origin !== null && $expectedOrigin !== null && hash_equals($expectedOrigin, $origin)) {
+            return true;
+        }
+
+        $host = $request->header('Host');
+        if ($host !== null && $origin !== null && preg_match('/^[a-z0-9.:\-_]+$/i', $host) === 1) {
+            $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $hostOrigin = self::normalizeOrigin($scheme . '://' . $host, false);
+            if ($hostOrigin !== null && hash_equals($hostOrigin, $origin)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function normalizeOrigin(string $url, bool $allowPath): ?string

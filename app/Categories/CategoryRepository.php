@@ -34,6 +34,23 @@ final class CategoryRepository
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    /** @return array{id: int, name: string, slug: string, description: ?string}|null */
+    public function findBySlug(string $slug): ?array
+    {
+        $statement = $this->pdo->prepare(
+            'SELECT id, name, slug, description FROM categories WHERE slug = :slug AND is_active = 1 LIMIT 1'
+        );
+        $statement->execute(['slug' => $slug]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+
+        return is_array($row) ? [
+            'id' => (int) $row['id'],
+            'name' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'description' => $row['description'] === null ? null : (string) $row['description'],
+        ] : null;
+    }
+
     /** @return list<array{id: int, name: string, slug: string, description: ?string, post_count: int}> */
     public function listActiveWithCounts(): array
     {

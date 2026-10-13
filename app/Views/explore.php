@@ -1,15 +1,24 @@
-<!-- Explore Page: Discover & Browse Articles -->
+<!-- Screen: Explore & Advanced Discovery -->
 <div class="content-header content-page-hero">
   <span class="hero-badge" style="display: inline-flex; margin-bottom: 12px;">Discover & Learn</span>
   <h1 style="font-size: 2.3rem; font-weight: 800; color: var(--text-dark); letter-spacing: -0.02em;">Explore Articles</h1>
   <p style="font-size: 1.05rem; color: var(--text-muted); max-width: 620px; margin: 10px auto 0;">
-    Search topics, filter by category, and discover thoughtful perspectives from authors across Infinity Blog.
+    Search topics, filter by category, author, date, and reading time to discover thoughtful perspectives across Infinity Blog.
   </p>
 
-  <!-- Centered Explore Search Bar -->
+  <!-- Centered Explore Quick Search Bar -->
   <form action="/explore" method="GET" class="hero-search-bar" role="search" style="max-width: 580px; margin: 24px auto 0;">
     <?php if (!empty($activeCategorySlug)): ?>
       <input type="hidden" name="category" value="<?= htmlspecialchars($activeCategorySlug, ENT_QUOTES, 'UTF-8') ?>">
+    <?php endif; ?>
+    <?php if (!empty($activeAuthorId)): ?>
+      <input type="hidden" name="author" value="<?= (int) $activeAuthorId ?>">
+    <?php endif; ?>
+    <?php if (!empty($activeReadingTime)): ?>
+      <input type="hidden" name="reading_time" value="<?= htmlspecialchars($activeReadingTime, ENT_QUOTES, 'UTF-8') ?>">
+    <?php endif; ?>
+    <?php if (!empty($activeSort) && $activeSort !== 'newest'): ?>
+      <input type="hidden" name="sort" value="<?= htmlspecialchars($activeSort, ENT_QUOTES, 'UTF-8') ?>">
     <?php endif; ?>
     <input type="search" name="search" class="hero-search-input" placeholder="Search by keyword, topic, or title..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
     <button type="submit" class="btn btn-primary btn-pill btn-sm">
@@ -22,18 +31,214 @@
   </form>
 </div>
 
-<!-- Category Pills Filter Bar -->
+<!-- Category Carousel Filter Bar -->
 <?php if (!empty($categories)): ?>
-  <div class="category-filter-bar" style="margin-bottom: 32px;">
-    <a href="/explore<?= !empty($searchQuery) ? '?search=' . urlencode($searchQuery) : '' ?>" class="filter-pill <?= empty($activeCategorySlug) ? 'active' : '' ?>">All Categories</a>
-    <?php foreach ($categories as $cat): ?>
-      <a href="/explore?category=<?= urlencode($cat['slug']) ?><?= !empty($searchQuery) ? '&search=' . urlencode($searchQuery) : '' ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
-        <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
-        <?php if (!empty($cat['post_count'])): ?>
-          <span style="font-size: 0.75rem; opacity: 0.75; margin-left: 2px;">(<?= (int) $cat['post_count'] ?>)</span>
-        <?php endif; ?>
+  <?php
+    $baseCategoryQuery = $currentQueryParams ?? [];
+    unset($baseCategoryQuery['category'], $baseCategoryQuery['page']);
+  ?>
+  <div class="category-carousel-wrapper" role="region" aria-label="Category Filters" style="margin-bottom: 24px;">
+    <button type="button" class="category-scroll-btn category-scroll-prev" aria-label="Scroll categories left" style="display: none;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+    </button>
+    <div class="category-filter-bar">
+      <a href="/explore<?= !empty($baseCategoryQuery) ? '?' . http_build_query($baseCategoryQuery) : '' ?>" class="filter-pill <?= empty($activeCategorySlug) ? 'active' : '' ?>">
+        <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon(null, 15) ?>
+        <span>All Categories</span>
+      </a>
+      <?php foreach ($categories as $cat): ?>
+        <?php
+          $catQuery = array_merge($baseCategoryQuery, ['category' => $cat['slug']]);
+        ?>
+        <a href="/explore?<?= http_build_query($catQuery) ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
+          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($cat['slug'], 15) ?>
+          <span><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></span>
+          <?php if (!empty($cat['post_count'])): ?>
+            <span style="font-size: 0.75rem; opacity: 0.75; margin-left: 2px;">(<?= (int) $cat['post_count'] ?>)</span>
+          <?php endif; ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+    <button type="button" class="category-scroll-btn category-scroll-next" aria-label="Scroll categories right">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </button>
+  </div>
+<?php endif; ?>
+
+<!-- Mobile Filter Button Trigger -->
+<div style="margin-bottom: 16px; display: flex; justify-content: flex-end;">
+  <button type="button" class="mobile-filter-drawer-toggle btn btn-secondary btn-pill btn-sm" id="openMobileFiltersBtn" aria-label="Open filter options">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+    Filter & Sort
+    <?php if (!empty($activeFilterChips)): ?>
+      <span style="background: var(--primary-color); color: #fff; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.72rem; margin-left: 4px;"><?= count($activeFilterChips) ?></span>
+    <?php endif; ?>
+  </button>
+</div>
+
+<!-- Desktop Filter Toolbar -->
+<form action="/explore" method="GET" class="explore-filter-toolbar" id="desktopFilterForm">
+  <?php if (!empty($searchQuery)): ?>
+    <input type="hidden" name="search" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
+  <div class="filter-toolbar-grid">
+    <!-- Category Select -->
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-category">Category</label>
+      <select name="category" id="filter-category" class="filter-select">
+        <option value="">All Categories</option>
+        <?php foreach ($categories as $cat): ?>
+          <option value="<?= htmlspecialchars($cat['slug'], ENT_QUOTES, 'UTF-8') ?>" <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <!-- Author Select -->
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-author">Author</label>
+      <select name="author" id="filter-author" class="filter-select">
+        <option value="">All Authors</option>
+        <?php foreach ($authors as $auth): ?>
+          <option value="<?= (int) $auth['id'] ?>" <?= ((int) ($activeAuthorId ?? 0)) === (int) $auth['id'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($auth['display_name'] ?? $auth['username'], ENT_QUOTES, 'UTF-8') ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <!-- Reading Time Select -->
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-reading-time">Reading Time</label>
+      <select name="reading_time" id="filter-reading-time" class="filter-select">
+        <option value="">Any Length</option>
+        <option value="quick" <?= ($activeReadingTime ?? '') === 'quick' ? 'selected' : '' ?>>Quick (&lt; 4 min)</option>
+        <option value="medium" <?= ($activeReadingTime ?? '') === 'medium' ? 'selected' : '' ?>>Medium (4–8 min)</option>
+        <option value="deep" <?= ($activeReadingTime ?? '') === 'deep' ? 'selected' : '' ?>>Deep Read (&gt; 8 min)</option>
+      </select>
+    </div>
+
+    <!-- Date From & To -->
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-date-from">From Date</label>
+      <input type="date" name="date_from" id="filter-date-from" class="filter-input" value="<?= htmlspecialchars($activeDateFrom ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-date-to">To Date</label>
+      <input type="date" name="date_to" id="filter-date-to" class="filter-input" value="<?= htmlspecialchars($activeDateTo ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    </div>
+
+    <!-- Sort Dropdown -->
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="filter-sort">Sort By</label>
+      <select name="sort" id="filter-sort" class="filter-select">
+        <option value="newest" <?= ($activeSort ?? 'newest') === 'newest' ? 'selected' : '' ?>>Newest First</option>
+        <option value="oldest" <?= ($activeSort ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest First</option>
+        <option value="popular" <?= ($activeSort ?? '') === 'popular' ? 'selected' : '' ?>>Most Popular</option>
+        <option value="highest_rated" <?= ($activeSort ?? '') === 'highest_rated' ? 'selected' : '' ?>>Highest Rated</option>
+        <option value="relevance" <?= ($activeSort ?? '') === 'relevance' ? 'selected' : '' ?>>Most Relevant</option>
+      </select>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="filter-actions-group" style="padding-bottom: 2px;">
+      <button type="submit" class="btn btn-primary btn-sm btn-pill" style="height: 38px;">Apply Filters</button>
+      <a href="/explore" class="btn btn-secondary btn-sm btn-pill" style="height: 38px; display: inline-flex; align-items: center;">Reset</a>
+    </div>
+  </div>
+</form>
+
+<!-- Mobile Filter Drawer Backdrop & Drawer -->
+<div class="mobile-filter-backdrop" id="mobileFilterBackdrop"></div>
+<div class="mobile-filter-drawer" id="mobileFilterDrawer">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--glass-border);">
+    <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: var(--text-dark);">Filter Articles</h3>
+    <button type="button" id="closeMobileFiltersBtn" class="alert-close-btn" aria-label="Close filters" style="font-size: 1.4rem;">×</button>
+  </div>
+
+  <form action="/explore" method="GET" style="display: flex; flex-direction: column; gap: 16px;">
+    <?php if (!empty($searchQuery)): ?>
+      <div class="filter-field-group">
+        <label class="filter-field-label" for="m-filter-search">Search Keyword</label>
+        <input type="search" name="search" id="m-filter-search" class="filter-input" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>">
+      </div>
+    <?php endif; ?>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-category">Category</label>
+      <select name="category" id="m-filter-category" class="filter-select">
+        <option value="">All Categories</option>
+        <?php foreach ($categories as $cat): ?>
+          <option value="<?= htmlspecialchars($cat['slug'], ENT_QUOTES, 'UTF-8') ?>" <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-author">Author</label>
+      <select name="author" id="m-filter-author" class="filter-select">
+        <option value="">All Authors</option>
+        <?php foreach ($authors as $auth): ?>
+          <option value="<?= (int) $auth['id'] ?>" <?= ((int) ($activeAuthorId ?? 0)) === (int) $auth['id'] ? 'selected' : '' ?>>
+            <?= htmlspecialchars($auth['display_name'] ?? $auth['username'], ENT_QUOTES, 'UTF-8') ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-reading-time">Reading Time</label>
+      <select name="reading_time" id="m-filter-reading-time" class="filter-select">
+        <option value="">Any Length</option>
+        <option value="quick" <?= ($activeReadingTime ?? '') === 'quick' ? 'selected' : '' ?>>Quick (&lt; 4 min)</option>
+        <option value="medium" <?= ($activeReadingTime ?? '') === 'medium' ? 'selected' : '' ?>>Medium (4–8 min)</option>
+        <option value="deep" <?= ($activeReadingTime ?? '') === 'deep' ? 'selected' : '' ?>>Deep Read (&gt; 8 min)</option>
+      </select>
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-date-from">From Date</label>
+      <input type="date" name="date_from" id="m-filter-date-from" class="filter-input" value="<?= htmlspecialchars($activeDateFrom ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-date-to">To Date</label>
+      <input type="date" name="date_to" id="m-filter-date-to" class="filter-input" value="<?= htmlspecialchars($activeDateTo ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    </div>
+
+    <div class="filter-field-group">
+      <label class="filter-field-label" for="m-filter-sort">Sort By</label>
+      <select name="sort" id="m-filter-sort" class="filter-select">
+        <option value="newest" <?= ($activeSort ?? 'newest') === 'newest' ? 'selected' : '' ?>>Newest First</option>
+        <option value="oldest" <?= ($activeSort ?? '') === 'oldest' ? 'selected' : '' ?>>Oldest First</option>
+        <option value="popular" <?= ($activeSort ?? '') === 'popular' ? 'selected' : '' ?>>Most Popular</option>
+        <option value="highest_rated" <?= ($activeSort ?? '') === 'highest_rated' ? 'selected' : '' ?>>Highest Rated</option>
+        <option value="relevance" <?= ($activeSort ?? '') === 'relevance' ? 'selected' : '' ?>>Most Relevant</option>
+      </select>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 12px;">
+      <button type="submit" class="btn btn-primary btn-pill btn-full">Apply Filters</button>
+      <a href="/explore" class="btn btn-secondary btn-pill" style="text-align: center;">Reset</a>
+    </div>
+  </form>
+</div>
+
+<!-- Active Filter Chips Row -->
+<?php if (!empty($activeFilterChips)): ?>
+  <div class="filter-chips-row" role="region" aria-label="Active filters">
+    <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); margin-right: 4px;">Active Filters:</span>
+    <?php foreach ($activeFilterChips as $chip): ?>
+      <a href="<?= htmlspecialchars($chip['remove_url'], ENT_QUOTES, 'UTF-8') ?>" class="filter-chip" title="Click to remove this filter">
+        <span><?= htmlspecialchars($chip['label'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="filter-chip-remove" aria-hidden="true">×</span>
       </a>
     <?php endforeach; ?>
+    <a href="/explore" class="filter-chips-clear-all">Clear all filters</a>
   </div>
 <?php endif; ?>
 
@@ -45,17 +250,20 @@
         <?php if (!empty($searchQuery)): ?>
           Search Results for "<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>"
         <?php elseif (!empty($activeCategoryName)): ?>
-          <?= htmlspecialchars($activeCategoryName, ENT_QUOTES, 'UTF-8') ?>
+          <?= htmlspecialchars($activeCategoryName, ENT_QUOTES, 'UTF-8') ?> Articles
         <?php else: ?>
           All Published Articles
         <?php endif; ?>
       </h2>
       <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 4px;">
         Showing <?= count($posts) ?> of <?= (int) ($totalPosts ?? count($posts)) ?> published <?= ((int) ($totalPosts ?? count($posts)) === 1) ? 'article' : 'articles' ?>
+        <?php if (($totalPages ?? 1) > 1): ?>
+          (Page <?= (int) ($page ?? 1) ?> of <?= (int) $totalPages ?>)
+        <?php endif; ?>
       </p>
     </div>
 
-    <?php if (!empty($searchQuery) || !empty($activeCategorySlug)): ?>
+    <?php if (!empty($activeFilterChips)): ?>
       <a href="/explore" class="section-link">Clear filters ×</a>
     <?php endif; ?>
   </div>
@@ -70,10 +278,10 @@
       </svg>
       <h3 class="empty-title" style="font-size: 1.35rem; font-weight: 700; color: var(--text-dark); margin-bottom: 8px;">No matching articles found</h3>
       <p class="empty-desc" style="color: var(--text-muted); max-width: 480px; margin: 0 auto 20px;">
-        We couldn't find any published articles matching your search or category filter. Try refining your keywords or browse all categories.
+        We couldn't find any published articles matching your selected criteria. Try adjusting your keyword, categories, or date range.
       </p>
       <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-        <a href="/explore" class="btn btn-secondary btn-pill">Browse All Articles</a>
+        <a href="/explore" class="btn btn-secondary btn-pill">Reset All Filters</a>
         <?php if (!empty($currentUser)): ?>
           <a href="/posts/new" class="btn btn-primary btn-pill">Write New Post</a>
         <?php else: ?>
@@ -92,7 +300,10 @@
             <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
-                <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="badge badge-category">
+                  <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
+                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                </span>
               <?php else: ?>
                 <span class="badge badge-published">Published</span>
               <?php endif; ?>
@@ -103,10 +314,15 @@
           </div>
 
           <div class="article-card-body">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <time class="article-date-meta">
-                <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
-              </time>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <time class="article-date-meta">
+                  <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
+                </time>
+                <span style="font-size: 0.78rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 3px;" title="Estimated reading time">
+                  ⏱️ <?= $post['reading_time'] ?? max(1, (int) ceil(str_word_count(strip_tags($post['content'] ?? '')) / 200)) ?> min
+                </span>
+              </div>
               <?php if (!empty($post['reader_score']['count']) && $post['reader_score']['count'] > 0): ?>
                 <span class="badge badge-score" title="Reader Score: <?= number_format($post['reader_score']['average'], 1) ?> out of 5 based on <?= (int) $post['reader_score']['count'] ?> scores">
                   ★ <?= number_format($post['reader_score']['average'], 1) ?> (<?= (int) $post['reader_score']['count'] ?>)
@@ -150,5 +366,68 @@
         </article>
       <?php endforeach; ?>
     </div>
+
+    <!-- Pagination Controls (Preserves All Query Filters) -->
+    <?php if (($totalPages ?? 1) > 1): ?>
+      <?php
+        $queryParams = $currentQueryParams ?? [];
+        $currentPage = (int) ($page ?? 1);
+      ?>
+      <nav class="pagination-wrapper" aria-label="Explore pagination">
+        <?php if ($currentPage > 1): ?>
+          <?php $prevQuery = array_merge($queryParams, ['page' => $currentPage - 1]); ?>
+          <a href="/explore?<?= http_build_query($prevQuery) ?>" class="pagination-btn" aria-label="Previous page">« Prev</a>
+        <?php else: ?>
+          <span class="pagination-btn disabled" aria-disabled="true">« Prev</span>
+        <?php endif; ?>
+
+        <?php for ($p = 1; $p <= $totalPages; $p++): ?>
+          <?php if ($p === $currentPage): ?>
+            <span class="pagination-btn active" aria-current="page"><?= $p ?></span>
+          <?php elseif ($p <= 3 || $p >= $totalPages - 2 || abs($p - $currentPage) <= 1): ?>
+            <?php $pageQuery = array_merge($queryParams, ['page' => $p]); ?>
+            <a href="/explore?<?= http_build_query($pageQuery) ?>" class="pagination-btn"><?= $p ?></a>
+          <?php elseif ($p === 4 && $currentPage > 4): ?>
+            <span class="pagination-btn disabled">...</span>
+          <?php elseif ($p === $totalPages - 3 && $currentPage < $totalPages - 3): ?>
+            <span class="pagination-btn disabled">...</span>
+          <?php endif; ?>
+        <?php endfor; ?>
+
+        <?php if ($currentPage < $totalPages): ?>
+          <?php $nextQuery = array_merge($queryParams, ['page' => $currentPage + 1]); ?>
+          <a href="/explore?<?= http_build_query($nextQuery) ?>" class="pagination-btn" aria-label="Next page">Next »</a>
+        <?php else: ?>
+          <span class="pagination-btn disabled" aria-disabled="true">Next »</span>
+        <?php endif; ?>
+      </nav>
+    <?php endif; ?>
   <?php endif; ?>
 </section>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const openBtn = document.getElementById('openMobileFiltersBtn');
+  const closeBtn = document.getElementById('closeMobileFiltersBtn');
+  const drawer = document.getElementById('mobileFilterDrawer');
+  const backdrop = document.getElementById('mobileFilterBackdrop');
+
+  function openFilters() {
+    if (drawer) drawer.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  function closeFilters() {
+    if (drawer) drawer.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  if (openBtn) openBtn.addEventListener('click', openFilters);
+  if (closeBtn) closeBtn.addEventListener('click', closeFilters);
+  if (backdrop) backdrop.addEventListener('click', closeFilters);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeFilters();
+  });
+});
+</script>

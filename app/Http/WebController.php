@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace InfinityBlog\Http;
 
+use InfinityBlog\Audio\TtsService;
 use InfinityBlog\Audit\AuditLogRepository;
 use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\ProfileValidationException;
@@ -10,10 +11,14 @@ use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
+use InfinityBlog\Export\EpubExporter;
+use InfinityBlog\Export\PdfExporter;
 use InfinityBlog\Posts\ArticleContentRenderer;
 use InfinityBlog\Posts\ArticleImageHelper;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Scores\ScoreRepository;
+use InfinityBlog\Social\FollowRepository;
+use InfinityBlog\Social\MessageRepository;
 use InfinityBlog\Storage\MediaService;
 use InfinityBlog\Storage\StorageException;
 use InfinityBlog\Storage\SupabaseStorageClient;
@@ -33,6 +38,9 @@ final class WebController
     private AppConfig $config;
     private ?ScoreRepository $scores;
     private ?MediaService $media;
+    private ?FollowRepository $follows;
+    private ?MessageRepository $messages;
+    private ?TtsService $tts;
 
     public function __construct(
         PostRepository $posts,
@@ -44,7 +52,10 @@ final class WebController
         SessionManager $sessions,
         AppConfig $config,
         ?ScoreRepository $scores = null,
-        ?MediaService $media = null
+        ?MediaService $media = null,
+        ?FollowRepository $follows = null,
+        ?MessageRepository $messages = null,
+        ?TtsService $tts = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -67,6 +78,9 @@ final class WebController
             }
         }
         $this->media = $media;
+        $this->follows = $follows;
+        $this->messages = $messages;
+        $this->tts = $tts;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -163,10 +177,23 @@ final class WebController
         $articleThumbnail = ArticleImageHelper::resolveThumbnail($post);
         $canonicalPath = '/article/' . $id;
 
+        $canonicalUrl = $this->config->baseUrl . $canonicalPath;
+        $speechData = $this->tts !== null ? $this->tts->getArticleSpeechData($post) : [
+            'has_server_audio' => false,
+            'audio_url' => null,
+            'audio_status' => 'unconfigured',
+            'full_text' => \InfinityBlog\Audio\TextCleaner::cleanForSpeech($post['title'], $post['content']),
+            'summary_text' => !empty($post['summary']) ? \InfinityBlog\Audio\TextCleaner::cleanForSpeech($post['title'], (string) $post['summary']) : null,
+            'word_count' => str_word_count(strip_tags($post['content'])),
+            'duration_seconds_est' => max(10, (int) ceil((str_word_count(strip_tags($post['content'])) / 140) * 60)),
+        ];
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'metaDescription' => $metaDescription,
             'canonicalPath' => $canonicalPath,
+            'canonicalUrl' => $canonicalUrl,
+            'articleUrl' => $canonicalUrl,
             'ogImage' => $articleThumbnail,
             'ogType' => 'article',
             'activeNav' => 'home',
@@ -176,6 +203,8 @@ final class WebController
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
             'scoreSummary' => $scoreSummary,
             'userScore' => $userScore,
+            'speechData' => $speechData,
+            'readingTime' => $post['reading_time'] ?? max(1, (int) ceil(str_word_count(strip_tags($post['content'])) / 200)),
             'currentUser' => $account !== null ? [
                 'id' => $account->id,
                 'username' => $account->username,
@@ -183,6 +212,154 @@ final class WebController
                 'role' => $account->role,
             ] : null,
         ]);
+    }
+
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
+    public function downloadPdf(Request $request, int $id): array
+    {
+        $post = $this->posts->findPublished($id);
+        if ($post === null) {
+            return $this->notFound('Article not found or not published.');
+        }
+
+        $canonicalUrl = $this->config->baseUrl . '/article/' . $id;
+        $pdfBinary = PdfExporter::generate($post, $canonicalUrl);
+        $filename = 'infinity-blog-' . $this->slugify($post['title']) . '.pdf';
+
+        return [
+            'status' => 200,
+            'type' => 'application/pdf',
+            'body' => $pdfBinary,
+            'headers' => [
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Content-Length' => (string) strlen($pdfBinary),
+                'Cache-Control' => 'no-cache, must-revalidate',
+            ],
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
+    public function downloadEpub(Request $request, int $id): array
+    {
+        $post = $this->posts->findPublished($id);
+        if ($post === null) {
+            return $this->notFound('Article not found or not published.');
+        }
+
+        $canonicalUrl = $this->config->baseUrl . '/article/' . $id;
+        try {
+            $epubBinary = EpubExporter::generate($post, $canonicalUrl);
+        } catch (Throwable $e) {
+            return $this->notFound('EPUB generation is unavailable: ' . $e->getMessage());
+        }
+        $filename = 'infinity-blog-' . $this->slugify($post['title']) . '.epub';
+
+        return [
+            'status' => 200,
+            'type' => 'application/epub+zip',
+            'body' => $epubBinary,
+            'headers' => [
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Content-Length' => (string) strlen($epubBinary),
+                'Cache-Control' => 'no-cache, must-revalidate',
+            ],
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function articleSpeechData(Request $request, int $id): array
+    {
+        $post = $this->posts->findPublished($id);
+        if ($post === null) {
+            return [
+                'status' => 404,
+                'type' => 'application/json',
+                'body' => json_encode(['error' => ['code' => 'NOT_FOUND', 'message' => 'Article not found.']]),
+            ];
+        }
+
+        $speechData = $this->tts !== null
+            ? $this->tts->getArticleSpeechData($post)
+            : [
+                'has_server_audio' => false,
+                'audio_url' => null,
+                'audio_status' => 'unconfigured',
+                'full_text' => \InfinityBlog\Audio\TextCleaner::cleanForSpeech($post['title'], $post['content']),
+                'summary_text' => !empty($post['summary']) ? \InfinityBlog\Audio\TextCleaner::cleanForSpeech($post['title'], (string) $post['summary']) : null,
+                'word_count' => str_word_count(strip_tags($post['content'])),
+                'duration_seconds_est' => max(10, (int) ceil((str_word_count(strip_tags($post['content'])) / 140) * 60)),
+            ];
+
+        return [
+            'status' => 200,
+            'type' => 'application/json',
+            'body' => json_encode(['data' => $speechData]),
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function messages(Request $request, ?int $activeUserId = null): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode($request->path));
+        }
+
+        $conversations = $this->messages !== null ? $this->messages->listConversations($account->id) : [];
+        $activeUser = null;
+        $threadMessages = [];
+
+        if ($activeUserId !== null) {
+            $userAcc = $this->users->findById($activeUserId);
+            if ($userAcc !== null) {
+                $activeUser = [
+                    'id' => $userAcc->id,
+                    'username' => $userAcc->username,
+                    'display_name' => $userAcc->displayName,
+                    'avatar_path' => $userAcc->avatarPath,
+                    'avatar_url' => $this->resolveAvatarUrl($userAcc->avatarPath),
+                ];
+                if ($this->messages !== null) {
+                    $threadMessages = $this->messages->getThread($account->id, $activeUserId, 100);
+                    $this->messages->markThreadAsRead($account->id, $activeUserId);
+                }
+            }
+        } elseif (!empty($conversations)) {
+            $firstContactId = (int) $conversations[0]['other_user']['id'];
+            $userAcc = $this->users->findById($firstContactId);
+            if ($userAcc !== null) {
+                $activeUser = [
+                    'id' => $userAcc->id,
+                    'username' => $userAcc->username,
+                    'display_name' => $userAcc->displayName,
+                    'avatar_path' => $userAcc->avatarPath,
+                    'avatar_url' => $this->resolveAvatarUrl($userAcc->avatarPath),
+                ];
+                if ($this->messages !== null) {
+                    $threadMessages = $this->messages->getThread($account->id, $firstContactId, 100);
+                    $this->messages->markThreadAsRead($account->id, $firstContactId);
+                }
+            }
+        }
+
+        $allAuthors = $this->users->listPublicAuthors();
+
+        return $this->render('messages', [
+            'pageTitle' => 'Direct Messages',
+            'metaDescription' => 'Private user-to-user messaging and conversations on Infinity Blog.',
+            'activeNav' => 'messages',
+            'conversations' => $conversations,
+            'activeUser' => $activeUser,
+            'threadMessages' => $threadMessages,
+            'allAuthors' => $allAuthors,
+        ]);
+    }
+
+    private function slugify(string $text): string
+    {
+        $text = strtolower(trim($text));
+        $text = preg_replace('/[^a-z0-9]+/i', '-', $text);
+        return trim((string) $text, '-') ?: 'article';
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -235,10 +412,18 @@ final class WebController
     /** @return array{status: int, type: string, body: string} */
     public function publicAuthors(Request $request): array
     {
-        $authors = $this->users->listPublicAuthors();
-        $authors = array_map(function (array $a): array {
+        $search = isset($_GET['search']) && is_string($_GET['search']) ? trim($_GET['search']) : '';
+        if ($search === '' && isset($_GET['q']) && is_string($_GET['q'])) {
+            $search = trim($_GET['q']);
+        }
+        $authors = $this->users->listPublicAuthors($search !== '' ? $search : null);
+        $account = $this->guard->currentAccount();
+        $authors = array_map(function (array $a) use ($account): array {
             $a['avatar_url'] = $this->resolveAvatarUrl($a['avatar_path'] ?? null);
             $a['banner_url'] = $this->resolveBannerUrl($a['banner_path'] ?? null);
+            $a['follower_count'] = $this->follows !== null ? $this->follows->getFollowerCount((int) $a['id']) : 0;
+            $a['is_following'] = ($this->follows !== null && $account !== null) ? $this->follows->isFollowing($account->id, (int) $a['id']) : false;
+            $a['is_self'] = $account !== null && $account->id === (int) $a['id'];
             return $a;
         }, $authors);
 
@@ -247,6 +432,7 @@ final class WebController
             'metaDescription' => 'Discover the talented writers, engineers, and researchers publishing stories and tutorials on Infinity Blog.',
             'activeNav' => 'authors',
             'authors' => $authors,
+            'searchQuery' => $search,
         ]);
     }
 
@@ -280,6 +466,13 @@ final class WebController
 
         $postsResult = $this->posts->listPublic(['author_id' => $id], 1, 20);
 
+        $followerCount = $this->follows !== null ? $this->follows->getFollowerCount($id) : 0;
+        $followingCount = $this->follows !== null ? $this->follows->getFollowingCount($id) : 0;
+        $account = $this->guard->currentAccount();
+        $isFollowing = ($this->follows !== null && $account !== null) ? $this->follows->isFollowing($account->id, $id) : false;
+        $followers = $this->follows !== null ? $this->follows->getFollowers($id, 20) : [];
+        $following = $this->follows !== null ? $this->follows->getFollowing($id, 20) : [];
+
         return $this->render('author_profile', [
             'pageTitle' => $author['display_name'] . ' — Author Profile',
             'metaDescription' => 'Read published articles, insights, and background by ' . $author['display_name'] . ' on Infinity Blog.',
@@ -287,6 +480,12 @@ final class WebController
             'author' => $author,
             'posts' => $postsResult['posts'],
             'totalPosts' => $postsResult['total'],
+            'followerCount' => $followerCount,
+            'followingCount' => $followingCount,
+            'isFollowing' => $isFollowing,
+            'followers' => $followers,
+            'following' => $following,
+            'isSelf' => $account !== null && $account->id === $id,
         ]);
     }
 
@@ -298,6 +497,11 @@ final class WebController
             $q = trim($_GET['q']);
         }
         $categorySlug = isset($_GET['category']) && is_string($_GET['category']) ? trim($_GET['category']) : '';
+        $authorId = isset($_GET['author']) && is_numeric($_GET['author']) ? (int) $_GET['author'] : null;
+        $dateFrom = isset($_GET['date_from']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET['date_from']) ? (string) $_GET['date_from'] : null;
+        $dateTo = isset($_GET['date_to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET['date_to']) ? (string) $_GET['date_to'] : null;
+        $readingTime = isset($_GET['reading_time']) && in_array($_GET['reading_time'], ['quick', 'medium', 'deep'], true) ? (string) $_GET['reading_time'] : null;
+        $sort = isset($_GET['sort']) && in_array($_GET['sort'], ['newest', 'oldest', 'popular', 'highest_rated', 'relevance'], true) ? (string) $_GET['sort'] : 'newest';
         $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
 
         $filters = [];
@@ -313,8 +517,111 @@ final class WebController
             }
         }
 
-        $postsResult = $this->posts->listPublic($filters, $page, 12);
+        $activeAuthor = null;
+        if ($authorId !== null) {
+            $userAcc = $this->users->findById($authorId);
+            if ($userAcc !== null) {
+                $filters['author_id'] = $authorId;
+                $activeAuthor = [
+                    'id' => $userAcc->id,
+                    'name' => $userAcc->displayName,
+                ];
+            }
+        }
+
+        if ($dateFrom !== null) {
+            $filters['date_from'] = $dateFrom;
+        }
+        if ($dateTo !== null) {
+            $filters['date_to'] = $dateTo;
+        }
+        if ($readingTime !== null) {
+            $filters['reading_time'] = $readingTime;
+        }
+        $filters['sort'] = $sort;
+
+        $perPage = 12;
+        $postsResult = $this->posts->listPublic($filters, $page, $perPage);
         $categories = $this->categories->listActiveWithCounts();
+        $authors = $this->users->listPublicAuthors();
+
+        // Build active filter chips
+        $activeFilterChips = [];
+        $currentQuery = $_GET;
+
+        if ($q !== '') {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['search'], $chipQuery['q'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'search',
+                'label' => 'Search: "' . $q . '"',
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($activeCategory !== null) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['category'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'category',
+                'label' => 'Category: ' . $activeCategory['name'],
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($activeAuthor !== null) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['author'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'author',
+                'label' => 'Author: ' . $activeAuthor['name'],
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($dateFrom !== null) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['date_from'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'date_from',
+                'label' => 'From: ' . $dateFrom,
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($dateTo !== null) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['date_to'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'date_to',
+                'label' => 'To: ' . $dateTo,
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($readingTime !== null) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['reading_time'], $chipQuery['page']);
+            $labels = ['quick' => 'Quick (< 4 min)', 'medium' => 'Medium (4-8 min)', 'deep' => 'Deep (> 8 min)'];
+            $activeFilterChips[] = [
+                'type' => 'reading_time',
+                'label' => 'Read Time: ' . ($labels[$readingTime] ?? $readingTime),
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        if ($sort !== 'newest') {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['sort'], $chipQuery['page']);
+            $sortLabels = ['oldest' => 'Oldest First', 'popular' => 'Most Popular', 'highest_rated' => 'Highest Rated', 'relevance' => 'Most Relevant'];
+            $activeFilterChips[] = [
+                'type' => 'sort',
+                'label' => 'Sort: ' . ($sortLabels[$sort] ?? $sort),
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
+        $totalPages = max(1, (int) ceil($postsResult['total'] / $perPage));
 
         return $this->render('explore', [
             'pageTitle' => 'Explore Articles',
@@ -323,10 +630,21 @@ final class WebController
             'posts' => $postsResult['posts'],
             'totalPosts' => $postsResult['total'],
             'page' => $page,
+            'perPage' => $perPage,
+            'totalPages' => $totalPages,
             'categories' => $categories,
+            'authors' => $authors,
             'activeCategorySlug' => $categorySlug,
             'activeCategoryName' => $activeCategory['name'] ?? null,
+            'activeAuthorId' => $authorId,
+            'activeAuthorName' => $activeAuthor['name'] ?? null,
+            'activeDateFrom' => $dateFrom,
+            'activeDateTo' => $dateTo,
+            'activeReadingTime' => $readingTime,
+            'activeSort' => $sort,
             'searchQuery' => $q,
+            'activeFilterChips' => $activeFilterChips,
+            'currentQueryParams' => $currentQuery,
         ]);
     }
 
