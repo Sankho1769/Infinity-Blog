@@ -215,7 +215,7 @@ try {
     }
 
     // Web Browser Views (HTML)
-    if ($request->method === 'GET') {
+    if ($request->method === 'GET' || $request->method === 'HEAD') {
         $wantsJson = str_contains((string) $request->header('Accept'), 'application/json');
 
         $webResult = match (true) {
@@ -274,7 +274,9 @@ try {
                     header($headerName . ': ' . $headerValue);
                 }
             }
-            echo $webResult['body'];
+            if ($request->method !== 'HEAD') {
+                echo $webResult['body'];
+            }
             return;
         }
     }
