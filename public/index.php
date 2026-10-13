@@ -61,7 +61,7 @@ try {
     }
 
     if (!headers_sent()) {
-        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
+        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
         header("X-Content-Type-Options: nosniff");
         header("X-Frame-Options: SAMEORIGIN");
         header("Referrer-Policy: strict-origin-when-cross-origin");
@@ -123,6 +123,13 @@ try {
         }
         if ($request->path === '/posts/upload/video') {
             $webResult = $webController->uploadVideo($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/posts/preview') {
+            $webResult = $webController->previewPost($request);
             http_response_code($webResult['status']);
             header('Content-Type: ' . $webResult['type']);
             echo $webResult['body'];

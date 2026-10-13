@@ -2835,6 +2835,67 @@ $run('supabase live storage operations against project or transparent skip', sta
     }
 });
 
+$run('Article content renderer converts markdown, embeds safe video players, sanitizes HTML, and extracts video paths', static function () use ($expect): void {
+    $signedUrls = [
+        'videos/u1_demo.mp4' => 'https://supabase.co/storage/v1/object/sign/article-videos/videos/u1_demo.mp4?token=sig123',
+    ];
+    $renderer = new \InfinityBlog\Posts\ArticleContentRenderer($signedUrls);
+
+    $markdown = <<<MD
+# Main Heading
+## Sub Heading
+
+This is a paragraph with **bold** text and *italic* text.
+
+> A thoughtful quote on computing.
+
+- Bullet item 1
+- Bullet item 2
+
+1. Numbered step 1
+2. Numbered step 2
+
+Here is a [safe link](https://example.com) and an [unsafe link](javascript:alert(1)).
+
+![Architecture Diagram](https://example.com/arch.png)
+
+```php
+echo "Hello World";
+```
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+https://vimeo.com/76979871
+
+[video](videos/u1_demo.mp4)
+
+<script>alert('xss');</script>
+MD;
+
+    $html = $renderer->render($markdown);
+
+    $expect(str_contains($html, '<h1>Main Heading</h1>'), 'H1 should be rendered');
+    $expect(str_contains($html, '<h2>Sub Heading</h2>'), 'H2 should be rendered');
+    $expect(str_contains($html, '<strong>bold</strong>'), 'Bold should be rendered');
+    $expect(str_contains($html, '<em>italic</em>'), 'Italic should be rendered');
+    $expect(str_contains($html, '<blockquote><p>A thoughtful quote on computing.</p></blockquote>'), 'Blockquote should be rendered');
+    $expect(str_contains($html, '<ul><li>Bullet item 1</li><li>Bullet item 2</li></ul>'), 'Unordered list should be rendered');
+    $expect(str_contains($html, '<ol><li>Numbered step 1</li><li>Numbered step 2</li></ol>'), 'Ordered list should be rendered');
+    $expect(str_contains($html, 'href="https://example.com"') && str_contains($html, 'rel="noopener noreferrer"'), 'Safe link should be rendered with rel=noopener');
+    $expect(!str_contains($html, 'javascript:alert'), 'JavaScript protocol in links should be blocked');
+    $expect(str_contains($html, 'class="article-inline-figure"') && str_contains($html, 'src="https://example.com/arch.png"'), 'Image should be rendered in figure');
+    $expect(str_contains($html, '<pre class="article-code-block"><code class="language-php">echo &quot;Hello World&quot;;</code></pre>'), 'Fenced code should be escaped in pre code');
+    $expect(str_contains($html, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'), 'YouTube embed should be rendered with youtube-nocookie');
+    $expect(str_contains($html, 'https://player.vimeo.com/video/76979871'), 'Vimeo embed should be rendered');
+    $expect(str_contains($html, 'class="article-inline-video"') && str_contains($html, 'controls playsinline'), 'Uploaded video player should be rendered');
+    $expect(str_contains($html, 'https://supabase.co/storage/v1/object/sign/article-videos/videos/u1_demo.mp4?token=sig123'), 'Signed video URL should be embedded in source');
+    $expect(!str_contains($html, '<script>'), 'Raw script tags must be sanitized and neutralized');
+    $expect(str_contains($html, '&lt;script&gt;'), 'Script tags should be safely escaped');
+
+    $extracted = \InfinityBlog\Posts\ArticleContentRenderer::extractVideoPaths($markdown);
+    $expect(in_array('videos/u1_demo.mp4', $extracted, true), 'extractVideoPaths must find uploaded video path in markdown');
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [

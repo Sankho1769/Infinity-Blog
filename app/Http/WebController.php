@@ -10,6 +10,8 @@ use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
+use InfinityBlog\Posts\ArticleContentRenderer;
+use InfinityBlog\Posts\ArticleImageHelper;
 use InfinityBlog\Posts\PostRepository;
 use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Storage\MediaService;
@@ -105,6 +107,7 @@ final class WebController
 
         return $this->render('home', [
             'pageTitle' => 'Ideas. Stories. Perspectives.',
+            'metaDescription' => 'Discover insightful articles on web development, artificial intelligence, software engineering, and creative perspectives on Infinity Blog.',
             'activeNav' => 'home',
             'posts' => $postResult['posts'],
             'categories' => $activeCategories,
@@ -137,10 +140,38 @@ final class WebController
             }
         }
 
+        // Batch resolve any inline uploaded videos in the content
+        $signedUrlsMap = [];
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            $contentVideoPaths = ArticleContentRenderer::extractVideoPaths($post['content']);
+            foreach ($contentVideoPaths as $vp) {
+                try {
+                    $signedUrlsMap[$vp] = $this->media->resolveSignedVideoUrl($vp, 3600);
+                } catch (Throwable) {
+                }
+            }
+        }
+
+        $renderer = new ArticleContentRenderer($signedUrlsMap);
+        $renderedBody = $renderer->render($post['content']);
+
+        $plainSnippet = trim((string) preg_replace('/\s+/', ' ', strip_tags($renderedBody)));
+        $metaDescription = !empty($post['summary'])
+            ? $post['summary']
+            : (mb_substr($plainSnippet, 0, 160) . (mb_strlen($plainSnippet) > 160 ? '...' : ''));
+
+        $articleThumbnail = ArticleImageHelper::resolveThumbnail($post);
+        $canonicalPath = '/article/' . $id;
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
+            'metaDescription' => $metaDescription,
+            'canonicalPath' => $canonicalPath,
+            'ogImage' => $articleThumbnail,
+            'ogType' => 'article',
             'activeNav' => 'home',
             'post' => $post,
+            'renderedBody' => $renderedBody,
             'videoSignedUrl' => $videoSignedUrl,
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
             'scoreSummary' => $scoreSummary,
@@ -194,7 +225,8 @@ final class WebController
         $categories = $this->categories->listActiveWithCounts();
 
         return $this->render('public_categories', [
-            'pageTitle' => 'Categories',
+            'pageTitle' => 'Article Categories',
+            'metaDescription' => 'Browse all topics and disciplines across web development, AI, software engineering, business, and creative perspectives.',
             'activeNav' => 'categories',
             'categories' => $categories,
         ]);
@@ -211,7 +243,8 @@ final class WebController
         }, $authors);
 
         return $this->render('public_authors', [
-            'pageTitle' => 'Authors',
+            'pageTitle' => 'Meet Our Authors',
+            'metaDescription' => 'Discover the talented writers, engineers, and researchers publishing stories and tutorials on Infinity Blog.',
             'activeNav' => 'authors',
             'authors' => $authors,
         ]);
@@ -249,6 +282,7 @@ final class WebController
 
         return $this->render('author_profile', [
             'pageTitle' => $author['display_name'] . ' — Author Profile',
+            'metaDescription' => 'Read published articles, insights, and background by ' . $author['display_name'] . ' on Infinity Blog.',
             'activeNav' => 'authors',
             'author' => $author,
             'posts' => $postsResult['posts'],
@@ -284,6 +318,7 @@ final class WebController
 
         return $this->render('explore', [
             'pageTitle' => 'Explore Articles',
+            'metaDescription' => 'Search, filter, and discover insightful articles across all topics on Infinity Blog.',
             'activeNav' => 'explore',
             'posts' => $postsResult['posts'],
             'totalPosts' => $postsResult['total'],
@@ -298,7 +333,12 @@ final class WebController
     /** @return array{status: int, type: string, body: string} */
     public function about(Request $request): array
     {
-        return $this->explore($request);
+        return $this->render('about', [
+            'pageTitle' => 'About Infinity Blog',
+            'metaDescription' => 'Learn about the mission, architecture, and technology behind Infinity Blog — a modern, glassmorphism CMS built with PHP, PDO and MySQL.',
+            'canonicalPath' => '/about',
+            'activeNav' => 'about',
+        ]);
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -326,7 +366,8 @@ final class WebController
         }
 
         return $this->render('dashboard', [
-            'pageTitle' => 'Dashboard',
+            'pageTitle' => 'Author Dashboard',
+            'metaDescription' => 'Track your publishing stats, recent drafts, reader engagement, and manage your articles on Infinity Blog.',
             'activeNav' => 'dashboard',
             'counts' => $counts,
             'recentPosts' => $recentPosts,
@@ -367,6 +408,7 @@ final class WebController
 
         return $this->render('post_editor', [
             'pageTitle' => $remixPost !== null ? 'Remix: ' . $remixPost['title'] : 'Create New Post',
+            'metaDescription' => 'Write, format, embed media, and publish a new article or remix on Infinity Blog.',
             'activeNav' => 'posts',
             'post' => $initialPost,
             'remixSource' => $remixPost,
@@ -393,7 +435,8 @@ final class WebController
         $activeCategories = $this->categories->listActive();
 
         return $this->render('post_editor', [
-            'pageTitle' => 'Edit: ' . $post['title'],
+            'pageTitle' => 'Edit Post: ' . $post['title'],
+            'metaDescription' => 'Update article content, category, cover artwork, and publication status.',
             'activeNav' => 'posts',
             'post' => $post,
             'categories' => $activeCategories,
@@ -434,7 +477,8 @@ final class WebController
         }
 
         return $this->render('manage_posts', [
-            'pageTitle' => 'All Posts',
+            'pageTitle' => 'Manage Articles',
+            'metaDescription' => 'Review, filter, publish, and manage all your written articles on Infinity Blog.',
             'activeNav' => 'posts',
             'posts' => $result['posts'],
             'counts' => $result['dashboard_counts'],
@@ -457,7 +501,8 @@ final class WebController
 
         return $this->render('admin_categories', [
             'pageTitle' => 'Manage Categories',
-            'activeNav' => 'categories',
+            'metaDescription' => 'Administer article categories, update slugs, and toggle category visibility.',
+            'activeNav' => 'admin_categories',
             'categories' => $allCategories,
         ]);
     }
@@ -474,6 +519,7 @@ final class WebController
 
         return $this->render('admin_users', [
             'pageTitle' => 'Author Accounts',
+            'metaDescription' => 'Manage author accounts, permissions, and administrative access on Infinity Blog.',
             'activeNav' => 'users',
             'users' => $usersList['users'],
             'totalUsers' => $usersList['total'],
@@ -492,6 +538,7 @@ final class WebController
 
         return $this->render('admin_audit', [
             'pageTitle' => 'Audit Logs',
+            'metaDescription' => 'Review system administrative events, security changes, and content moderation records.',
             'activeNav' => 'audit',
             'logs' => $logsList['events'],
         ]);
@@ -1052,10 +1099,44 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function previewPost(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Sign in to preview articles.']]);
+        }
+
+        $csrf = $request->header('X-CSRF-Token') ?? ($_POST['csrf_token'] ?? null);
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        $body = $request->json();
+        $content = isset($body['content']) && is_string($body['content']) ? $body['content'] : '';
+
+        $signedUrlsMap = [];
+        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
+            $contentVideoPaths = ArticleContentRenderer::extractVideoPaths($content);
+            foreach ($contentVideoPaths as $vp) {
+                try {
+                    $signedUrlsMap[$vp] = $this->media->resolveSignedVideoUrl($vp, 3600);
+                } catch (Throwable) {
+                }
+            }
+        }
+
+        $renderer = new ArticleContentRenderer($signedUrlsMap);
+        $html = $renderer->render($content);
+
+        return $this->jsonResponse(200, ['data' => ['html' => $html]]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function contact(Request $request): array
     {
         return $this->render('contact', [
             'pageTitle' => 'Contact Us',
+            'metaDescription' => 'Get in touch with the Infinity Blog editorial, security, or support team.',
             'activeNav' => 'contact',
         ]);
     }
@@ -1065,6 +1146,7 @@ final class WebController
     {
         return $this->render('privacy', [
             'pageTitle' => 'Privacy Policy',
+            'metaDescription' => 'Review the Infinity Blog privacy statement, data protection guidelines, and visitor rights.',
             'activeNav' => 'privacy',
         ]);
     }

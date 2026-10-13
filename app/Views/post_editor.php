@@ -131,21 +131,45 @@
       </div>
 
       <div class="form-group" style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-          <label for="post-content" class="form-label" style="margin-bottom: 0;">Article Content <span style="color: var(--danger-color);">*</span></label>
-          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('**', '**')" title="Bold">B</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('*', '*')" title="Italic"><i>I</i></button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('## ', '')" title="Heading">H2</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('> ', '')" title="Quote">”</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('```\n', '\n```')" title="Code">Code</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('- ', '')" title="Bullet List">• List</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('[', '](https://)')" title="Link">🔗 Link</button>
+        <div class="editor-tabs-bar">
+          <div class="editor-tabs">
+            <button type="button" class="editor-tab-btn active" id="tab-write-btn" onclick="switchEditorTab('write')">
+              ✏️ Write
+            </button>
+            <button type="button" class="editor-tab-btn" id="tab-preview-btn" onclick="switchEditorTab('preview')">
+              👁️ Preview
+            </button>
+          </div>
+          <div id="editor-write-toolbar" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('**', '**', 'bold text')" title="Bold"><strong>B</strong></button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('*', '*', 'italic text')" title="Italic"><em>I</em></button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('## ', '', 'Heading 2')" title="Heading 2">H2</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('### ', '', 'Heading 3')" title="Heading 3">H3</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('> ', '', 'Quote text')" title="Quote">”</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('```\n', '\n```', 'code block')" title="Code">Code</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('- ', '', 'List item')" title="Bullet List">• List</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('1. ', '', 'Numbered item')" title="Numbered List">1. List</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('[', '](https://example.com)', 'Link text')" title="Insert Link">🔗 Link</button>
             <button type="button" class="btn btn-secondary btn-sm" id="insert-image-btn" title="Upload and Insert Image">🖼️ Image</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="open-video-modal-btn" title="Insert YouTube, Vimeo, or Video Upload">🎥 Video</button>
             <input type="file" id="inline-image-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
           </div>
         </div>
-        <textarea id="post-content" name="content" class="form-textarea" placeholder="Write your article here..." required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+
+        <div id="editor-write-panel">
+          <textarea id="post-content" name="content" class="form-textarea" placeholder="Write your article in Markdown..." required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <span>Supports standard Markdown: <code>## Headings</code>, <code>**bold**</code>, <code>*italic*</code>, <code>[links](url)</code>, <code>![alt](image-url)</code>, and YouTube/Vimeo embeds.</span>
+            <span id="word-count-display">0 words · 0 characters</span>
+          </div>
+        </div>
+
+        <div id="editor-preview-panel" style="display: none;">
+          <div id="editor-preview-loading" style="text-align: center; padding: 40px; color: var(--text-muted); display: none;">
+            <span>Rendering live preview...</span>
+          </div>
+          <div id="editor-preview-content" class="article-body-content editor-preview-container" style="display: none;"></div>
+        </div>
       </div>
 
       <!-- AI Summary Section (Edit Mode) -->
@@ -227,18 +251,162 @@
   </div>
 </form>
 
+<!-- Modal: Insert Video -->
+<div id="insert-video-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="insert-video-modal-title">
+  <div class="modal-card">
+    <h3 id="insert-video-modal-title" class="modal-title">Insert Video into Article</h3>
+    <p class="modal-desc">Embed a YouTube or Vimeo video, or upload an MP4/WebM video file directly to Supabase private storage.</p>
+
+    <div style="display: flex; gap: 8px; margin-bottom: 18px; border-bottom: 1px solid rgba(226, 232, 240, 0.8); padding-bottom: 8px;">
+      <button type="button" class="btn btn-secondary btn-sm active" id="video-mode-embed-btn" onclick="switchVideoModalTab('embed')">Embed Web Video</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="video-mode-upload-btn" onclick="switchVideoModalTab('upload')">Upload Video File</button>
+    </div>
+
+    <!-- Embed Mode -->
+    <div id="video-tab-embed">
+      <div class="form-group">
+        <label for="video-embed-url" class="form-label">Video URL (YouTube or Vimeo)</label>
+        <input type="url" id="video-embed-url" class="form-input" placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/...">
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">Supports standard watch, embed, and short URLs.</div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeInsertVideoModal()">Cancel</button>
+        <button type="button" id="confirm-embed-video-btn" class="btn btn-primary">Insert Embed</button>
+      </div>
+    </div>
+
+    <!-- Upload Mode -->
+    <div id="video-tab-upload" style="display: none;">
+      <div class="form-group">
+        <label class="form-label">Upload Video (MP4 or WebM · Max 50MB)</label>
+        <div id="modal-video-upload-box" class="featured-image-placeholder-box" style="cursor: pointer; padding: 18px;" onclick="document.getElementById('modal-video-file-input').click()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 4px;">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to select video file</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Stored in private bucket with short-lived playback signatures.</div>
+        </div>
+        <input type="file" id="modal-video-file-input" accept="video/mp4,video/webm" style="display: none;">
+        <div id="modal-video-upload-status" style="font-size: 0.82rem; margin-top: 8px; display: none;"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeInsertVideoModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-function insertMarkdown(prefix, suffix) {
+function updateWordCount() {
+  const textarea = document.getElementById('post-content');
+  const display = document.getElementById('word-count-display');
+  if (!textarea || !display) return;
+  const val = textarea.value.trim();
+  const words = val ? val.split(/\s+/).length : 0;
+  const chars = textarea.value.length;
+  display.textContent = `${words} word${words === 1 ? '' : 's'} · ${chars} character${chars === 1 ? '' : 's'}`;
+}
+
+function insertMarkdown(prefix, suffix, defaultText = '') {
   const textarea = document.getElementById('post-content');
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
   const text = textarea.value;
   const selection = text.substring(start, end);
-  const replacement = prefix + selection + suffix;
+  const content = selection || defaultText;
+  const replacement = prefix + content + suffix;
   textarea.value = text.substring(0, start) + replacement + text.substring(end);
   textarea.focus();
-  textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+  if (selection) {
+    textarea.setSelectionRange(start + prefix.length, start + prefix.length + selection.length);
+  } else {
+    textarea.setSelectionRange(start + prefix.length, start + prefix.length + defaultText.length);
+  }
+  updateWordCount();
 }
+
+async function switchEditorTab(tab) {
+  const writeBtn = document.getElementById('tab-write-btn');
+  const previewBtn = document.getElementById('tab-preview-btn');
+  const writePanel = document.getElementById('editor-write-panel');
+  const writeToolbar = document.getElementById('editor-write-toolbar');
+  const previewPanel = document.getElementById('editor-preview-panel');
+  const previewLoading = document.getElementById('editor-preview-loading');
+  const previewContent = document.getElementById('editor-preview-content');
+
+  if (tab === 'write') {
+    writeBtn.classList.add('active');
+    previewBtn.classList.remove('active');
+    writePanel.style.display = 'block';
+    writeToolbar.style.display = 'flex';
+    previewPanel.style.display = 'none';
+  } else {
+    writeBtn.classList.remove('active');
+    previewBtn.classList.add('active');
+    writePanel.style.display = 'none';
+    writeToolbar.style.display = 'none';
+    previewPanel.style.display = 'block';
+    previewLoading.style.display = 'block';
+    previewContent.style.display = 'none';
+
+    const content = document.getElementById('post-content').value;
+    try {
+      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="csrf_token"]')?.value;
+      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
+        csrf = await window.BlogCMS.ensureCsrfToken();
+      }
+      const res = await fetch('/posts/preview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-Token': csrf || ''
+        },
+        body: JSON.stringify({ content })
+      });
+      const data = await res.json();
+      previewLoading.style.display = 'none';
+      if (res.ok && data.data) {
+        previewContent.innerHTML = data.data.html || '<p style="color: var(--text-muted); font-style: italic;">Nothing to preview yet. Write some markdown content!</p>';
+        previewContent.style.display = 'block';
+      } else {
+        previewContent.innerHTML = '<p style="color: var(--danger-color);">Failed to load preview.</p>';
+        previewContent.style.display = 'block';
+      }
+    } catch (err) {
+      previewLoading.style.display = 'none';
+      previewContent.innerHTML = '<p style="color: var(--danger-color);">Network error while loading preview.</p>';
+      previewContent.style.display = 'block';
+    }
+  }
+}
+
+window.openInsertVideoModal = function() {
+  document.getElementById('insert-video-modal')?.classList.add('open');
+};
+
+window.closeInsertVideoModal = function() {
+  document.getElementById('insert-video-modal')?.classList.remove('open');
+};
+
+window.switchVideoModalTab = function(tab) {
+  const embedTab = document.getElementById('video-tab-embed');
+  const uploadTab = document.getElementById('video-tab-upload');
+  const embedBtn = document.getElementById('video-mode-embed-btn');
+  const uploadBtn = document.getElementById('video-mode-upload-btn');
+  if (tab === 'embed') {
+    embedTab.style.display = 'block';
+    uploadTab.style.display = 'none';
+    embedBtn.classList.add('active');
+    uploadBtn.classList.remove('active');
+  } else {
+    embedTab.style.display = 'none';
+    uploadTab.style.display = 'block';
+    embedBtn.classList.remove('active');
+    uploadBtn.classList.add('active');
+  }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('post-editor-form');
@@ -521,6 +689,84 @@ document.addEventListener('DOMContentLoaded', () => {
       inlineImageBtn.textContent = origText;
       inlineImageBtn.disabled = false;
       inlineImageInput.value = '';
+    }
+  });
+
+  // --- Word Count & Typing Listener ---
+  const contentTextarea = document.getElementById('post-content');
+  if (contentTextarea) {
+    contentTextarea.addEventListener('input', updateWordCount);
+    updateWordCount();
+  }
+
+  // --- Video Insert Modal Event Listeners ---
+  document.getElementById('open-video-modal-btn')?.addEventListener('click', () => {
+    window.openInsertVideoModal();
+  });
+
+  document.getElementById('confirm-embed-video-btn')?.addEventListener('click', () => {
+    const urlInput = document.getElementById('video-embed-url');
+    const url = urlInput ? urlInput.value.trim() : '';
+    if (!url) {
+      alert('Please enter a YouTube or Vimeo video link.');
+      return;
+    }
+    insertMarkdown(`\n[video](${url})\n`, '');
+    if (urlInput) urlInput.value = '';
+    window.closeInsertVideoModal();
+  });
+
+  const modalVideoFileInput = document.getElementById('modal-video-file-input');
+  const modalVideoStatus = document.getElementById('modal-video-upload-status');
+  modalVideoFileInput?.addEventListener('change', async (e) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    if (file.size > 50 * 1024 * 1024) {
+      alert('Video file size must not exceed 50MB.');
+      return;
+    }
+    if (modalVideoStatus) {
+      modalVideoStatus.textContent = 'Uploading video to private storage...';
+      modalVideoStatus.style.color = 'var(--text-muted)';
+      modalVideoStatus.style.display = 'block';
+    }
+
+    const formData = new FormData();
+    formData.append('video', file);
+    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      || document.querySelector('input[name="csrf_token"]')?.value;
+    formData.append('csrf_token', csrf || '');
+
+    try {
+      const res = await fetch('/posts/upload/video', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrf || '' },
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.data && data.data.path) {
+        insertMarkdown(`\n[video](${data.data.path})\n`, '');
+        if (modalVideoStatus) {
+          modalVideoStatus.textContent = 'Uploaded and inserted into article!';
+          modalVideoStatus.style.color = '#16a34a';
+        }
+        setTimeout(() => {
+          if (modalVideoStatus) modalVideoStatus.style.display = 'none';
+          window.closeInsertVideoModal();
+        }, 1200);
+      } else {
+        if (modalVideoStatus) {
+          modalVideoStatus.textContent = data.error?.message || 'Video upload failed.';
+          modalVideoStatus.style.color = '#dc2626';
+        }
+      }
+    } catch (err) {
+      if (modalVideoStatus) {
+        modalVideoStatus.textContent = 'Network error during upload.';
+        modalVideoStatus.style.color = '#dc2626';
+      }
+    } finally {
+      modalVideoFileInput.value = '';
     }
   });
 

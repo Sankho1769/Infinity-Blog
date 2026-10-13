@@ -8,7 +8,11 @@
   <meta property="og:site_name" content="Infinity Blog">
   <meta property="og:title" content="<?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog">
   <meta property="og:description" content="<?= htmlspecialchars($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="<?= htmlspecialchars($ogType ?? 'website', ENT_QUOTES, 'UTF-8') ?>">
+  <?php if (!empty($ogImage)): ?>
+    <meta property="og:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
+  <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086' . ($canonicalPath ?? ($_SERVER['REQUEST_URI'] ?? '/'))), ENT_QUOTES, 'UTF-8') ?>">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/favicon-apple.png">
@@ -44,9 +48,16 @@
           <li><a href="/dashboard" class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-            <li><a href="/admin/categories-page" class="nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>">Categories Admin</a></li>
-            <li><a href="/admin/users-page" class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>">Users</a></li>
-            <li><a href="/admin/audit-logs-page" class="nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>">Audit Logs</a></li>
+            <li class="nav-dropdown" id="admin-nav-dropdown">
+              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
+                Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+              </button>
+              <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
+                <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">Categories Admin</a>
+                <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">Users</a>
+                <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">Audit Logs</a>
+              </div>
+            </li>
           <?php endif; ?>
         <?php endif; ?>
       </ul>
@@ -215,6 +226,7 @@
             <li><a href="/explore" style="color: var(--text-muted); text-decoration: none;">Articles</a></li>
             <li><a href="/categories" style="color: var(--text-muted); text-decoration: none;">Categories</a></li>
             <li><a href="/authors" style="color: var(--text-muted); text-decoration: none;">Authors</a></li>
+            <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About</a></li>
           </ul>
         </div>
 
@@ -229,6 +241,7 @@
               <li><a href="/login" style="color: var(--text-muted); text-decoration: none;">Sign In</a></li>
               <li><a href="/register" style="color: var(--text-muted); text-decoration: none;">Create Account</a></li>
             <?php endif; ?>
+            <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About Platform</a></li>
             <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
             <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
           </ul>

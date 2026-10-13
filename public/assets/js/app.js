@@ -203,6 +203,38 @@
       });
     }
 
+    // Admin Navigation Dropdown Controls
+    const adminDropdown = document.getElementById('admin-nav-dropdown');
+    const adminDropdownBtn = document.getElementById('admin-nav-dropdown-btn');
+
+    function closeAdminDropdown() {
+      if (adminDropdown && adminDropdown.classList.contains('open')) {
+        adminDropdown.classList.remove('open');
+        if (adminDropdownBtn) {
+          adminDropdownBtn.setAttribute('aria-expanded', 'false');
+        }
+      }
+    }
+
+    if (adminDropdown && adminDropdownBtn) {
+      adminDropdownBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = adminDropdown.classList.contains('open');
+        if (isOpen) {
+          closeAdminDropdown();
+        } else {
+          adminDropdown.classList.add('open');
+          adminDropdownBtn.setAttribute('aria-expanded', 'true');
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!adminDropdown.contains(e.target)) {
+          closeAdminDropdown();
+        }
+      });
+    }
+
     // Mobile Navigation Drawer Controls
     const mobileToggle = document.getElementById('mobile-nav-toggle');
     const mobileDrawer = document.getElementById('mobile-nav-drawer');
@@ -245,12 +277,13 @@
       });
     }
 
-    // Escape key closes modals and mobile drawer
+    // Escape key closes modals, dropdowns, and mobile drawer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (typeof window.closeDeleteModal === 'function') {
           window.closeDeleteModal();
         }
+        closeAdminDropdown();
         closeMobileDrawer();
       }
     });

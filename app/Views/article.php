@@ -99,7 +99,7 @@
       $articleImage = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
     ?>
     <div class="article-featured-banner">
-      <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+      <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" fetchpriority="high">
     </div>
 
     <!-- Stored AI Summary Box (if present and current) -->
@@ -123,9 +123,9 @@
       </div>
     <?php endif; ?>
 
-    <!-- Full Article Content (safely entity-escaped) -->
+    <!-- Full Article Content (safely rendered from Markdown with inline media) -->
     <div class="article-body-content">
-      <?= nl2br(htmlspecialchars($post['content'], ENT_QUOTES, 'UTF-8')) ?>
+      <?= $renderedBody ?? (new \InfinityBlog\Posts\ArticleContentRenderer())->render($post['content']) ?>
     </div>
 
     <!-- Reader Score Section -->

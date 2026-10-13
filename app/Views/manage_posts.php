@@ -17,7 +17,7 @@
 <!-- Tabs & Filter Bar -->
 <div class="glass-panel" style="padding: 16px 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
   <!-- Filter Tabs -->
-  <div style="display: flex; gap: 8px;">
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
     <a href="/posts/manage" class="filter-pill <?= empty($currentStatusFilter) ? 'active' : '' ?>">
       All (<?= (int) ($counts['total'] ?? 0) ?>)
     </a>
@@ -30,11 +30,11 @@
   </div>
 
   <!-- Search form -->
-  <form action="/posts/manage" method="GET" style="display: flex; gap: 10px; align-items: center;">
+  <form action="/posts/manage" method="GET" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
     <?php if (!empty($currentStatusFilter)): ?>
       <input type="hidden" name="status" value="<?= htmlspecialchars($currentStatusFilter, ENT_QUOTES, 'UTF-8') ?>">
     <?php endif; ?>
-    <input type="search" name="search" class="form-input" style="padding: 8px 16px; font-size: 0.9rem; width: 220px;" placeholder="Search in your posts..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>">
+    <input type="search" name="search" class="form-input" style="padding: 8px 16px; font-size: 0.9rem; width: 100%; max-width: 220px;" placeholder="Search in your posts..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>">
     <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
   </form>
 </div>

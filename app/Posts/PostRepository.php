@@ -157,9 +157,12 @@ final class PostRepository
     public function findByVideoPath(string $videoPath): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.status, p.video_path FROM posts p WHERE p.video_path = :video_path LIMIT 1'
+            'SELECT p.id, p.author_id, p.status, p.video_path FROM posts p WHERE p.video_path = :video_path OR p.content LIKE :video_path_like LIMIT 1'
         );
-        $statement->execute(['video_path' => $videoPath]);
+        $statement->execute([
+            'video_path' => $videoPath,
+            'video_path_like' => '%' . $videoPath . '%',
+        ]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
 
         return is_array($row) ? $row : null;
