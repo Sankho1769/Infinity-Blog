@@ -79,8 +79,8 @@
         <div id="cover-preview-container" style="<?= empty($initialCoverUrl) ? 'display: none;' : '' ?> margin-bottom: 12px; position: relative; border-radius: var(--radius-md); overflow: hidden; max-height: 220px; border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow-sm);">
           <img id="cover-preview-img" src="<?= htmlspecialchars($initialCoverUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Cover Image Preview" style="width: 100%; height: 220px; object-fit: cover; display: block;">
           <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px;">
-            <button type="button" id="change-cover-btn" class="btn btn-secondary btn-sm btn-pill" style="background: rgba(255,255,255,0.9); backdrop-filter: blur(8px);">Change</button>
-            <button type="button" id="remove-cover-btn" class="btn btn-danger btn-sm btn-pill" style="background: rgba(239,68,68,0.9);">Remove</button>
+            <button type="button" id="change-cover-btn" class="btn btn-secondary btn-sm btn-pill">Change</button>
+            <button type="button" id="remove-cover-btn" class="btn btn-danger-subtle btn-sm btn-pill">Remove</button>
           </div>
         </div>
 
@@ -115,7 +115,7 @@
           </div>
           <div style="display: flex; gap: 6px; flex-shrink: 0;">
             <button type="button" id="change-video-btn" class="btn btn-secondary btn-sm btn-pill">Change</button>
-            <button type="button" id="remove-video-btn" class="btn btn-danger btn-sm btn-pill">Remove</button>
+            <button type="button" id="remove-video-btn" class="btn btn-danger-subtle btn-sm btn-pill">Remove</button>
           </div>
         </div>
 
@@ -236,7 +236,7 @@
           </button>
 
           <?php if ($isEdit): ?>
-            <button type="button" class="btn btn-danger btn-full" style="margin-top: 8px;"
+            <button type="button" class="btn btn-danger-subtle btn-full" style="margin-top: 8px;"
                     onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
               Delete Post
             </button>

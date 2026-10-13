@@ -160,7 +160,7 @@
                   <a href="/posts/<?= (int) $post['id'] ?>/edit" class="btn btn-secondary btn-sm" title="Edit Post" style="padding: 4px 8px;">
                     ✏️
                   </a>
-                  <button type="button" class="btn btn-danger btn-sm" title="Delete Post" style="padding: 4px 8px;"
+                  <button type="button" class="btn btn-danger-subtle btn-sm" title="Delete Post" style="padding: 4px 8px;"
                           onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
                     🗑️
                   </button>

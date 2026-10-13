@@ -26,7 +26,7 @@
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
-          <input type="text" id="identifier" name="identifier" class="form-input" placeholder="e.g. user@example.com or shubham banerjee" required autocomplete="username" autofocus>
+          <input type="text" id="identifier" name="identifier" class="form-input" placeholder="e.g. cristine.palmer@example.com or Cristine Palmer" required autocomplete="username" autofocus>
         </div>
       </div>
 

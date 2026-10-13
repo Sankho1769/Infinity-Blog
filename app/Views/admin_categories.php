@@ -54,7 +54,7 @@
                 <button type="button" class="btn btn-secondary btn-sm" onclick="toggleCategoryStatus(<?= (int) $cat['id'] ?>, <?= $cat['is_active'] ? 'false' : 'true' ?>)">
                   <?= $cat['is_active'] ? 'Deactivate' : 'Activate' ?>
                 </button>
-                <button type="button" class="btn btn-danger btn-sm" onclick="deleteCategory(<?= (int) $cat['id'] ?>)">
+                <button type="button" class="btn btn-danger-subtle btn-sm" onclick="deleteCategory(<?= (int) $cat['id'] ?>)">
                   Delete
                 </button>
               </td>

@@ -16,15 +16,15 @@
 
 <!-- Tabs & Filter Bar -->
 <div class="glass-panel" style="padding: 16px 24px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
-  <!-- Filter Tabs -->
-  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-    <a href="/posts/manage" class="filter-pill <?= empty($currentStatusFilter) ? 'active' : '' ?>">
+  <!-- Filter Tabs (Segmented Controls Matching Screen 6) -->
+  <div class="segmented-tabs" role="navigation" aria-label="Filter posts by status">
+    <a href="/posts/manage" class="tab-pill <?= empty($currentStatusFilter) ? 'active' : '' ?>">
       All (<?= (int) ($counts['total'] ?? 0) ?>)
     </a>
-    <a href="/posts/manage?status=published" class="filter-pill <?= ($currentStatusFilter ?? '') === 'published' ? 'active' : '' ?>">
+    <a href="/posts/manage?status=published" class="tab-pill <?= ($currentStatusFilter ?? '') === 'published' ? 'active' : '' ?>">
       Published (<?= (int) ($counts['published'] ?? 0) ?>)
     </a>
-    <a href="/posts/manage?status=draft" class="filter-pill <?= ($currentStatusFilter ?? '') === 'draft' ? 'active' : '' ?>">
+    <a href="/posts/manage?status=draft" class="tab-pill <?= ($currentStatusFilter ?? '') === 'draft' ? 'active' : '' ?>">
       Drafts (<?= (int) ($counts['draft'] ?? 0) ?>)
     </a>
   </div>
@@ -107,7 +107,7 @@
                 <a href="/posts/<?= (int) $post['id'] ?>/edit" class="btn btn-secondary btn-sm" title="Edit Post">
                   ✏️ Edit
                 </a>
-                <button type="button" class="btn btn-danger btn-sm" title="Delete Post"
+                <button type="button" class="btn btn-danger-subtle btn-sm" title="Delete Post"
                         onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
                   🗑️ Delete
                 </button>

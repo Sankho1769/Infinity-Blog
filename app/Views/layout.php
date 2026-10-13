@@ -103,9 +103,9 @@
           </a>
           <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 2px;">Logout</a>
         <?php else: ?>
-          <!-- Guest Navigation Buttons: Sign In | Create Account -->
-          <a href="/login" class="btn btn-secondary btn-pill btn-sm" style="padding: 7px 15px; white-space: nowrap;">Sign In</a>
-          <a href="/register" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 15px; white-space: nowrap;">Create Account</a>
+          <!-- Guest Navigation Buttons: Sign In (Primary Blue) | Create Account (Secondary Glass) -->
+          <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Sign In</a>
+          <a href="/register" class="btn btn-secondary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Create Account</a>
         <?php endif; ?>
 
         <!-- Mobile Navigation Toggle Button -->
