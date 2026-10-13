@@ -400,14 +400,20 @@
     <div class="mobile-bottom-nav-inner">
       <a href="/" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>" aria-label="Home">
         <span class="mobile-bottom-nav-icon">
-          <img src="/assets/images/clay-tiles/home.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🏠';">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
         </span>
         <span class="mobile-bottom-nav-label">Home</span>
       </a>
 
       <a href="/explore" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>" aria-label="Explore">
         <span class="mobile-bottom-nav-icon">
-          <img src="/assets/images/clay-tiles/search.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🔍';">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
         </span>
         <span class="mobile-bottom-nav-label">Explore</span>
       </a>
@@ -423,7 +429,10 @@
 
       <a href="/categories" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>" aria-label="Topics">
         <span class="mobile-bottom-nav-icon">
-          <img src="/assets/images/clay-tiles/categories.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='🏷️';">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
         </span>
         <span class="mobile-bottom-nav-label">Topics</span>
       </a>
@@ -431,14 +440,20 @@
       <?php if (!empty($currentUser)): ?>
         <a href="/profile" class="mobile-bottom-nav-item <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>" aria-label="Profile">
           <span class="mobile-bottom-nav-icon">
-            <img src="/assets/images/clay-tiles/profile.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='👤';">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
           </span>
           <span class="mobile-bottom-nav-label">Profile</span>
         </a>
       <?php else: ?>
         <a href="/login" class="mobile-bottom-nav-item <?= in_array($activeNav ?? '', ['login', 'register']) ? 'active' : '' ?>" aria-label="Sign In">
           <span class="mobile-bottom-nav-icon">
-            <img src="/assets/images/clay-tiles/profile.png" alt="" width="24" height="24" class="clay-nav-icon" onerror="this.onerror=null; this.textContent='👤';">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
           </span>
           <span class="mobile-bottom-nav-label">Sign In</span>
         </a>

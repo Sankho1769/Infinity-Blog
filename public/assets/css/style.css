@@ -4195,15 +4195,21 @@ figcaption {
     height: 24px;
   }
 
+  .mobile-bottom-nav-icon svg,
   .mobile-bottom-nav-icon img.clay-nav-icon {
     width: 22px;
     height: 22px;
-    object-fit: contain;
-    transition: transform 0.15s ease;
+    transition: transform 0.15s ease, stroke 0.15s ease;
   }
 
+  .mobile-bottom-nav-item:active .mobile-bottom-nav-icon svg,
   .mobile-bottom-nav-item:active .clay-nav-icon {
     transform: scale(0.9);
+  }
+
+  .mobile-bottom-nav-item.active .mobile-bottom-nav-icon svg {
+    stroke: var(--ib-clay-primary);
+    filter: drop-shadow(0 2px 4px rgba(57, 117, 255, 0.4));
   }
 
   .mobile-bottom-nav-item.active .mobile-bottom-nav-icon img.clay-nav-icon {
