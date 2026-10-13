@@ -218,4 +218,10 @@ final class Request
         }
         return $this->postParameters();
     }
+
+    /** @return array<string, mixed> */
+    public function json(int $maxBytes = 16384): array
+    {
+        return $this->input();
+    }
 }

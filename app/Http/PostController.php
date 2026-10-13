@@ -53,7 +53,7 @@ final class PostController
             if ($request->method === 'GET') {
                 return $this->show($request, $matches[1]);
             }
-            if ($request->method === 'PATCH') {
+            if ($request->method === 'PATCH' || $request->method === 'PUT') {
                 return $this->update($request, $matches[1]);
             }
             if ($request->method === 'DELETE') {
