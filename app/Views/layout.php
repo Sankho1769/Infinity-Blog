@@ -71,20 +71,44 @@
         <li><a href="/chat" class="nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Community Chat</a></li>
         <li><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
         <?php if (!empty($currentUser)): ?>
-          <li><a href="/library" class="nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>">Library</a></li>
-          <li><a href="/following" class="nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>">Following</a></li>
-          <li><a href="/dashboard" class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
-          <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
+          <!-- More / Workspace Dropdown -->
+          <li class="nav-dropdown" id="more-nav-dropdown">
+            <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['library', 'following', 'dashboard', 'posts']) ? 'active' : '' ?>" id="more-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="More destinations">
+              More <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav-dropdown-menu glass-panel" id="more-nav-dropdown-menu" role="menu" aria-label="More Navigation">
+              <a href="/library" class="nav-dropdown-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>" role="menuitem">
+                <span class="dropdown-item-icon">📚</span> Library
+              </a>
+              <a href="/following" class="nav-dropdown-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>" role="menuitem">
+                <span class="dropdown-item-icon">👥</span> Following Feed
+              </a>
+              <a href="/dashboard" class="nav-dropdown-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>" role="menuitem">
+                <span class="dropdown-item-icon">📊</span> Dashboard
+              </a>
+              <a href="/posts/manage" class="nav-dropdown-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>" role="menuitem">
+                <span class="dropdown-item-icon">📝</span> All Posts
+              </a>
+            </div>
+          </li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
             <li class="nav-dropdown" id="admin-nav-dropdown">
-              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
+              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Administration">
                 Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
               </button>
               <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
-                <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">Categories Admin</a>
-                <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">Users</a>
-                <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">Audit Logs</a>
-                <a href="/admin/contact-messages-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>" role="menuitem">Contact Inquiries</a>
+                <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">📁</span> Categories Admin
+                </a>
+                <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">👤</span> Users Management
+                </a>
+                <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">🛡️</span> Audit Logs
+                </a>
+                <a href="/admin/contact-messages-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">✉️</span> Contact Inquiries
+                </a>
               </div>
             </li>
           <?php endif; ?>
@@ -95,11 +119,11 @@
       <div class="nav-actions">
         <!-- Search bar -->
         <form action="/" method="GET" class="nav-search-form" role="search">
-          <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="search" name="search" class="nav-search-input" placeholder="Search articles..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
+          <input type="search" name="search" class="nav-search-input" placeholder="Search..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
         </form>
 
         <?php if (!empty($currentUser)): ?>
@@ -109,8 +133,8 @@
             $navInitial = strtoupper(mb_substr($navDisplayName, 0, 1));
           ?>
           <!-- Logged in User Menu -->
-          <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn">+ Create Post</a>
-          <a href="/profile" class="user-menu-pill user-profile-link" title="My Profile" style="text-decoration: none;">
+          <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn" title="Create a new article">+ Create Post</a>
+          <a href="/profile" class="user-menu-pill user-profile-link" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?> — My Profile" aria-label="View user profile for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
             <?php if (!empty($navAvatarUrl)): ?>
               <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
                    alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
@@ -130,7 +154,7 @@
               <span class="user-role-badge admin">Admin</span>
             <?php endif; ?>
           </a>
-          <a href="/logout" class="btn btn-secondary btn-sm btn-pill" title="Sign out" style="padding: 4px 10px; margin-left: 2px;">Logout</a>
+          <a href="/logout" class="btn btn-secondary btn-sm btn-pill nav-logout-btn" title="Sign out of Infinity Blog">Logout</a>
         <?php else: ?>
           <!-- Guest Navigation Buttons: Sign In (Primary Blue) | Create Account (Secondary Glass) -->
           <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Sign In</a>
@@ -138,8 +162,8 @@
         <?php endif; ?>
 
         <!-- Mobile Navigation Toggle Button -->
-        <button type="button" class="mobile-nav-toggle btn btn-secondary btn-sm" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button type="button" class="mobile-nav-toggle btn btn-secondary btn-sm" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="3" y1="12" x2="21" y2="12"></line>
             <line x1="3" y1="6" x2="21" y2="6"></line>
             <line x1="3" y1="18" x2="21" y2="18"></line>
@@ -149,54 +173,93 @@
     </nav>
 
     <!-- Mobile Nav Drawer (Collapsible) -->
-    <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" style="display: none;">
-      <ul class="mobile-nav-list">
-        <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
-        <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
-        <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
-        <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
-        <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Community Chat</a></li>
-        <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
-        <?php if (!empty($currentUser)): ?>
-          <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>">My Library</a></li>
-          <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>">Following Feed</a></li>
-          <li><a href="/profile" class="mobile-nav-link <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>">My Profile</a></li>
-          <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
-          <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
-          <li><a href="/posts/new" class="mobile-nav-link">Create Post</a></li>
-          <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-            <li><a href="/admin/categories-page" class="mobile-nav-link">Categories Admin</a></li>
-            <li><a href="/admin/users-page" class="mobile-nav-link">Users</a></li>
-            <li><a href="/admin/audit-logs-page" class="mobile-nav-link">Audit Logs</a></li>
-            <li><a href="/admin/contact-messages-page" class="mobile-nav-link">Contact Inquiries</a></li>
-          <?php endif; ?>
-          <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
-            <a href="/profile" style="text-decoration: none; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+    <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" role="dialog" aria-modal="true" aria-label="Mobile Navigation" style="display: none;">
+      <!-- Mobile Search Form -->
+      <form action="/" method="GET" class="mobile-search-form" role="search">
+        <svg class="mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="search" name="search" class="mobile-search-input" placeholder="Search articles..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
+      </form>
+
+      <!-- Section: Discover -->
+      <div class="mobile-nav-section">
+        <div class="mobile-nav-section-title">Discover</div>
+        <ul class="mobile-nav-list">
+          <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>"><span class="mobile-link-icon">🏠</span> Home</a></li>
+          <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories</a></li>
+          <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>"><span class="mobile-link-icon">✍️</span> Authors</a></li>
+          <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>"><span class="mobile-link-icon">🧭</span> Explore</a></li>
+          <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>"><span class="mobile-link-icon">💬</span> Community Chat</a></li>
+          <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
+        </ul>
+      </div>
+
+      <?php if (!empty($currentUser)): ?>
+        <!-- Section: My Workspace -->
+        <div class="mobile-nav-section">
+          <div class="mobile-nav-section-title">My Workspace</div>
+          <ul class="mobile-nav-list">
+            <li><a href="/posts/new" class="mobile-nav-link mobile-create-link"><span class="mobile-link-icon">✏️</span> + Create New Post</a></li>
+            <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>"><span class="mobile-link-icon">📚</span> My Library</a></li>
+            <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>"><span class="mobile-link-icon">👥</span> Following Feed</a></li>
+            <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>"><span class="mobile-link-icon">📊</span> Dashboard</a></li>
+            <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>"><span class="mobile-link-icon">📝</span> All Posts</a></li>
+          </ul>
+        </div>
+
+        <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+          <!-- Section: Administration -->
+          <div class="mobile-nav-section">
+            <div class="mobile-nav-section-title">Administration</div>
+            <ul class="mobile-nav-list">
+              <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories Admin</a></li>
+              <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="mobile-link-icon">👤</span> Users Management</a></li>
+              <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="mobile-link-icon">🛡️</span> Audit Logs</a></li>
+              <li><a href="/admin/contact-messages-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Contact Inquiries</a></li>
+            </ul>
+          </div>
+        <?php endif; ?>
+
+        <!-- Section: Account -->
+        <div class="mobile-nav-section mobile-account-section">
+          <div class="mobile-user-card">
+            <a href="/profile" class="mobile-user-info" aria-label="View user profile">
               <?php if (!empty($navAvatarUrl)): ?>
                 <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
                      alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
                      class="user-avatar-img"
-                     style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                     style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
                      onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
-                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 24px; height: 24px; font-size: 0.75rem; flex-shrink: 0;">
+                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
                   <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
                 </div>
               <?php else: ?>
-                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 24px; height: 24px; font-size: 0.75rem; flex-shrink: 0;">
+                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
                   <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
                 </div>
               <?php endif; ?>
-              <span><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?><?= (($currentUser['role'] ?? '') === 'admin') ? ' (Admin)' : '' ?></span>
+              <div class="mobile-user-meta">
+                <span class="mobile-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+                <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                  <span class="user-role-badge admin">Admin</span>
+                <?php endif; ?>
+              </div>
             </a>
             <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
-          </li>
-        <?php else: ?>
-          <li style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; flex-direction: column; gap: 8px;">
-            <a href="/login" class="btn btn-secondary btn-pill btn-full">Sign In</a>
-            <a href="/register" class="btn btn-primary btn-pill btn-full">Create Account</a>
-          </li>
-        <?php endif; ?>
-      </ul>
+          </div>
+        </div>
+      <?php else: ?>
+        <!-- Section: Guest Account -->
+        <div class="mobile-nav-section mobile-account-section">
+          <div class="mobile-nav-section-title">Account</div>
+          <div class="mobile-guest-actions">
+            <a href="/login" class="btn btn-primary btn-pill btn-full">Sign In</a>
+            <a href="/register" class="btn btn-secondary btn-pill btn-full">Create Account</a>
+          </div>
+        </div>
+      <?php endif; ?>
     </div>
   </header>
 
