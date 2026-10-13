@@ -63,12 +63,12 @@ declare(strict_types=1);
 
       <h2 style="font-size: 1.35rem; margin-top: 28px; margin-bottom: 12px; color: var(--text-heading);">6. Intellectual Property Complaints (DMCA)</h2>
       <p style="margin-bottom: 16px;">
-        If you believe in good faith that any material available on Infinity Blog infringes upon your copyright, you may submit a formal notification to our designated copyright contact via our <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a> or by email to <code style="background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px;">legal@infinityblog.local</code> with identification of the copyrighted work and its URL.
+        If you believe in good faith that any material available on Infinity Blog infringes upon your copyright, you may submit a formal notification to our designated copyright contact via our <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a> with identification of the copyrighted work and its URL.
       </p>
 
       <h2 style="font-size: 1.35rem; margin-top: 28px; margin-bottom: 12px; color: var(--text-heading);">7. Content Moderation & Termination</h2>
       <p style="margin-bottom: 16px;">
-        We reserve the right to unpublish, edit, or delete any content and suspend or terminate accounts that violate these terms or compromise platform stability. You may delete your own published articles or request account deletion at any time through your account settings.
+        We reserve the right to unpublish, edit, or delete any content and suspend or terminate accounts that violate these terms or compromise platform stability. You may delete your own published articles at any time or request account deletion via the <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a>.
       </p>
 
       <h2 style="font-size: 1.35rem; margin-top: 28px; margin-bottom: 12px; color: var(--text-heading);">8. Limitation of Liability & Disclaimers</h2>

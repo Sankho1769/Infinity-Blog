@@ -58,6 +58,10 @@ final class AppConfig
             if (!$secureCookie || $parsedUrl['scheme'] !== 'https') {
                 throw new InvalidArgumentException('Production requires HTTPS and secure session cookies.');
             }
+            $host = strtolower($parsedUrl['host']);
+            if (in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.local') || str_ends_with($host, '.test')) {
+                throw new InvalidArgumentException('Production APP_BASE_URL cannot use localhost, loopback, or local domains.');
+            }
             if ($database->username === 'root' || $database->password() === '') {
                 throw new InvalidArgumentException('Production requires a dedicated database account with a password.');
             }

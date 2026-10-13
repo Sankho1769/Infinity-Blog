@@ -63,15 +63,23 @@ $formData = $formData ?? [];
         <div class="glass-card" style="padding: 22px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
           <div style="font-size: 1.3rem; margin-bottom: 6px;">✍️</div>
           <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; color: var(--text-heading);">Editorial Inquiries</h3>
-          <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Article pitches, publishing feedback & remix permissions.</p>
-          <a href="mailto:editorial@infinityblog.local" style="font-weight: 600; font-size: 0.9rem; color: var(--primary-600, #4f46e5); text-decoration: none;">editorial@infinityblog.local</a>
+          <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Article pitches, publishing feedback &amp; remix permissions.</p>
+          <?php if (!empty($editorialEmail)): ?>
+            <a href="mailto:<?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?>" style="font-weight: 600; font-size: 0.9rem; color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?></a>
+          <?php else: ?>
+            <span style="font-size: 0.84rem; color: var(--text-muted);">Submit via the message form below</span>
+          <?php endif; ?>
         </div>
 
         <div class="glass-card" style="padding: 22px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
           <div style="font-size: 1.3rem; margin-bottom: 6px;">🛠️</div>
           <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; color: var(--text-heading);">Technical Support</h3>
-          <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Account access, security, bug reports & data requests.</p>
-          <a href="mailto:support@infinityblog.local" style="font-weight: 600; font-size: 0.9rem; color: var(--primary-600, #4f46e5); text-decoration: none;">support@infinityblog.local</a>
+          <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Account access, security, bug reports &amp; data requests.</p>
+          <?php if (!empty($supportEmail)): ?>
+            <a href="mailto:<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>" style="font-weight: 600; font-size: 0.9rem; color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?></a>
+          <?php else: ?>
+            <span style="font-size: 0.84rem; color: var(--text-muted);">Submit via the message form below</span>
+          <?php endif; ?>
         </div>
       </div>
 

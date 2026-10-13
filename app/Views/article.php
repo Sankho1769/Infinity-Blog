@@ -237,7 +237,7 @@
       <a href="/article/<?= (int) $post['id'] ?>/download/epub" class="btn btn-secondary btn-sm btn-pill" title="Download EPUB eBook">
         📱 Download EPUB
       </a>
-      <button type="button" class="btn btn-primary btn-sm btn-pill" id="shareArticleBtn" onclick="triggerNativeShare('<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086/article/' . (int) $post['id']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($metaDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>')">
+      <button type="button" class="btn btn-primary btn-sm btn-pill" id="shareArticleBtn" onclick="triggerNativeShare('<?= htmlspecialchars($canonicalUrl ?? (($baseUrl ?? '') . '/article/' . (int) $post['id']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>', '<?= htmlspecialchars(addslashes($metaDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>')">
         🔗 Share Article
       </button>
     </div>
@@ -592,7 +592,7 @@
     </p>
 
     <?php
-      $shareUrl = $canonicalUrl ?? ('http://localhost:8086/article/' . (int) $post['id']);
+      $shareUrl = $canonicalUrl ?? (($baseUrl ?? '') . '/article/' . (int) $post['id']);
       $shareTitle = $post['title'];
     ?>
     <div class="share-options-grid">

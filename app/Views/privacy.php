@@ -64,12 +64,12 @@ declare(strict_types=1);
         <li>Access, edit, or update your profile information at any time via <a href="/profile/edit" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Edit Profile</a>.</li>
         <li>Modify, unpublish, or permanently delete your published articles and drafts via <a href="/posts/manage" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Manage Articles</a>.</li>
         <li>Download formatted copies of your reading material via PDF and EPUB exports.</li>
-        <li>Request complete account closure and removal of associated personal records.</li>
+        <li>Request complete account closure and removal of associated personal records by submitting a privacy verification request through our <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a>.</li>
       </ul>
 
       <h2 style="font-size: 1.35rem; margin-top: 24px; margin-bottom: 12px; color: var(--text-heading);">6. Contacting Us About Privacy</h2>
       <p style="margin-bottom: 24px;">
-        If you have questions, inquiries, or requests regarding this Privacy Policy or your personal information, please submit an inquiry through our <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a> or reach our privacy coordinator at <code style="background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px;">privacy@infinityblog.local</code>.
+        If you have questions, inquiries, or requests regarding this Privacy Policy or your personal information, please submit an inquiry through our <a href="/contact" style="color: var(--primary-600, #4f46e5); font-weight: 600;">Contact Form</a>.
       </p>
     </div>
 

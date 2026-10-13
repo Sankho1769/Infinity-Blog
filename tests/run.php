@@ -322,6 +322,14 @@ $run('production configuration requires safe debug, HTTPS, cookies, and database
     $rootAccount = $production;
     $rootAccount['DB_USERNAME'] = 'root';
     $expectInvalid(static fn () => AppConfig::fromArray($rootAccount));
+
+    $localhostProd = $production;
+    $localhostProd['APP_BASE_URL'] = 'https://localhost';
+    $expectInvalid(static fn () => AppConfig::fromArray($localhostProd));
+
+    $localDomainProd = $production;
+    $localDomainProd['APP_BASE_URL'] = 'https://infinityblog.local';
+    $expectInvalid(static fn () => AppConfig::fromArray($localDomainProd));
 });
 
 $run('environment file parsing preserves process overrides and rejects malformed entries', static function () use ($expect): void {

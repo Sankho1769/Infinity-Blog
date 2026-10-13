@@ -1678,6 +1678,9 @@ final class WebController
         $data['canonicalUrl'] = $canonicalUrl;
         $data['ogImageAbsolute'] = $ogImageAbsolute;
         $data['jsonLd'] = $jsonLd;
+        $data['baseUrl'] = $this->config->baseUrl;
+        $data['supportEmail'] = filter_var(getenv('CONTACT_SUPPORT_EMAIL') ?: null, FILTER_VALIDATE_EMAIL) ?: null;
+        $data['editorialEmail'] = filter_var(getenv('CONTACT_EDITORIAL_EMAIL') ?: null, FILTER_VALIDATE_EMAIL) ?: null;
         $data['gaMeasurementId'] = $this->seo->getGaMeasurementId();
         $data['gscVerificationCode'] = $this->seo->getGscVerificationCode();
 
