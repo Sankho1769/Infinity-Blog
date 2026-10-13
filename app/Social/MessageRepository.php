@@ -43,9 +43,29 @@ final class MessageRepository
             throw new InvalidArgumentException('Recipient is not found or is inactive.');
         }
 
+        // Enforce user blocking: if either party blocked the other, refuse communication
+        $blockStmt = $this->pdo->prepare(
+            'SELECT id FROM user_blocks WHERE (user_id = :recip AND blocked_user_id = :sender) OR (user_id = :sender AND blocked_user_id = :recip) LIMIT 1'
+        );
+        $blockStmt->execute([':recip' => $recipientId, ':sender' => $senderId]);
+        if ($blockStmt->fetch()) {
+            throw new InvalidArgumentException('Cannot send direct message: communication between these users is blocked.');
+        }
+
+        // Rate limit: maximum 30 messages in the last 60 seconds from this sender
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $rateSql = $driver === 'sqlite'
+            ? 'SELECT COUNT(*) FROM direct_messages WHERE sender_id = :sender AND created_at >= datetime(\'now\', \'-1 minute\')'
+            : 'SELECT COUNT(*) FROM direct_messages WHERE sender_id = :sender AND created_at >= NOW() - INTERVAL 1 MINUTE';
+        $rateStmt = $this->pdo->prepare($rateSql);
+        $rateStmt->execute([':sender' => $senderId]);
+        if ((int) $rateStmt->fetchColumn() >= 30) {
+            throw new InvalidArgumentException('Rate limit exceeded: please slow down before sending more direct messages.');
+        }
+
+        $timeExpr = $driver === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
         $insert = $this->pdo->prepare(
-            'INSERT INTO direct_messages (sender_id, recipient_id, body, created_at) ' .
-            'VALUES (:sender_id, :recipient_id, :body, NOW())'
+            "INSERT INTO direct_messages (sender_id, recipient_id, body, created_at) VALUES (:sender_id, :recipient_id, :body, {$timeExpr})"
         );
         $insert->execute([
             'sender_id' => $senderId,

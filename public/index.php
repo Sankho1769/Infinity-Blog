@@ -205,6 +205,13 @@ try {
             echo $webResult['body'];
             return;
         }
+        if (preg_match('#^/admin/contact-messages/([0-9]+)/status$#D', $request->path, $m)) {
+            $webResult = $webController->updateContactMessageStatus($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
         if (preg_match('#^/api/article/([0-9]+)/assistant$#D', $request->path, $m)) {
             $webResult = $webController->assistant($request, (int) $m[1]);
             http_response_code($webResult['status']);
@@ -251,6 +258,7 @@ try {
             $request->path === '/admin/categories-page' => $webController->adminCategories($request),
             $request->path === '/admin/users-page' => $webController->adminUsers($request),
             $request->path === '/admin/audit-logs-page' => $webController->adminAuditLogs($request),
+            $request->path === '/admin/contact-messages-page' => $webController->adminContactMessages($request),
             $request->path === '/logout' => $webController->logout($request),
             default => null,
         };
@@ -315,7 +323,19 @@ try {
     } elseif ($request->path === '/admin/audit-logs') {
         $controller = new AdminAuditLogController(new AuditLogRepository($pdo), $guard);
     } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
-        $controller = new PostController(new PostRepository($pdo), $guard, $sessions, null, $studio);
+        try {
+            $aiConfig = AiProviderConfig::fromEnvironment();
+        } catch (Throwable) {
+            $aiConfig = null;
+        }
+        $provider = $aiConfig === null ? null : new OpenAiResponsesProvider($aiConfig);
+        $limiter = new DatabaseSummaryRateLimiter(
+            $pdo,
+            $config->applicationKey(),
+            $aiConfig?->userRateLimit ?? 10
+        );
+        $summaryService = new SummaryService(new PostRepository($pdo), $limiter, $aiConfig, $provider);
+        $controller = new PostController(new PostRepository($pdo), $guard, $sessions, null, $studio, $summaryService);
     } elseif (preg_match('#^/posts/[0-9]+/score$#D', $request->path) === 1) {
         $controller = new ScoreController(new ScoreRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {

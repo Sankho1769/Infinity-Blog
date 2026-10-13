@@ -37,7 +37,11 @@
     <script type="application/ld+json"><?= $jsonLd ?></script>
   <?php endif; ?>
   <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
-  <link rel="stylesheet" href="/assets/css/style.css">
+  <?php
+    $cssFile = dirname(__DIR__, 2) . '/public/assets/css/style.css';
+    $cssVersion = file_exists($cssFile) ? (string) filemtime($cssFile) : '20261013';
+  ?>
+  <link rel="stylesheet" href="/assets/css/style.css?v=<?= $cssVersion ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -73,13 +77,14 @@
           <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
           <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
             <li class="nav-dropdown" id="admin-nav-dropdown">
-              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
+              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false">
                 Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
               </button>
               <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
                 <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">Categories Admin</a>
                 <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">Users</a>
                 <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">Audit Logs</a>
+                <a href="/admin/contact-messages-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>" role="menuitem">Contact Inquiries</a>
               </div>
             </li>
           <?php endif; ?>
@@ -163,6 +168,7 @@
             <li><a href="/admin/categories-page" class="mobile-nav-link">Categories Admin</a></li>
             <li><a href="/admin/users-page" class="mobile-nav-link">Users</a></li>
             <li><a href="/admin/audit-logs-page" class="mobile-nav-link">Audit Logs</a></li>
+            <li><a href="/admin/contact-messages-page" class="mobile-nav-link">Contact Inquiries</a></li>
           <?php endif; ?>
           <li style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
             <a href="/profile" style="text-decoration: none; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
@@ -370,7 +376,11 @@
     </div>
   </div>
 
-  <script src="/assets/js/app.js"></script>
+  <?php
+    $jsFile = dirname(__DIR__, 2) . '/public/assets/js/app.js';
+    $jsVersion = file_exists($jsFile) ? (string) filemtime($jsFile) : '20261013';
+  ?>
+  <script src="/assets/js/app.js?v=<?= $jsVersion ?>"></script>
 
   <!-- Cookie Consent & Privacy Gatekeeper Script -->
   <script>

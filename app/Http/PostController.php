@@ -18,13 +18,21 @@ final class PostController
     private SessionManager $sessions;
     private ?\InfinityBlog\Storage\MediaService $media;
     private ?\InfinityBlog\Posts\StudioService $studio;
+    private ?\InfinityBlog\Summaries\SummaryService $summaries;
 
-    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null, ?\InfinityBlog\Posts\StudioService $studio = null)
-    {
+    public function __construct(
+        PostRepository $posts,
+        AuthGuard $guard,
+        SessionManager $sessions,
+        ?\InfinityBlog\Storage\MediaService $media = null,
+        ?\InfinityBlog\Posts\StudioService $studio = null,
+        ?\InfinityBlog\Summaries\SummaryService $summaries = null
+    ) {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
         $this->studio = $studio;
+        $this->summaries = $summaries;
         if ($media === null) {
             try {
                 $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
@@ -225,6 +233,17 @@ final class PostController
             $post = $publish
                 ? $this->posts->publishForAuthor($postId, $author->id)
                 : $this->posts->unpublishForAuthor($postId, $author->id);
+            if ($publish && $this->summaries !== null && empty($post['summary'])) {
+                try {
+                    $summaryResult = $this->summaries->generate($postId, $author, $request->sourceAddress);
+                    if (!empty($summaryResult['summary'])) {
+                        $post['summary'] = $summaryResult['summary'];
+                        $post['summary_status'] = $summaryResult['summary_status'] ?? 'ready';
+                    }
+                } catch (\Throwable) {
+                    // Non-blocking: post publication succeeds regardless of AI provider status
+                }
+            }
             return ['status' => 200, 'body' => ['data' => ['post' => self::publicPostFields($post)]]];
         } catch (PostNotFoundException) {
             return $this->notFound();

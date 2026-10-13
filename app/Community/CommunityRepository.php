@@ -178,7 +178,7 @@ final class CommunityRepository
         return (int) $this->pdo->lastInsertId();
     }
 
-    public function getChatMessages(int $roomId, int $limit = 50, ?int $afterId = null): array
+    public function getChatMessages(int $roomId, int $limit = 50, ?int $afterId = null, ?int $viewerId = null): array
     {
         $limit = max(1, min(100, $limit));
         $sql = 'SELECT m.id, m.room_id, m.user_id, m.message, m.created_at, ' .
@@ -188,6 +188,11 @@ final class CommunityRepository
             'WHERE m.room_id = :rid ';
 
         $params = [':rid' => $roomId];
+        if ($viewerId !== null && $viewerId > 0) {
+            $sql .= 'AND m.user_id NOT IN (SELECT blocked_user_id FROM user_blocks WHERE user_id = :viewerId) ';
+            $params[':viewerId'] = $viewerId;
+        }
+
         if ($afterId !== null && $afterId > 0) {
             $sql .= 'AND m.id > :afterId ';
             $params[':afterId'] = $afterId;
@@ -207,9 +212,25 @@ final class CommunityRepository
             throw new \InvalidArgumentException('Message cannot be empty.');
         }
 
+        if (mb_strlen($message) > 2000) {
+            throw new \InvalidArgumentException('Chat message exceeds maximum length of 2000 characters.');
+        }
+
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+        // Rate limit: maximum 20 messages per minute per user in chat
+        $rateSql = $driver === 'sqlite'
+            ? 'SELECT COUNT(*) FROM chat_room_messages WHERE user_id = :uid AND created_at >= datetime(\'now\', \'-1 minute\')'
+            : 'SELECT COUNT(*) FROM chat_room_messages WHERE user_id = :uid AND created_at >= NOW() - INTERVAL 1 MINUTE';
+        $rateStmt = $this->pdo->prepare($rateSql);
+        $rateStmt->execute([':uid' => $userId]);
+        if ((int) $rateStmt->fetchColumn() >= 20) {
+            throw new \InvalidArgumentException('Rate limit exceeded: please wait a moment before sending more chat messages.');
+        }
+
+        $timeExpr = $driver === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
         $stmt = $this->pdo->prepare(
-            'INSERT INTO chat_room_messages (room_id, user_id, message, created_at) ' .
-            'VALUES (:rid, :uid, :msg, NOW())'
+            "INSERT INTO chat_room_messages (room_id, user_id, message, created_at) VALUES (:rid, :uid, :msg, {$timeExpr})"
         );
         $stmt->execute([
             ':rid' => $roomId,

@@ -61,9 +61,9 @@ final class TtsService
 
         if (!empty($post['audio_path']) && $this->storageConfig !== null && $this->storageConfig->isConfigured()) {
             try {
-                // If audio bucket is configured and path is present
+                $bucket = $this->storageConfig->bucketAudio ?? SupabaseStorageConfig::DEFAULT_BUCKET_AUDIO;
                 $audioUrl = $this->storageConfig->supabaseUrl . '/storage/v1/object/public/' .
-                    SupabaseStorageConfig::DEFAULT_BUCKET_ARTICLES . '/' . ltrim((string) $post['audio_path'], '/');
+                    $bucket . '/' . ltrim((string) $post['audio_path'], '/');
                 $hasServerAudio = true;
                 $audioStatus = 'ready';
             } catch (Throwable) {

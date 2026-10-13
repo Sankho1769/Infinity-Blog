@@ -53,4 +53,50 @@ final class ContactRepository
 
         return (int) $stmt->fetchColumn();
     }
+
+    /**
+     * List contact messages for administrative inbox.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listMessages(int $limit = 50, int $offset = 0): array
+    {
+        $limit = max(1, min(100, $limit));
+        $offset = max(0, $offset);
+        $stmt = $this->pdo->prepare(
+            'SELECT id, name, email, subject, message, ip_address, status, created_at ' .
+            'FROM contact_messages ' .
+            'ORDER BY id DESC ' .
+            'LIMIT :limit OFFSET :offset'
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Count total contact messages for inbox pagination.
+     */
+    public function countMessages(): int
+    {
+        return (int) $this->pdo->query('SELECT COUNT(*) FROM contact_messages')->fetchColumn();
+    }
+
+    /**
+     * Update message status (e.g. 'received', 'read', 'resolved').
+     */
+    public function updateStatus(int $id, string $status): bool
+    {
+        $allowed = ['received', 'read', 'resolved'];
+        if (!in_array($status, $allowed, true)) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare('UPDATE contact_messages SET status = :status WHERE id = :id');
+        $stmt->execute([':status' => $status, ':id' => $id]);
+
+        return $stmt->rowCount() > 0;
+    }
 }

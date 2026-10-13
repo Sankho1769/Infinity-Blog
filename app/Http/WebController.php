@@ -928,6 +928,53 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function adminContactMessages(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login?redirect=' . urlencode('/admin/contact-messages-page'));
+        }
+
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $limit = 30;
+        $offset = ($page - 1) * $limit;
+
+        $messages = $this->contactRepo !== null ? $this->contactRepo->listMessages($limit, $offset) : [];
+        $total = $this->contactRepo !== null ? $this->contactRepo->countMessages() : 0;
+
+        return $this->render('admin_contact_messages', [
+            'pageTitle' => 'Contact Inquiries Inbox',
+            'metaDescription' => 'Review reader feedback, inquiries, and copyright notices.',
+            'activeNav' => 'contact_messages',
+            'messages' => $messages,
+            'total' => $total,
+            'currentPage' => $page,
+            'totalPages' => max(1, (int) ceil($total / $limit)),
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function updateContactMessageStatus(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || $account->role !== 'admin') {
+            return $this->redirect('/login');
+        }
+
+        $token = $_POST['csrf_token'] ?? '';
+        if (!$this->sessions->validateCsrfToken(is_string($token) ? $token : null)) {
+            return $this->redirect('/admin/contact-messages-page');
+        }
+
+        $status = trim((string) ($_POST['status'] ?? 'resolved'));
+        if ($this->contactRepo !== null) {
+            $this->contactRepo->updateStatus($id, $status);
+        }
+
+        return $this->redirect('/admin/contact-messages-page');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function logout(Request $request): array
     {
         if ($this->guard->currentAccount() !== null) {

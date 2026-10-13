@@ -307,6 +307,7 @@ final class PdfExporter
      */
     private static function wrapText(string $text, int $maxChars): array
     {
+        $text = self::transliterateUnicode($text);
         if (mb_strlen($text) <= $maxChars) {
             return [$text];
         }
@@ -333,16 +334,71 @@ final class PdfExporter
         return $lines;
     }
 
+    /**
+     * Transliterate complex Unicode characters (including Bengali and Hindi) for PDF rendering.
+     */
+    public static function transliterateUnicode(string $str): string
+    {
+        // 1. Common smart typography & punctuation
+        $replacements = [
+            '“' => '"', '”' => '"', '‘' => "'", '’' => "'",
+            '—' => ' -- ', '–' => '-', '…' => '...',
+            '•' => '*', '·' => '*', '। ' => '. ', '।' => '. ', '॥' => '. ',
+        ];
+        $str = strtr($str, $replacements);
+
+        // 2. Bengali Unicode Block (U+0980 - U+09FF)
+        $bengaliMap = [
+            'অ' => 'O', 'আ' => 'A', 'ই' => 'I', 'ঈ' => 'I', 'উ' => 'U', 'ঊ' => 'U', 'ঋ' => 'Ri',
+            'এ' => 'E', 'ঐ' => 'Oi', 'ও' => 'O', 'ঔ' => 'Ou',
+            'ক' => 'k', 'খ' => 'kh', 'গ' => 'g', 'ঘ' => 'gh', 'ঙ' => 'ng',
+            'চ' => 'ch', 'ছ' => 'chh', 'জ' => 'j', 'ঝ' => 'jh', 'ঞ' => 'ny',
+            'ট' => 't', 'ঠ' => 'th', 'ড' => 'd', 'ঢ' => 'dh', 'ণ' => 'n',
+            'ত' => 't', 'থ' => 'th', 'দ' => 'd', 'ধ' => 'dh', 'ন' => 'n',
+            'প' => 'p', 'ফ' => 'ph', 'ব' => 'b', 'ভ' => 'bh', 'ম' => 'm',
+            'য' => 'j', 'র' => 'r', 'ল' => 'l', 'শ' => 'sh', 'ষ' => 'sh', 'স' => 's', 'হ' => 'h',
+            'ড়' => 'r', 'ঢ়' => 'rh', 'য়' => 'y', 'ৎ' => 't',
+            'া' => 'a', 'ি' => 'i', 'ী' => 'i', 'ু' => 'u', 'ূ' => 'u', 'ৃ' => 'ri',
+            'ে' => 'e', 'ৈ' => 'oi', 'ো' => 'o', 'ৌ' => 'ou',
+            'ং' => 'ng', 'ঃ' => 'h', 'ঁ' => '', '্' => '',
+            '০' => '0', '১' => '1', '২' => '2', '৩' => '3', '৪' => '4',
+            '৫' => '5', '৬' => '6', '৭' => '7', '৮' => '8', '৯' => '9',
+        ];
+        $str = strtr($str, $bengaliMap);
+
+        // 3. Devanagari / Hindi Unicode Block (U+0900 - U+097F)
+        $devanagariMap = [
+            'अ' => 'A', 'आ' => 'Aa', 'इ' => 'I', 'ई' => 'Ii', 'उ' => 'U', 'ऊ' => 'Uu', 'ऋ' => 'Ri',
+            'ए' => 'E', 'ऐ' => 'Ai', 'ओ' => 'O', 'औ' => 'Au',
+            'क' => 'k', 'ख' => 'kh', 'ग' => 'g', 'घ' => 'gh', 'ङ' => 'ng',
+            'च' => 'ch', 'छ' => 'chh', 'ज' => 'j', 'झ' => 'jh', 'ञ' => 'ny',
+            'ट' => 't', 'ठ' => 'th', 'ड' => 'd', 'ढ' => 'dh', 'ण' => 'n',
+            'त' => 't', 'थ' => 'th', 'द' => 'd', 'ध' => 'dh', 'न' => 'n',
+            'प' => 'p', 'फ' => 'ph', 'ब' => 'b', 'भ' => 'bh', 'म' => 'm',
+            'य' => 'y', 'र' => 'r', 'ल' => 'l', 'व' => 'v', 'श' => 'sh', 'ष' => 'sh', 'स' => 's', 'ह' => 'h',
+            'क़' => 'q', 'ख़' => 'kh', 'ग़' => 'gh', 'ज़' => 'z', 'ड़' => 'r', 'ढ़' => 'rh', 'फ़' => 'f',
+            'ा' => 'a', 'ि' => 'i', 'ी' => 'ii', 'ु' => 'u', 'ू' => 'uu', 'ृ' => 'ri',
+            'े' => 'e', 'ै' => 'ai', 'ो' => 'o', 'ौ' => 'au',
+            'ं' => 'n', 'ः' => 'h', 'ँ' => 'n', '्' => '',
+            '०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4',
+            '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9',
+        ];
+        $str = strtr($str, $devanagariMap);
+
+        return $str;
+    }
+
     private static function pdfEscape(string $str): string
     {
+        $str = self::transliterateUnicode($str);
         // Convert to ISO-8859-1 / WinAnsi for standard Type 1 fonts
-        $encoded = @iconv('UTF-8', 'windows-1252//TRANSLIT', $str);
+        $encoded = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $str);
         if ($encoded === false) {
             $encoded = utf8_decode($str);
         }
 
         // Escape parenthesis and backslashes for PDF syntax
-        $escaped = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $encoded);
+        $escaped = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], (string) $encoded);
         return $escaped;
     }
 }

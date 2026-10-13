@@ -2495,17 +2495,20 @@ $run('supabase storage config validates parameters, rejects placeholders, and de
     $expect($validStorage->bucketAvatars === 'profile-avatars');
     $expect($validStorage->bucketBanners === 'profile-banners');
     $expect($validStorage->bucketVideos === 'article-videos');
+    $expect($validStorage->bucketAudio === 'article-audio');
 
     // Bucket limits
     $expect(SupabaseStorageConfig::getBucketLimit('article-images') === 5 * 1024 * 1024, 'article-images limit must be 5MB.');
     $expect(SupabaseStorageConfig::getBucketLimit('profile-avatars') === 2 * 1024 * 1024, 'profile-avatars limit must be 2MB.');
     $expect(SupabaseStorageConfig::getBucketLimit('profile-banners') === 4 * 1024 * 1024, 'profile-banners limit must be 4MB.');
     $expect(SupabaseStorageConfig::getBucketLimit('article-videos') === 50 * 1024 * 1024, 'article-videos limit must be 50MB.');
+    $expect(SupabaseStorageConfig::getBucketLimit('article-audio') === 20 * 1024 * 1024, 'article-audio limit must be 20MB.');
 
     // Allowed MIME types
     $expect(in_array('image/jpeg', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
     $expect(in_array('image/png', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
     $expect(in_array('image/webp', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true));
+    $expect(in_array('audio/mpeg', SupabaseStorageConfig::ALLOWED_AUDIO_MIME_TYPES, true));
     $expect(!in_array('image/gif', SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES, true), 'GIF must not be allowed for articles.');
     $expect(in_array('video/mp4', SupabaseStorageConfig::ALLOWED_VIDEO_MIME_TYPES, true));
     $expect(in_array('video/webm', SupabaseStorageConfig::ALLOWED_VIDEO_MIME_TYPES, true));
@@ -3018,6 +3021,172 @@ $run('Contact repository persists messages with sliding-window IP rate limiting'
 
     // Another IP should not be counted
     $expect($repo->countRecentFromIp('192.0.2.88', 60) === 0);
+});
+
+$run('Contact repository supports admin listing, counts, and status updates', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sqlite->exec(
+        "CREATE TABLE contact_messages (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "name TEXT NOT NULL, " .
+        "email TEXT NOT NULL, " .
+        "subject TEXT NOT NULL, " .
+        "message TEXT NOT NULL, " .
+        "ip_address TEXT NULL, " .
+        "status TEXT NOT NULL DEFAULT 'received', " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+
+    $repo = new \InfinityBlog\Contact\ContactRepository($sqlite);
+    $repo->createMessage('Alice', 'alice@example.com', 'Subject 1', 'Message 1', '127.0.0.1');
+    $repo->createMessage('Bob', 'bob@example.com', 'Subject 2', 'Message 2', '127.0.0.1');
+
+    $count = $repo->countMessages();
+    $expect($count === 2, 'Total message count should be 2.');
+
+    $list = $repo->listMessages(10, 0);
+    $expect(count($list) === 2, 'Should list 2 messages.');
+    $expect($list[0]['name'] === 'Bob', 'Messages should be ordered DESC by id.');
+
+    $updated = $repo->updateStatus(1, 'resolved');
+    $expect($updated === true, 'Status update should return true.');
+
+    $listAfter = $repo->listMessages(10, 0);
+    $item1 = array_values(array_filter($listAfter, fn($m) => (int)$m['id'] === 1))[0];
+    $expect($item1['status'] === 'resolved', 'Status should be updated to resolved.');
+});
+
+$run('PDF exporter transliterates Bengali, Devanagari, and typographic Unicode to safe characters', static function () use ($expect): void {
+    // Bengali transliteration test: 'বাংলা' (ba-ng-la)
+    $bengaliText = 'বাংলা ভাষা ও সাহিত্য';
+    $translitBengali = \InfinityBlog\Export\PdfExporter::transliterateUnicode($bengaliText);
+    $expect(!str_contains($translitBengali, '?'), 'Bengali transliteration should not produce question marks.');
+    $expect(strlen($translitBengali) > 0, 'Transliterated Bengali text should not be empty.');
+
+    // Hindi / Devanagari test: 'नमस्ते दुनिया'
+    $hindiText = 'नमस्ते दुनिया और तकनीक';
+    $translitHindi = \InfinityBlog\Export\PdfExporter::transliterateUnicode($hindiText);
+    $expect(!str_contains($translitHindi, '?'), 'Hindi transliteration should not produce question marks.');
+    $expect(strlen($translitHindi) > 0, 'Transliterated Hindi text should not be empty.');
+
+    // Typographic punctuation quotes & dashes
+    $typoText = '“Smart quotes” and ‘single’ with em—dash and en–dash…';
+    $translitTypo = \InfinityBlog\Export\PdfExporter::transliterateUnicode($typoText);
+    $expect(str_contains($translitTypo, '"Smart quotes"'), 'Smart double quotes should be converted to ASCII quotes.');
+    $expect(str_contains($translitTypo, "'single'"), 'Smart single quotes should be converted to ASCII quotes.');
+    $expect(str_contains($translitTypo, '--'), 'Em dash should be converted to double hyphens.');
+});
+
+$run('Direct message repository enforces user blocks and rate limits', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sqlite->exec(
+        "CREATE TABLE users (" .
+        "id INTEGER PRIMARY KEY, " .
+        "username TEXT NOT NULL, " .
+        "display_name TEXT NOT NULL, " .
+        "status TEXT NOT NULL DEFAULT 'active'" .
+        ");"
+    );
+    $sqlite->exec(
+        "CREATE TABLE direct_messages (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "sender_id INTEGER NOT NULL, " .
+        "recipient_id INTEGER NOT NULL, " .
+        "body TEXT NOT NULL, " .
+        "read_at TEXT NULL, " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+    $sqlite->exec(
+        "CREATE TABLE user_blocks (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "user_id INTEGER NOT NULL, " .
+        "blocked_user_id INTEGER NOT NULL, " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+
+    $sqlite->exec("INSERT INTO users (id, username, display_name, status) VALUES (1, 'alice', 'Alice', 'active'), (2, 'bob', 'Bob', 'active')");
+
+    $repo = new \InfinityBlog\Social\MessageRepository($sqlite);
+
+    // Normal send
+    $msg = $repo->sendMessage(1, 2, 'Hello from user 1');
+    $expect(isset($msg['id']) && (int)$msg['id'] === 1, 'Direct message should be sent successfully.');
+
+    // Blocked: user 2 blocks user 1
+    $sqlite->exec("INSERT INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (2, 1, CURRENT_TIMESTAMP)");
+    $blocked = false;
+    try {
+        $repo->sendMessage(1, 2, 'Another message');
+    } catch (\InvalidArgumentException $e) {
+        $blocked = true;
+        $expect(str_contains($e->getMessage(), 'blocked'), 'Error message should indicate communication is blocked.');
+    }
+    $expect($blocked, 'Direct message should be blocked when recipient blocked sender.');
+});
+
+$run('Community repository enforces chat message length, rate limits, and viewer block filters', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sqlite->exec(
+        "CREATE TABLE chat_room_messages (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "room_id INTEGER NOT NULL, " .
+        "user_id INTEGER NOT NULL, " .
+        "message TEXT NOT NULL, " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+    $sqlite->exec(
+        "CREATE TABLE users (" .
+        "id INTEGER PRIMARY KEY, " .
+        "username TEXT NOT NULL, " .
+        "display_name TEXT NOT NULL, " .
+        "avatar_path TEXT NULL" .
+        ");"
+    );
+    $sqlite->exec(
+        "CREATE TABLE user_blocks (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "user_id INTEGER NOT NULL, " .
+        "blocked_user_id INTEGER NOT NULL, " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+
+    $sqlite->exec("INSERT INTO users (id, username, display_name) VALUES (1, 'alice', 'Alice'), (2, 'bob', 'Bob')");
+
+    $repo = new \InfinityBlog\Community\CommunityRepository($sqlite);
+
+    // Reject message over 2000 chars
+    $tooLong = str_repeat('A', 2001);
+    $rejectedLong = false;
+    try {
+        $repo->postChatMessage(1, 1, $tooLong);
+    } catch (\InvalidArgumentException $e) {
+        $rejectedLong = true;
+        $expect(str_contains($e->getMessage(), 'maximum length'));
+    }
+    $expect($rejectedLong, 'Chat message exceeding 2000 characters must be rejected.');
+
+    // Post valid message
+    $msgId = $repo->postChatMessage(1, 1, 'Hello chatroom!');
+    $expect($msgId === 1, 'Valid chat message should be posted.');
+
+    // User 2 blocks user 1
+    $sqlite->exec("INSERT INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (2, 1, CURRENT_TIMESTAMP)");
+
+    // Messages viewed by user 2 should filter out user 1's messages
+    $messagesForBob = $repo->getChatMessages(1, 50, null, 2);
+    $expect(count($messagesForBob) === 0, 'Blocked user messages should be excluded for viewer.');
+
+    // Messages viewed by unblocking user (or null) should include user 1's messages
+    $messagesForAll = $repo->getChatMessages(1, 50, null, null);
+    $expect(count($messagesForAll) === 1, 'Unblocked chat messages should be visible to others.');
 });
 
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
