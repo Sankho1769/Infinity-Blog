@@ -68,8 +68,8 @@ $adminPassword = Env::get('ADMIN_DEFAULT_PASSWORD');
 $authorPassword = Env::get('AUTHOR_DEFAULT_PASSWORD');
 
 if ($appEnv === 'production') {
-    if (empty($adminPassword) || strlen((string)$adminPassword) < 12) {
-        fwrite(STDERR, "Error: In production environments, ADMIN_DEFAULT_PASSWORD environment variable must be set (minimum 12 characters).\n");
+    if (empty($adminPassword) || strlen((string)$adminPassword) < 12 || $adminPassword === 'Admin@Infinity2026!') {
+        fwrite(STDERR, "Error: In production environments, ADMIN_DEFAULT_PASSWORD environment variable must be set with a unique passphrase (minimum 12 characters, not the development default).\n");
         exit(1);
     }
 } else {

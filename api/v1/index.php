@@ -17,6 +17,7 @@ use InfinityBlog\Config\Database;
 use InfinityBlog\Core\Response;
 use InfinityBlog\Core\SessionManager;
 use InfinityBlog\Core\RateLimiter;
+use InfinityBlog\Core\RateLimiterException;
 use InfinityBlog\Core\AuditLogger;
 use InfinityBlog\Services\AISummarizer;
 
@@ -78,11 +79,21 @@ if (($qPos = strpos($route, '?')) !== false) {
 }
 $route = rtrim($route, '/') ?: '/';
 
-// Parse JSON Body
-$rawInput = file_get_contents('php://input');
+// Enforce request body size limit (2MB max)
+$contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+if ($contentLength > 2 * 1024 * 1024) {
+    Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold (2MB).', null, 413);
+}
+
+// Parse JSON Body with depth limit (32) to prevent stack overflow DoS
+$rawInput = file_get_contents('php://input', false, null, 0, 2097153);
+if (strlen($rawInput) > 2 * 1024 * 1024) {
+    Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold (2MB).', null, 413);
+}
+
 $inputData = [];
 if (!empty($rawInput)) {
-    $inputData = json_decode($rawInput, true);
+    $inputData = json_decode($rawInput, true, 32);
     if (json_last_error() !== JSON_ERROR_NONE && in_array($method, ['POST', 'PATCH', 'PUT'], true)) {
         Response::error('MALFORMED_JSON', 'Invalid JSON payload received.', null, 400);
     }
@@ -92,7 +103,21 @@ if (!is_array($inputData)) {
 }
 
 $pdo = Database::getConnection();
-$clientIp = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+// Secure client IP resolution: only honor X-Forwarded-For if REMOTE_ADDR is in configured TRUSTED_PROXIES
+$remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+$clientIp = $remoteAddr;
+$trustedProxiesStr = Env::get('TRUSTED_PROXIES', '');
+if ($trustedProxiesStr) {
+    $trustedProxies = array_filter(array_map('trim', explode(',', (string)$trustedProxiesStr)));
+    if (in_array($remoteAddr, $trustedProxies, true) && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwardedList = array_filter(array_map('trim', explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])));
+        $candidate = reset($forwardedList);
+        if ($candidate && filter_var($candidate, FILTER_VALIDATE_IP)) {
+            $clientIp = $candidate;
+        }
+    }
+}
 
 // Route Dispatcher
 try {
@@ -102,12 +127,24 @@ try {
 
     // POST /auth/login
     if ($method === 'POST' && $route === '/auth/login') {
-        if (!RateLimiter::check('login', $clientIp, 40, 300)) {
-            Response::error('RATE_LIMITED', 'Too many failed login attempts. Please wait 5 minutes.', null, 429);
-        }
-
         $identifier = trim((string)($inputData['identifier'] ?? ''));
         $password = (string)($inputData['password'] ?? '');
+
+        // Dual rate-limiting policy (IP-based and account-based) with FAIL-CLOSED guarantee
+        try {
+            if (!RateLimiter::check('login:ip', $clientIp, 30, 300, true)) {
+                Response::error('RATE_LIMITED', 'Too many login attempts from this network. Please wait 5 minutes.', null, 429);
+            }
+            if ($identifier !== '') {
+                $normId = strtolower($identifier);
+                if (!RateLimiter::check('login:account', $normId, 15, 300, true)) {
+                    Response::error('RATE_LIMITED', 'Too many login attempts for this account. Please wait 5 minutes.', null, 429);
+                }
+            }
+        } catch (RateLimiterException $re) {
+            // Fail closed: Never allow login attempts when rate limiter storage fails
+            Response::error('SERVICE_UNAVAILABLE', 'Authentication service temporarily unavailable. Please retry later.', null, 503);
+        }
 
         if ($identifier === '' || $password === '') {
             Response::error('VALIDATION_ERROR', 'Identifier and password are required.', [
@@ -697,8 +734,12 @@ try {
         SessionManager::requireCsrf();
         $postId = (int)$matches[1];
 
-        if (!RateLimiter::check('ai_summary', "user:{$user['id']}", 6, 60)) {
-            Response::error('RATE_LIMITED', 'AI summary request limit exceeded. Please wait a minute before retrying.', null, 429);
+        try {
+            if (!RateLimiter::check('ai_summary', "user:{$user['id']}", 6, 60, true)) {
+                Response::error('RATE_LIMITED', 'AI summary request limit exceeded. Please wait a minute before retrying.', null, 429);
+            }
+        } catch (RateLimiterException $re) {
+            Response::error('SERVICE_UNAVAILABLE', 'AI summarization rate limit service unavailable.', null, 503);
         }
 
         $stmt = $pdo->prepare("SELECT `id`, `author_id`, `title`, `content` FROM `posts` WHERE `id` = :id");
@@ -974,10 +1015,49 @@ try {
         $password = (string)($inputData['password'] ?? '');
 
         $errors = [];
-        if ($username === '') $errors['username'] = 'Username is required.';
-        if ($displayName === '') $errors['display_name'] = 'Display name is required.';
-        if (mb_strlen($password) < 8) $errors['password'] = 'Password must be at least 8 characters.';
-        if (!in_array($role, ['admin', 'author'], true)) $errors['role'] = 'Role must be admin or author.';
+        if ($username === '') {
+            $errors['username'] = 'Username is required.';
+        } elseif (mb_strlen($username) < 3 || mb_strlen($username) > 50) {
+            $errors['username'] = 'Username must be between 3 and 50 characters.';
+        } elseif (!preg_match('/^[a-zA-Z0-9_\-\. ]+$/u', $username)) {
+            $errors['username'] = 'Username contains invalid characters.';
+        }
+
+        if ($displayName === '') {
+            $errors['display_name'] = 'Display name is required.';
+        } elseif (mb_strlen($displayName) < 2 || mb_strlen($displayName) > 100) {
+            $errors['display_name'] = 'Display name must be between 2 and 100 characters.';
+        }
+
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'A valid email address is required.';
+        }
+
+        if (mb_strlen($password) < 12) {
+            $errors['password'] = 'Password must be at least 12 characters long (passphrases recommended).';
+        } elseif (strlen($password) > 128) {
+            $errors['password'] = 'Password must not exceed 128 characters.';
+        } else {
+            $commonPasswords = [
+                'password', 'password123', 'password1234', 'password12345', 'password123456',
+                '12345678', '123456789', '1234567890', '123456789012',
+                'admin123456', 'administrator', 'administrator123',
+                'qwertyuiop', 'qwertyuiop12', 'letmein12345', 'welcome12345',
+                'infinity2026', 'admin@infinity2026', 'iloveyou12345',
+            ];
+            $lowerPass = strtolower($password);
+            if (
+                in_array($lowerPass, $commonPasswords, true) ||
+                preg_match('/^(password|admin|letmein|welcome|qwerty)/i', $lowerPass) ||
+                $lowerPass === strtolower($username)
+            ) {
+                $errors['password'] = 'The chosen password is too common or easily guessable.';
+            }
+        }
+
+        if (!in_array($role, ['admin', 'author'], true)) {
+            $errors['role'] = 'Role must be admin or author.';
+        }
 
         if ($username !== '') {
             $check = $pdo->prepare("SELECT `id` FROM `users` WHERE `username` = :u OR (`email` = :e AND `email` != '')");

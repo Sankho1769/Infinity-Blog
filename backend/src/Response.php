@@ -17,6 +17,9 @@ class Response {
         http_response_code($status);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Request-ID: ' . self::getRequestId());
+        header('X-Content-Type-Options: nosniff');
+        header('X-Frame-Options: DENY');
+        header('Referrer-Policy: strict-origin-when-cross-origin');
         
         foreach ($headers as $key => $val) {
             header("{$key}: {$val}");

@@ -3,6 +3,14 @@
 # Disable directory browsing
 Options -Indexes
 
+# Rewrite engine for directory & path-based protection
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Deny access to .git directory and any hidden dot-directories/files and their descendants
+    RewriteRule (^|/)\. - [F,L]
+</IfModule>
+
 # Protect sensitive environment and source control files (.env, .git, etc.)
 <FilesMatch "^\.">
     <IfModule mod_authz_core.c>
@@ -13,8 +21,8 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 
-# Protect documentation, markdown, and config files from direct exposure
-<FilesMatch "\.(md|sql|json|lock|env|example|log)$">
+# Protect documentation, schemas, manifests, and sensitive config extensions
+<FilesMatch "\.(md|sql|json|lock|env|example|log|bak|config|ini|sh|bat)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -22,3 +30,17 @@ Options -Indexes
         Deny from all
     </IfModule>
 </FilesMatch>
+
+# Security HTTP response headers
+<IfModule mod_headers.c>
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    # Clickjacking protection
+    Header always set X-Frame-Options "DENY"
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Restrict powerful browser features
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # Content Security Policy: strictly protect resources while allowing application ES modules and styles
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; connect-src 'self';"
+</IfModule>

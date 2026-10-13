@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace InfinityBlog\Core;
 
 use InfinityBlog\Config\Database;
+use InfinityBlog\Config\Env;
 
 class SessionManager {
     public static function start(): void {
@@ -11,9 +12,20 @@ class SessionManager {
             return;
         }
 
+        // HTTPS detection: check direct TLS, then check trusted proxy headers
         $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443)
-            || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+            || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+
+        if (!$isSecure && !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+            $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+            $trustedProxiesStr = Env::get('TRUSTED_PROXIES', '');
+            if ($trustedProxiesStr) {
+                $trustedProxies = array_filter(array_map('trim', explode(',', (string)$trustedProxiesStr)));
+                if (in_array($remoteAddr, $trustedProxies, true)) {
+                    $isSecure = true;
+                }
+            }
+        }
 
         session_set_cookie_params([
             'lifetime' => 86400, // 24 hours
@@ -60,8 +72,8 @@ class SessionManager {
             $headers = getallheaders();
             if (is_array($headers)) {
                 foreach ($headers as $key => $val) {
-                    if (strtolower($key) === 'x-csrf-token') {
-                        $token = $val;
+                    if (strtolower((string)$key) === 'x-csrf-token') {
+                        $token = (string)$val;
                         break;
                     }
                 }
@@ -69,17 +81,19 @@ class SessionManager {
         }
 
         if (!$token) {
-            $input = json_decode(file_get_contents('php://input'), true);
+            $raw = file_get_contents('php://input');
+            $input = json_decode($raw ?: '', true);
             $token = $input['_csrf_token'] ?? $_POST['_csrf_token'] ?? null;
         }
 
-        if (!self::validateCsrfToken($token)) {
+        if (!is_string($token) || !self::validateCsrfToken($token)) {
             Response::error('CSRF_INVALID', 'A valid CSRF token is required for this action.', null, 403);
         }
     }
 
     public static function loginUser(array $user): void {
         self::start();
+        // Prevent session fixation
         session_regenerate_id(true);
 
         $_SESSION['user'] = [
@@ -122,6 +136,10 @@ class SessionManager {
         return $_SESSION['user'] ?? null;
     }
 
+    /**
+     * Enforce authentication and active account status.
+     * FAILS CLOSED: If status cannot be verified from database, denies the operation.
+     */
     public static function requireAuth(): array {
         $user = self::getCurrentUser();
         if (!$user) {
@@ -140,13 +158,15 @@ class SessionManager {
                 Response::error('ACCOUNT_INACTIVE', 'This account has been deactivated.', null, 403);
             }
 
-            // Keep session role synchronized
+            // Keep session role synchronized with database authority
             if ($dbUser['role'] !== $user['role']) {
                 $_SESSION['user']['role'] = $dbUser['role'];
                 $user['role'] = $dbUser['role'];
             }
         } catch (\Throwable $e) {
-            error_log("SessionManager status check error: " . $e->getMessage());
+            // Fail closed: Never return authenticated user when verification check fails
+            error_log("SessionManager authorization check error: " . $e->getMessage());
+            Response::error('AUTH_SERVICE_UNAVAILABLE', 'Authentication verification temporarily unavailable.', null, 503);
         }
 
         return $user;
