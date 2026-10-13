@@ -303,7 +303,7 @@ try {
     } elseif (str_starts_with($request->path, '/api/comments') || str_starts_with($request->path, '/api/chat') || str_starts_with($request->path, '/api/notifications') || (str_starts_with($request->path, '/api/users/') && (str_ends_with($request->path, '/block') || str_ends_with($request->path, '/unblock') || str_ends_with($request->path, '/report')))) {
         $controller = new CommunityController($community, $guard, $sessions, $postsRepo);
     } elseif ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
-        $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
+        $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions, $mediaService);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
     } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/')) {

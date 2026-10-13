@@ -166,7 +166,7 @@ final class CommunityRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO chat_rooms (slug, name, description, category_id, created_by, is_active, created_at) ' .
-            'VALUES (:slug, :name, :desc, :cat, :uid, 1, NOW())'
+            'VALUES (:slug, :name, :desc, :cat, :uid, 1, CURRENT_TIMESTAMP)'
         );
         $stmt->execute([
             ':slug' => $slug,

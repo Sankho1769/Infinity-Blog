@@ -119,7 +119,7 @@
       <!-- Messages Stream -->
       <div class="chat-messages-stream" id="chatStream">
         <?php if (empty($threadMessages)): ?>
-          <div style="text-align: center; color: var(--text-muted); margin: auto; padding: 30px;">
+          <div class="chat-empty-state" style="text-align: center; color: var(--text-muted); margin: auto; padding: 30px;">
             <p style="font-size: 0.95rem; margin-bottom: 4px;">No messages with <?= htmlspecialchars($activeName, ENT_QUOTES, 'UTF-8') ?> yet.</p>
             <p style="font-size: 0.82rem; margin: 0;">Send a message below to break the ice!</p>
           </div>
@@ -255,12 +255,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const body = messageInput.value.trim();
       if (!body) return;
 
-      messageInput.value = '';
       const sendBtn = document.getElementById('sendBtn');
-      if (sendBtn) sendBtn.disabled = true;
+      const btnSpan = sendBtn ? sendBtn.querySelector('span') : null;
+      if (sendBtn) {
+        sendBtn.disabled = true;
+        if (btnSpan) btnSpan.textContent = 'Sending...';
+      }
 
       try {
-        const csrf = await window.InfinityBlog.ensureCsrfToken();
+        const csrf = (typeof window.InfinityBlog?.ensureCsrfToken === 'function')
+          ? await window.InfinityBlog.ensureCsrfToken()
+          : (document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+
         const res = await fetch('/api/messages', {
           method: 'POST',
           headers: {
@@ -276,15 +282,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = await res.json();
         if (res.ok && data.data) {
-          appendMessageBubble(data.data, true);
+          messageInput.value = '';
+          const msgObj = data.data.message || data.data;
+          const emptyState = chatStream?.querySelector('.chat-empty-state');
+          if (emptyState) emptyState.remove();
+
+          appendMessageBubble(msgObj, true);
           scrollToBottom();
         } else {
-          window.InfinityBlog.showAlert(data.error?.message || 'Could not send message.', 'error');
+          const errMsg = data.error?.message || 'Could not send message.';
+          if (typeof window.InfinityBlog?.showAlert === 'function') {
+            window.InfinityBlog.showAlert(errMsg, 'error');
+          } else {
+            alert(errMsg);
+          }
         }
       } catch (err) {
-        window.InfinityBlog.showAlert('Network error while sending message.', 'error');
+        const errMsg = 'Network error while sending message.';
+        if (typeof window.InfinityBlog?.showAlert === 'function') {
+          window.InfinityBlog.showAlert(errMsg, 'error');
+        } else {
+          alert(errMsg);
+        }
       } finally {
-        if (sendBtn) sendBtn.disabled = false;
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          if (btnSpan) btnSpan.textContent = 'Send';
+        }
         if (messageInput) messageInput.focus();
       }
     });
@@ -294,22 +318,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!chatStream) return;
     const bubble = document.createElement('div');
     bubble.className = `chat-bubble ${isSent ? 'sent' : 'received'}`;
-    bubble.setAttribute('data-msg-id', msg.id);
+    if (msg.id) {
+      bubble.setAttribute('data-msg-id', msg.id);
+    }
 
     const safeBody = document.createElement('div');
-    safeBody.textContent = msg.body;
+    safeBody.textContent = msg.body || '';
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'chat-timestamp';
-    const dateObj = new Date(msg.created_at);
-    timeSpan.textContent = dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const dateObj = msg.created_at ? new Date(msg.created_at) : new Date();
+    timeSpan.textContent = isNaN(dateObj.getTime())
+      ? 'Just now'
+      : dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
     bubble.appendChild(safeBody);
     bubble.appendChild(timeSpan);
     chatStream.appendChild(bubble);
   }
 
-  // Polling for new incoming messages every 5 seconds
+  // Polling for new incoming messages every 4 seconds
   if (activeUserId) {
     setInterval(async () => {
       try {
@@ -318,20 +346,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (res.ok) {
           const data = await res.json();
-          const messages = data.data || [];
-          let hasNew = false;
-          messages.forEach(msg => {
-            const exists = chatStream.querySelector(`[data-msg-id="${msg.id}"]`);
-            if (!exists) {
-              const isSent = parseInt(msg.sender_id, 10) !== parseInt(activeUserId, 10);
-              appendMessageBubble(msg, isSent);
-              hasNew = true;
-            }
-          });
-          if (hasNew) scrollToBottom();
+          const messages = Array.isArray(data.data)
+            ? data.data
+            : (data.data?.messages || []);
+
+          if (Array.isArray(messages) && messages.length > 0) {
+            let hasNew = false;
+            messages.forEach(msg => {
+              const exists = chatStream.querySelector(`[data-msg-id="${msg.id}"]`);
+              if (!exists) {
+                const emptyState = chatStream.querySelector('.chat-empty-state');
+                if (emptyState) emptyState.remove();
+
+                const isSent = parseInt(msg.sender_id, 10) !== parseInt(activeUserId, 10);
+                appendMessageBubble(msg, isSent);
+                hasNew = true;
+              }
+            });
+            if (hasNew) scrollToBottom();
+          }
         }
       } catch (e) {}
-    }, 5000);
+    }, 4000);
   }
 });
 </script>

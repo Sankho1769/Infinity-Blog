@@ -15,13 +15,13 @@
     <a href="/" class="btn btn-primary btn-pill">Return to Home</a>
   </div>
 <?php else: ?>
-  <div class="categories-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px;">
+  <div class="categories-grid">
     <?php foreach ($categories as $cat): ?>
       <a href="/?category=<?= htmlspecialchars($cat['slug'], ENT_QUOTES, 'UTF-8') ?>" class="glass-panel glass-panel-hover category-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; text-decoration: none; border-radius: var(--radius-lg); transition: all 0.2s ease;">
         <div>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <div style="width: 42px; height: 42px; border-radius: 12px; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.15rem; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);">
-              ✦
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: var(--primary-gradient); display: flex; align-items: center; justify-content: center; color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25); flex-shrink: 0;">
+              <?= \InfinityBlog\Categories\CategoryIconHelper::renderIcon($cat, 22) ?>
             </div>
             <span style="background: rgba(224, 231, 255, 0.7); color: #4338ca; font-weight: 700; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 0.8rem;">
               <?= (int) $cat['post_count'] ?> <?= (int) $cat['post_count'] === 1 ? 'Article' : 'Articles' ?>

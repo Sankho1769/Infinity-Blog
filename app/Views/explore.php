@@ -65,7 +65,7 @@
           $catQuery = array_merge($baseCategoryQuery, ['category' => $cat['slug']]);
         ?>
         <a href="/explore?<?= http_build_query($catQuery) ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
-          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($cat['slug'], 15) ?>
+          <?= \InfinityBlog\Categories\CategoryIconHelper::renderIcon($cat, 15) ?>
           <span><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></span>
           <?php if (!empty($cat['post_count'])): ?>
             <span style="font-size: 0.75rem; opacity: 0.75; margin-left: 2px;">(<?= (int) $cat['post_count'] ?>)</span>

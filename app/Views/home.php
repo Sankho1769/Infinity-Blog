@@ -45,7 +45,7 @@
       </a>
       <?php foreach ($categories as $cat): ?>
         <a href="/?category=<?= urlencode($cat['slug']) ?>" class="filter-pill <?= ($activeCategorySlug ?? '') === $cat['slug'] ? 'active' : '' ?>">
-          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($cat['slug'], 15) ?>
+          <?= \InfinityBlog\Categories\CategoryIconHelper::renderIcon($cat, 15) ?>
           <span><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></span>
         </a>
       <?php endforeach; ?>

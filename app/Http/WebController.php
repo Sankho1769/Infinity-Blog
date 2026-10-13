@@ -887,6 +887,7 @@ final class WebController
             'metaDescription' => 'Administer article categories, update slugs, and toggle category visibility.',
             'activeNav' => 'admin_categories',
             'categories' => $allCategories,
+            'iconAllowlist' => \InfinityBlog\Categories\CategoryIconHelper::getAllowlist(),
         ]);
     }
 
@@ -1872,12 +1873,17 @@ final class WebController
     public function chat(Request $request, ?string $slug = null): array
     {
         $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
-        if (empty($rooms)) {
-            if ($this->community !== null) {
-                $this->community->createChatRoom('Web Development', 'web-development', 'Discussions about frontend, backend, APIs, and modern architecture.', 1, 1);
-                $this->community->createChatRoom('Artificial Intelligence', 'artificial-intelligence', 'Exchange thoughts on LLMs, neural networks, ethics, and AI workflows.', 2, 1);
-                $this->community->createChatRoom('General Lounge', 'general', 'Casual hangouts, writing inspiration, and community introductions.', null, 1);
-                $rooms = $this->community->getChatRooms();
+        if (empty($rooms) && $this->community !== null) {
+            $adminId = $this->users->findFirstAdminId();
+            if ($adminId !== null) {
+                try {
+                    $this->community->createChatRoom('Web Development', 'web-development', 'Discussions about frontend, backend, APIs, and modern architecture.', null, $adminId);
+                    $this->community->createChatRoom('Artificial Intelligence', 'artificial-intelligence', 'Exchange thoughts on LLMs, neural networks, ethics, and AI workflows.', null, $adminId);
+                    $this->community->createChatRoom('General Lounge', 'general', 'Casual hangouts, writing inspiration, and community introductions.', null, $adminId);
+                    $rooms = $this->community->getChatRooms();
+                } catch (\Throwable) {
+                    $rooms = [];
+                }
             }
         }
 

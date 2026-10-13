@@ -218,7 +218,10 @@ final class SocialController
             $msg = $this->messages->sendMessage($account->id, $otherUserId, $body);
             return ['status' => 201, 'body' => ['data' => ['message' => $msg]]];
         } catch (InvalidArgumentException $e) {
-            return ['status' => 422, 'body' => ['error' => ['code' => 'VALIDATION_ERROR', 'message' => $e->getMessage()]]];
+            $isRateLimit = str_contains($e->getMessage(), 'Rate limit') || str_contains($e->getMessage(), 'slow down');
+            $status = $isRateLimit ? 429 : 422;
+            $code = $isRateLimit ? 'RATE_LIMITED' : (str_contains($e->getMessage(), 'blocked') ? 'USER_BLOCKED' : 'VALIDATION_ERROR');
+            return ['status' => $status, 'body' => ['error' => ['code' => $code, 'message' => $e->getMessage()]]];
         } catch (Throwable $e) {
             return ['status' => 500, 'body' => ['error' => ['code' => 'SEND_FAILED', 'message' => 'Failed to send message.']]];
         }

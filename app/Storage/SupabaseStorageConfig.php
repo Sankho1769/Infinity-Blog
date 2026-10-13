@@ -13,12 +13,14 @@ final class SupabaseStorageConfig
     public const DEFAULT_BUCKET_BANNERS = 'profile-banners';
     public const DEFAULT_BUCKET_VIDEOS = 'article-videos';
     public const DEFAULT_BUCKET_AUDIO = 'article-audio';
+    public const DEFAULT_BUCKET_CATEGORY_ICONS = 'category-icons';
 
     public const LIMIT_ARTICLES = 5 * 1024 * 1024; // 5 MB
     public const LIMIT_AVATARS = 2 * 1024 * 1024;  // 2 MB
     public const LIMIT_BANNERS = 4 * 1024 * 1024;  // 4 MB
     public const LIMIT_VIDEOS = 50 * 1024 * 1024;  // 50 MB
     public const LIMIT_AUDIO = 20 * 1024 * 1024;   // 20 MB
+    public const LIMIT_CATEGORY_ICONS = 1 * 1024 * 1024; // 1 MB
 
     /** @var list<string> */
     public const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -36,6 +38,7 @@ final class SupabaseStorageConfig
     public string $bucketBanners;
     public string $bucketVideos;
     public string $bucketAudio;
+    public string $bucketCategoryIcons;
 
     public function __construct(
         string $supabaseUrl,
@@ -44,7 +47,8 @@ final class SupabaseStorageConfig
         string $bucketAvatars = self::DEFAULT_BUCKET_AVATARS,
         string $bucketBanners = self::DEFAULT_BUCKET_BANNERS,
         string $bucketVideos = self::DEFAULT_BUCKET_VIDEOS,
-        string $bucketAudio = self::DEFAULT_BUCKET_AUDIO
+        string $bucketAudio = self::DEFAULT_BUCKET_AUDIO,
+        string $bucketCategoryIcons = self::DEFAULT_BUCKET_CATEGORY_ICONS
     ) {
         $this->supabaseUrl = rtrim($supabaseUrl, '/');
         $this->secretKey = $secretKey;
@@ -53,6 +57,7 @@ final class SupabaseStorageConfig
         $this->bucketBanners = $bucketBanners !== '' ? $bucketBanners : self::DEFAULT_BUCKET_BANNERS;
         $this->bucketVideos = $bucketVideos !== '' ? $bucketVideos : self::DEFAULT_BUCKET_VIDEOS;
         $this->bucketAudio = $bucketAudio !== '' ? $bucketAudio : self::DEFAULT_BUCKET_AUDIO;
+        $this->bucketCategoryIcons = $bucketCategoryIcons !== '' ? $bucketCategoryIcons : self::DEFAULT_BUCKET_CATEGORY_ICONS;
     }
 
     /**
@@ -74,8 +79,9 @@ final class SupabaseStorageConfig
         $bucketBanners = trim((string) ($environment['SUPABASE_BUCKET_BANNERS'] ?? self::DEFAULT_BUCKET_BANNERS));
         $bucketVideos = trim((string) ($environment['SUPABASE_BUCKET_VIDEOS'] ?? self::DEFAULT_BUCKET_VIDEOS));
         $bucketAudio = trim((string) ($environment['SUPABASE_BUCKET_AUDIO'] ?? self::DEFAULT_BUCKET_AUDIO));
+        $bucketCategoryIcons = trim((string) ($environment['SUPABASE_BUCKET_CATEGORY_ICONS'] ?? self::DEFAULT_BUCKET_CATEGORY_ICONS));
 
-        return new self($url, $key, $bucketArticles, $bucketAvatars, $bucketBanners, $bucketVideos, $bucketAudio);
+        return new self($url, $key, $bucketArticles, $bucketAvatars, $bucketBanners, $bucketVideos, $bucketAudio, $bucketCategoryIcons);
     }
 
     /**
@@ -119,6 +125,7 @@ final class SupabaseStorageConfig
             self::DEFAULT_BUCKET_BANNERS => self::LIMIT_BANNERS,
             self::DEFAULT_BUCKET_VIDEOS => self::LIMIT_VIDEOS,
             self::DEFAULT_BUCKET_AUDIO => self::LIMIT_AUDIO,
+            self::DEFAULT_BUCKET_CATEGORY_ICONS => self::LIMIT_CATEGORY_ICONS,
             default => self::LIMIT_ARTICLES,
         };
     }

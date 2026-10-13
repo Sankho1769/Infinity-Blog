@@ -266,7 +266,14 @@ final class CommunityController
             return ['status' => 422, 'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'Message cannot be empty and max 1000 characters.')];
         }
 
-        $msgId = $this->community->postChatMessage((int) $room['id'], $user->id, $message);
+        try {
+            $msgId = $this->community->postChatMessage((int) $room['id'], $user->id, $message);
+        } catch (\InvalidArgumentException $e) {
+            $isRateLimit = str_contains($e->getMessage(), 'Rate limit') || str_contains($e->getMessage(), 'wait a moment');
+            $status = $isRateLimit ? 429 : 422;
+            $code = $isRateLimit ? 'RATE_LIMITED' : 'VALIDATION_ERROR';
+            return ['status' => $status, 'body' => ApiErrorResponder::build($code, $e->getMessage())];
+        }
         return [
             'status' => 201,
             'body' => [

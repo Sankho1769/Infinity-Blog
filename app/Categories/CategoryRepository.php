@@ -19,11 +19,11 @@ final class CategoryRepository
         $this->pdo = $pdo;
     }
 
-    /** @return list<array{id: int, name: string, slug: string, description: ?string}> */
+    /** @return list<array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string}> */
     public function listActive(): array
     {
         $statement = $this->pdo->query(
-            'SELECT id, name, slug, description FROM categories WHERE is_active = 1 ORDER BY name, id'
+            'SELECT id, name, slug, description, icon_name, custom_logo_path FROM categories WHERE is_active = 1 ORDER BY name, id'
         );
 
         return array_map(static fn (array $row): array => [
@@ -31,14 +31,16 @@ final class CategoryRepository
             'name' => (string) $row['name'],
             'slug' => (string) $row['slug'],
             'description' => $row['description'] === null ? null : (string) $row['description'],
+            'icon_name' => $row['icon_name'] === null ? null : (string) $row['icon_name'],
+            'custom_logo_path' => $row['custom_logo_path'] === null ? null : (string) $row['custom_logo_path'],
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    /** @return array{id: int, name: string, slug: string, description: ?string}|null */
+    /** @return array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string}|null */
     public function findBySlug(string $slug): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT id, name, slug, description FROM categories WHERE slug = :slug AND is_active = 1 LIMIT 1'
+            'SELECT id, name, slug, description, icon_name, custom_logo_path FROM categories WHERE slug = :slug AND is_active = 1 LIMIT 1'
         );
         $statement->execute(['slug' => $slug]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -48,16 +50,18 @@ final class CategoryRepository
             'name' => (string) $row['name'],
             'slug' => (string) $row['slug'],
             'description' => $row['description'] === null ? null : (string) $row['description'],
+            'icon_name' => $row['icon_name'] === null ? null : (string) $row['icon_name'],
+            'custom_logo_path' => $row['custom_logo_path'] === null ? null : (string) $row['custom_logo_path'],
         ] : null;
     }
 
-    /** @return list<array{id: int, name: string, slug: string, description: ?string, post_count: int}> */
+    /** @return list<array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, post_count: int}> */
     public function listActiveWithCounts(): array
     {
         $statement = $this->pdo->query(
-            "SELECT c.id, c.name, c.slug, c.description, COUNT(p.id) AS post_count " .
+            "SELECT c.id, c.name, c.slug, c.description, c.icon_name, c.custom_logo_path, COUNT(p.id) AS post_count " .
             "FROM categories c LEFT JOIN posts p ON p.category_id = c.id AND p.status = 'published' " .
-            "WHERE c.is_active = 1 GROUP BY c.id, c.name, c.slug, c.description ORDER BY c.name, c.id"
+            "WHERE c.is_active = 1 GROUP BY c.id, c.name, c.slug, c.description, c.icon_name, c.custom_logo_path ORDER BY c.name, c.id"
         );
 
         return array_map(static fn (array $row): array => [
@@ -65,27 +69,29 @@ final class CategoryRepository
             'name' => (string) $row['name'],
             'slug' => (string) $row['slug'],
             'description' => $row['description'] === null ? null : (string) $row['description'],
+            'icon_name' => $row['icon_name'] === null ? null : (string) $row['icon_name'],
+            'custom_logo_path' => $row['custom_logo_path'] === null ? null : (string) $row['custom_logo_path'],
             'post_count' => (int) $row['post_count'],
         ], $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    /** @return list<array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int}> */
+    /** @return list<array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, is_active: bool, post_count: int}> */
     public function listAdmin(): array
     {
         $statement = $this->pdo->query(
-            'SELECT c.id, c.name, c.slug, c.description, c.is_active, COUNT(p.id) AS post_count ' .
+            'SELECT c.id, c.name, c.slug, c.description, c.icon_name, c.custom_logo_path, c.is_active, COUNT(p.id) AS post_count ' .
             'FROM categories c LEFT JOIN posts p ON p.category_id = c.id ' .
-            'GROUP BY c.id ORDER BY c.name, c.id'
+            'GROUP BY c.id, c.name, c.slug, c.description, c.icon_name, c.custom_logo_path, c.is_active ORDER BY c.name, c.id'
         );
 
         return array_map(static fn (array $row): array => self::mapAdminRow($row), $statement->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    /** @return array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int}|null */
+    /** @return array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, is_active: bool, post_count: int}|null */
     public function findAdminCategory(int $categoryId): ?array
     {
         $statement = $this->pdo->prepare(
-            'SELECT c.id, c.name, c.slug, c.description, c.is_active, ' .
+            'SELECT c.id, c.name, c.slug, c.description, c.icon_name, c.custom_logo_path, c.is_active, ' .
             '(SELECT COUNT(*) FROM posts p WHERE p.category_id = c.id) AS post_count ' .
             'FROM categories c WHERE c.id = :id'
         );
@@ -95,8 +101,8 @@ final class CategoryRepository
         return is_array($row) ? self::mapAdminRow($row) : null;
     }
 
-    /** @return array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int} */
-    public function create(string $name, ?string $description, int $actorId): array
+    /** @return array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, is_active: bool, post_count: int} */
+    public function create(string $name, ?string $description, int $actorId, ?string $iconName = null, ?string $customLogoPath = null): array
     {
         $this->begin();
         try {
@@ -107,8 +113,8 @@ final class CategoryRepository
 
             $baseSlug = self::slugBase($name);
             $insert = $this->pdo->prepare(
-                'INSERT INTO categories (name, slug, description, is_active, created_by) ' .
-                'VALUES (:name, :slug, :description, 1, :created_by)'
+                'INSERT INTO categories (name, slug, description, icon_name, custom_logo_path, is_active, created_by) ' .
+                'VALUES (:name, :slug, :description, :icon_name, :custom_logo_path, 1, :created_by)'
             );
             for ($attempt = 1; $attempt <= self::MAX_SLUG_ATTEMPTS; $attempt++) {
                 $slug = self::slugCandidate($baseSlug, $attempt);
@@ -121,6 +127,8 @@ final class CategoryRepository
                         'name' => $name,
                         'slug' => $slug,
                         'description' => $description,
+                        'icon_name' => $iconName,
+                        'custom_logo_path' => $customLogoPath,
                         'created_by' => $actorId,
                     ]);
                 } catch (PDOException $exception) {
@@ -151,9 +159,16 @@ final class CategoryRepository
         }
     }
 
-    /** @return array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int} */
-    public function update(int $categoryId, string $name, ?string $description, int $actorId): array
-    {
+    /** @return array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, is_active: bool, post_count: int} */
+    public function update(
+        int $categoryId,
+        string $name,
+        ?string $description,
+        int $actorId,
+        ?string $iconName = null,
+        ?string $customLogoPath = null,
+        bool $removeCustomLogo = false
+    ): array {
         $this->begin();
         try {
             $current = $this->findAdminCategory($categoryId);
@@ -168,8 +183,12 @@ final class CategoryRepository
 
             $nameChanged = $name !== $current['name'];
             $baseSlug = $nameChanged ? self::slugBase($name) : $current['slug'];
+
+            $newIcon = $iconName !== null ? (trim($iconName) !== '' ? trim($iconName) : null) : $current['icon_name'];
+            $newLogo = $removeCustomLogo ? null : ($customLogoPath !== null ? (trim($customLogoPath) !== '' ? trim($customLogoPath) : null) : $current['custom_logo_path']);
+
             $update = $this->pdo->prepare(
-                'UPDATE categories SET name = :name, slug = :slug, description = :description WHERE id = :id'
+                'UPDATE categories SET name = :name, slug = :slug, description = :description, icon_name = :icon_name, custom_logo_path = :custom_logo_path WHERE id = :id'
             );
             $attempts = $nameChanged ? self::MAX_SLUG_ATTEMPTS : 1;
             for ($attempt = 1; $attempt <= $attempts; $attempt++) {
@@ -183,6 +202,8 @@ final class CategoryRepository
                         'name' => $name,
                         'slug' => $slug,
                         'description' => $description,
+                        'icon_name' => $newIcon,
+                        'custom_logo_path' => $newLogo,
                         'id' => $categoryId,
                     ]);
                 } catch (PDOException $exception) {
@@ -409,7 +430,7 @@ final class CategoryRepository
     }
 
     /** @param array<string, mixed> $row
-     *  @return array{id: int, name: string, slug: string, description: ?string, is_active: bool, post_count: int}
+     *  @return array{id: int, name: string, slug: string, description: ?string, icon_name: ?string, custom_logo_path: ?string, is_active: bool, post_count: int}
      */
     private static function mapAdminRow(array $row): array
     {
@@ -418,6 +439,8 @@ final class CategoryRepository
             'name' => (string) $row['name'],
             'slug' => (string) $row['slug'],
             'description' => $row['description'] === null ? null : (string) $row['description'],
+            'icon_name' => isset($row['icon_name']) && is_string($row['icon_name']) ? $row['icon_name'] : null,
+            'custom_logo_path' => isset($row['custom_logo_path']) && is_string($row['custom_logo_path']) ? $row['custom_logo_path'] : null,
             'is_active' => (bool) $row['is_active'],
             'post_count' => (int) $row['post_count'],
         ];

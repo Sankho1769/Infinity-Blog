@@ -7,20 +7,28 @@ use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserAccount;
 use InfinityBlog\Categories\CategoryConflictException;
+use InfinityBlog\Categories\CategoryIconHelper;
 use InfinityBlog\Categories\CategoryNotFoundException;
 use InfinityBlog\Categories\CategoryRepository;
+use InfinityBlog\Storage\MediaService;
 
 final class CategoryController
 {
     private CategoryRepository $categories;
     private AuthGuard $guard;
     private SessionManager $sessions;
+    private ?MediaService $media;
 
-    public function __construct(CategoryRepository $categories, AuthGuard $guard, SessionManager $sessions)
-    {
+    public function __construct(
+        CategoryRepository $categories,
+        AuthGuard $guard,
+        SessionManager $sessions,
+        ?MediaService $media = null
+    ) {
         $this->categories = $categories;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        $this->media = $media;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -58,7 +66,7 @@ final class CategoryController
         }
 
         if (preg_match('#^/admin/categories/([0-9]+)$#D', $request->path, $matches) === 1) {
-            if ($request->method === 'PATCH') {
+            if ($request->method === 'PATCH' || $request->method === 'PUT') {
                 return $this->update($request, $matches[1]);
             }
             if ($request->method === 'DELETE') {
@@ -66,6 +74,13 @@ final class CategoryController
             }
 
             return $this->methodNotAllowed();
+        }
+
+        if ($request->path === '/admin/categories/upload-logo') {
+            if ($request->method !== 'POST') {
+                return $this->methodNotAllowed();
+            }
+            return $this->uploadLogo($request);
         }
 
         if (preg_match('#^/admin/categories/([0-9]+)/(activate|deactivate)$#D', $request->path, $matches) === 1) {
@@ -91,8 +106,17 @@ final class CategoryController
             return $this->validationError($errors);
         }
 
+        $iconName = $fields['icon_name'] ?? null;
+        $customLogoPath = $fields['custom_logo_path'] ?? null;
+
         try {
-            $category = $this->categories->create($fields['name'], $fields['description'] ?? null, $access->id);
+            $category = $this->categories->create(
+                $fields['name'],
+                $fields['description'] ?? null,
+                $access->id,
+                $iconName,
+                $customLogoPath
+            );
             return ['status' => 201, 'body' => ['data' => ['category' => $category]]];
         } catch (CategoryConflictException $exception) {
             return $this->conflictError($exception);
@@ -121,9 +145,20 @@ final class CategoryController
         }
         $name = $fields['name'] ?? $current['name'];
         $description = array_key_exists('description', $fields) ? $fields['description'] : $current['description'];
+        $iconName = array_key_exists('icon_name', $fields) ? $fields['icon_name'] : $current['icon_name'];
+        $customLogoPath = array_key_exists('custom_logo_path', $fields) ? $fields['custom_logo_path'] : $current['custom_logo_path'];
+        $removeCustomLogo = !empty($fields['remove_custom_logo']);
 
         try {
-            $category = $this->categories->update($categoryId, $name, $description, $access->id);
+            $category = $this->categories->update(
+                $categoryId,
+                $name,
+                $description,
+                $access->id,
+                $iconName,
+                $customLogoPath,
+                $removeCustomLogo
+            );
             return ['status' => 200, 'body' => ['data' => ['category' => $category]]];
         } catch (CategoryNotFoundException) {
             return $this->error(404, 'NOT_FOUND', 'The requested category was not found.');
@@ -174,6 +209,107 @@ final class CategoryController
         }
     }
 
+    /** @return array{status: int, body: array<string, mixed>} */
+    private function uploadLogo(Request $request): array
+    {
+        $access = $this->requireAdmin($request, true);
+        if (is_array($access)) {
+            return $access;
+        }
+
+        if (empty($_FILES['logo']) || !is_array($_FILES['logo'])) {
+            return $this->error(422, 'VALIDATION_ERROR', 'No logo file was uploaded.', ['logo' => 'Please provide an image file.']);
+        }
+
+        $file = $_FILES['logo'];
+        if ((int) ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return $this->error(422, 'UPLOAD_ERROR', 'Failed to upload file to server.');
+        }
+
+        $tmpPath = (string) ($file['tmp_name'] ?? '');
+        if ($tmpPath === '' || !is_file($tmpPath) || !is_readable($tmpPath)) {
+            return $this->error(422, 'INVALID_FILE', 'The uploaded file could not be read.');
+        }
+
+        $size = (int) ($file['size'] ?? 0);
+        if ($size <= 0) {
+            $size = (int) filesize($tmpPath);
+        }
+        if ($size > 1024 * 1024) { // 1 MB
+            return $this->error(422, 'FILE_TOO_LARGE', 'The logo file size must not exceed 1 MB.', ['logo' => 'Maximum allowed size is 1 MB.']);
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo !== false ? finfo_file($finfo, $tmpPath) : false;
+        if ($finfo !== false) {
+            finfo_close($finfo);
+        }
+
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!is_string($mime) || !in_array($mime, $allowedMimes, true)) {
+            return $this->error(422, 'INVALID_MIME_TYPE', 'Only JPEG, PNG, and WebP images are allowed.', ['logo' => 'Invalid image format.']);
+        }
+
+        $imageInfo = @getimagesize($tmpPath);
+        if ($imageInfo === false || empty($imageInfo[0]) || empty($imageInfo[1])) {
+            return $this->error(422, 'CORRUPT_IMAGE', 'The uploaded file is not a valid image.');
+        }
+
+        $ext = match ($mime) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            default => 'png',
+        };
+
+        // Try storage via MediaService (Supabase) if available
+        if ($this->media !== null) {
+            try {
+                $storedPath = $this->media->uploadCategoryLogo($file, $access->id);
+                $url = CategoryIconHelper::resolveLogoUrl($storedPath);
+                return [
+                    'status' => 200,
+                    'body' => [
+                        'data' => [
+                            'path' => $storedPath,
+                            'url' => $url,
+                        ],
+                    ],
+                ];
+            } catch (\Throwable) {
+                // If Supabase upload fails, gracefully fall through to safe local fallback
+            }
+        }
+
+        // Safe local fallback storage in /public/uploads/category-logos/
+        $uploadDir = dirname(__DIR__, 2) . '/public/uploads/category-logos';
+        if (!is_dir($uploadDir)) {
+            @mkdir($uploadDir, 0755, true);
+        }
+
+        $randomHex = bin2hex(random_bytes(12));
+        $timestamp = gmdate('Ymd_His');
+        $filename = "cat_logo_{$timestamp}_{$randomHex}.{$ext}";
+        $destPath = $uploadDir . '/' . $filename;
+
+        if (!@move_uploaded_file($tmpPath, $destPath)) {
+            if (!@copy($tmpPath, $destPath)) {
+                return $this->error(500, 'STORAGE_FAILED', 'Could not save the uploaded logo file.');
+            }
+        }
+
+        $publicUrl = '/uploads/category-logos/' . $filename;
+        return [
+            'status' => 200,
+            'body' => [
+                'data' => [
+                    'path' => $publicUrl,
+                    'url' => $publicUrl,
+                ],
+            ],
+        ];
+    }
+
     /** @return UserAccount|array{status: int, body: array<string, mixed>} */
     private function requireAdmin(Request $request, bool $stateChanging): UserAccount|array
     {
@@ -184,7 +320,13 @@ final class CategoryController
         if ($account->role !== 'admin') {
             return $this->error(403, 'FORBIDDEN', 'Administrator access is required.');
         }
-        if ($stateChanging && !$this->sessions->validateCsrfToken($request->header('X-CSRF-Token'))) {
+
+        $token = $request->header('X-CSRF-Token');
+        if (!is_string($token) || $token === '') {
+            $token = $_POST['csrf_token'] ?? null;
+        }
+
+        if ($stateChanging && (!is_string($token) || !$this->sessions->validateCsrfToken($token))) {
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
         }
 
@@ -199,10 +341,10 @@ final class CategoryController
         $fields = [];
         $errors = [];
         foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['name', 'description'], true)) {
+            if (!in_array($key, ['name', 'description', 'icon_name', 'custom_logo_path', 'remove_custom_logo', 'csrf_token'], true)) {
                 $errors[$key === 'slug' ? 'slug' : '_request'] = $key === 'slug'
                     ? 'The slug is generated by the server.'
-                    : 'Only name and description are supported.';
+                    : 'Only name, description, icon_name, and custom_logo_path are supported.';
             }
         }
 
@@ -241,8 +383,30 @@ final class CategoryController
             }
         }
 
+        if (array_key_exists('icon_name', $input)) {
+            $icon = $input['icon_name'];
+            if ($icon !== null && (!is_string($icon) || !CategoryIconHelper::isValidIcon($icon))) {
+                $errors['icon_name'] = 'The selected icon is invalid or not in the allowlist.';
+            } else {
+                $fields['icon_name'] = is_string($icon) && trim($icon) !== '' ? trim($icon) : null;
+            }
+        }
+
+        if (array_key_exists('custom_logo_path', $input)) {
+            $path = $input['custom_logo_path'];
+            if ($path !== null && (!is_string($path) || strlen(trim($path)) > 255)) {
+                $errors['custom_logo_path'] = 'The custom logo path must be at most 255 characters.';
+            } else {
+                $fields['custom_logo_path'] = is_string($path) && trim($path) !== '' ? trim($path) : null;
+            }
+        }
+
+        if (array_key_exists('remove_custom_logo', $input)) {
+            $fields['remove_custom_logo'] = (bool) $input['remove_custom_logo'];
+        }
+
         if (!$creating && $fields === [] && $errors === []) {
-            $errors['_request'] = 'Provide a name or description to update.';
+            $errors['_request'] = 'Provide fields to update.';
         }
 
         return [$fields, $errors];

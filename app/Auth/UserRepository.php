@@ -516,6 +516,27 @@ final class UserRepository
         }
     }
 
+    public function findFirstAdminId(): ?int
+    {
+        try {
+            $statement = $this->pdo->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active' ORDER BY id ASC LIMIT 1");
+            $val = $statement->fetchColumn();
+            if ($val !== false && $val !== null) {
+                return (int) $val;
+            }
+            $statement = $this->pdo->query("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1");
+            $val = $statement->fetchColumn();
+            if ($val !== false && $val !== null) {
+                return (int) $val;
+            }
+            $statement = $this->pdo->query("SELECT id FROM users ORDER BY id ASC LIMIT 1");
+            $val = $statement->fetchColumn();
+            return ($val !== false && $val !== null) ? (int) $val : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     /** @param array<string, mixed> $row */
     private static function accountFromRow(array $row): ?UserAccount
     {

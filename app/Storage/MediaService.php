@@ -111,6 +111,34 @@ final class MediaService
     }
 
     /**
+     * Upload a custom category logo.
+     * Enforces category-icons bucket (max 1MB, JPEG/PNG/WebP).
+     *
+     * @param array{tmp_name: string, name?: string, size: int, error: int} $file
+     * @param ?string $oldPath Previous logo path to delete upon replacement
+     * @return string Stored object path
+     */
+    public function uploadCategoryLogo(array $file, int $actorId, ?string $oldPath = null): string
+    {
+        $bucket = $this->config->bucketCategoryIcons;
+        $path = $this->processAndUploadMedia(
+            $file,
+            $bucket,
+            'category-logos',
+            $actorId,
+            SupabaseStorageConfig::LIMIT_CATEGORY_ICONS,
+            SupabaseStorageConfig::ALLOWED_IMAGE_MIME_TYPES,
+            true
+        );
+
+        if ($oldPath !== null && $oldPath !== '' && $oldPath !== $path) {
+            $this->safeDelete($bucket, $oldPath);
+        }
+
+        return $path;
+    }
+
+    /**
      * Upload an inline article image.
      * Enforces article-images bucket (max 5MB, JPEG/PNG/WebP).
      * Returns both stored object path and public URL for inserting into content.

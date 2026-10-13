@@ -25,7 +25,10 @@
   <article class="glass-panel article-main-card">
     <header class="article-header">
       <?php if (!empty($post['category_name'])): ?>
-        <span class="badge badge-category"><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span class="badge badge-category" style="display: inline-flex; align-items: center; gap: 6px;">
+          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 14) ?>
+          <span><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+        </span>
       <?php else: ?>
         <span class="badge badge-published">Published Article</span>
       <?php endif; ?>

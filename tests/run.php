@@ -24,6 +24,7 @@ use InfinityBlog\Summaries\SummaryService;
 use InfinityBlog\Summaries\SummarySourceChangedException;
 use InfinityBlog\Summaries\SummaryUnavailableException;
 use InfinityBlog\Categories\CategoryConflictException;
+use InfinityBlog\Categories\CategoryIconHelper;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Database\DatabaseUnavailableException;
@@ -556,6 +557,7 @@ $createCategoryDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE categories (' .
         'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
         'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'icon_name TEXT NULL, custom_logo_path TEXT NULL, ' .
         'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
         'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT)'
     );
@@ -580,6 +582,7 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE categories (' .
         'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
         'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'icon_name TEXT NULL, custom_logo_path TEXT NULL, ' .
         'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
         'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, ' .
         'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
@@ -2329,7 +2332,7 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, icon_name TEXT NULL, custom_logo_path TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', scheduled_at TEXT NULL, views_count INTEGER NOT NULL DEFAULT 0, published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
@@ -3220,7 +3223,7 @@ $run('TtsService synthesizes audio, verifies source hash, cleans up superseded a
     $sqlite = new PDO('sqlite::memory:');
     $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, display_name TEXT, email TEXT, role TEXT, password_hash TEXT)');
-    $sqlite->exec('CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, is_active INTEGER)');
+    $sqlite->exec('CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, icon_name TEXT, custom_logo_path TEXT, is_active INTEGER)');
     $sqlite->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, summary TEXT, summary_status TEXT, summary_source_hash TEXT, summary_generated_at TEXT, audio_path TEXT, audio_source_hash TEXT, audio_duration INTEGER, audio_status TEXT, audio_generated_at TEXT, status TEXT, remixed_from_post_id INTEGER, created_at TEXT, updated_at TEXT, published_at TEXT)');
     $sqlite->exec('CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT, entity_type TEXT, entity_id INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
 
@@ -3329,6 +3332,356 @@ $run('TtsService getArticleSpeechData returns structured cloud audio details or 
     $expect($data2['audio_url'] === null);
     $expect($data2['audio_status'] === 'unconfigured');
     $expect(!empty($data2['full_text']));
+});
+
+$run('CategoryIconHelper provides 23 allowlist icons, validates identifiers, falls back safely, and generates SVG markup and logos', static function () use ($expect): void {
+    // 1. Allowlist items count and structure
+    $allowlist = CategoryIconHelper::getAllowlist();
+    $expect(count($allowlist) === 23, 'Allowlist should contain 23 icons.');
+    $first = $allowlist[0];
+    $expect($first['id'] === 'globe-code');
+    $expect(!empty($first['name']));
+    $expect(!empty($first['category']));
+    $expect(!empty($first['keywords']));
+    $expect(str_contains($first['svg'], '<svg'), 'Each allowlist item should have SVG preview markup.');
+
+    // 2. Validation
+    $expect(CategoryIconHelper::isValidIcon('globe-code') === true);
+    $expect(CategoryIconHelper::isValidIcon('terminal-code') === true);
+    $expect(CategoryIconHelper::isValidIcon('ai-brain') === true);
+    $expect(CategoryIconHelper::isValidIcon('math-pi') === true);
+    $expect(CategoryIconHelper::isValidIcon('GRID-ALL') === true, 'Icon validation should be case-insensitive.');
+    $expect(CategoryIconHelper::isValidIcon('nonexistent-icon') === false);
+    $expect(CategoryIconHelper::isValidIcon('') === false);
+    $expect(CategoryIconHelper::isValidIcon(null) === false);
+    $expect(CategoryIconHelper::isValidIcon('../../etc/passwd') === false, 'Path traversal icons should be rejected.');
+    $expect(CategoryIconHelper::isValidIcon('<script>alert(1)</script>') === false, 'XSS icons should be rejected.');
+
+    // 3. getIcon rendering and slug mapping
+    $svgGlobe = CategoryIconHelper::getIcon('globe-code', 24, 'custom-class');
+    $expect(str_contains($svgGlobe, 'width="24"'));
+    $expect(str_contains($svgGlobe, 'class="custom-class"'));
+    $expect(str_contains($svgGlobe, '<svg'));
+    // Category slug mapping
+    $svgSlug = CategoryIconHelper::getIcon('web-development', 24, 'custom-class');
+    $expect($svgSlug === $svgGlobe, 'Slug web-development should map to globe-code SVG.');
+    // Fallback for unknown
+    $svgFallback = CategoryIconHelper::getIcon('unknown-random-icon', 20);
+    $expect(str_contains($svgFallback, '<svg'), 'Fallback icon should render valid SVG.');
+
+    // 4. resolveLogoUrl
+    $expect(CategoryIconHelper::resolveLogoUrl(null) === null);
+    $expect(CategoryIconHelper::resolveLogoUrl('') === null);
+    $expect(CategoryIconHelper::resolveLogoUrl('https://example.com/logo.png') === 'https://example.com/logo.png');
+    $expect(CategoryIconHelper::resolveLogoUrl('/uploads/category-logos/custom.png') === '/uploads/category-logos/custom.png');
+    $expect(CategoryIconHelper::resolveLogoUrl('uploads/category-logos/custom.png') === '/uploads/category-logos/custom.png');
+
+    // 5. renderIcon with array
+    // Allowlist icon
+    $renderA = CategoryIconHelper::renderIcon(['name' => 'Data Science', 'icon_name' => 'bar-chart', 'custom_logo_path' => null], 18);
+    $expect(str_contains($renderA, '<svg'));
+    // Custom logo image takes precedence
+    $renderB = CategoryIconHelper::renderIcon(['name' => 'Partner Brand', 'icon_name' => 'rocket', 'custom_logo_path' => 'https://example.com/brand.png'], 24);
+    $expect(str_contains($renderB, '<img'));
+    $expect(str_contains($renderB, 'src="https://example.com/brand.png"'));
+    $expect(str_contains($renderB, 'alt="Partner Brand"'));
+
+    // 6. renderCardBadge
+    $badgeA = CategoryIconHelper::renderCardBadge(['name' => 'AI', 'icon_name' => 'ai-brain', 'custom_logo_path' => null], 44);
+    $expect(str_contains($badgeA, 'category-card-badge'));
+    $expect(str_contains($badgeA, '<svg'));
+
+    $badgeB = CategoryIconHelper::renderCardBadge(['name' => 'Brand', 'icon_name' => null, 'custom_logo_path' => 'https://example.com/brand.png'], 44);
+    $expect(str_contains($badgeB, 'category-card-badge'));
+    $expect(str_contains($badgeB, '<img'));
+});
+
+$run('Category repository persists icon_name and custom_logo_path, updates records, and handles logo removal', static function () use ($createUserDatabase, $expect): void {
+    $pdo = $createUserDatabase();
+    $pdo->exec(
+        'CREATE TABLE categories (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE COLLATE NOCASE, ' .
+        'slug TEXT NOT NULL UNIQUE COLLATE NOCASE, description TEXT NULL, ' .
+        'icon_name TEXT NULL, custom_logo_path TEXT NULL, ' .
+        'is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), ' .
+        'created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT, ' .
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+    );
+    $pdo->exec(
+        'CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, status TEXT NOT NULL DEFAULT \'published\')'
+    );
+    $pdo->exec(
+        'CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NULL, metadata TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+    );
+
+    $repo = new CategoryRepository($pdo);
+
+    // 1. Create with icon_name and custom_logo_path
+    $cat = $repo->create('Cloud Computing', 'Cloud and devops guides', 1, 'server', 'uploads/category-logos/cloud.png');
+    $expect($cat['name'] === 'Cloud Computing');
+    $expect($cat['slug'] === 'cloud-computing');
+    $expect($cat['icon_name'] === 'server');
+    $expect($cat['custom_logo_path'] === 'uploads/category-logos/cloud.png');
+    $catId = (int) $cat['id'];
+
+    // 2. findBySlug
+    $found = $repo->findBySlug('cloud-computing');
+    $expect($found !== null);
+    $expect($found['icon_name'] === 'server');
+    $expect($found['custom_logo_path'] === 'uploads/category-logos/cloud.png');
+
+    // 3. findAdminCategory
+    $adminCat = $repo->findAdminCategory($catId);
+    $expect($adminCat !== null);
+    $expect($adminCat['icon_name'] === 'server');
+    $expect($adminCat['custom_logo_path'] === 'uploads/category-logos/cloud.png');
+
+    // 4. Update: change icon and remove custom logo
+    $updated = $repo->update($catId, 'Cloud & DevOps', 'Updated description', 1, 'terminal-code', null, true);
+    $expect($updated['name'] === 'Cloud & DevOps');
+    $expect($updated['slug'] === 'cloud-devops');
+    $expect($updated['icon_name'] === 'terminal-code');
+    $expect($updated['custom_logo_path'] === null);
+
+    // Verify after update
+    $foundUpdated = $repo->findBySlug('cloud-devops');
+    $expect($foundUpdated !== null);
+    $expect($foundUpdated['icon_name'] === 'terminal-code');
+    $expect($foundUpdated['custom_logo_path'] === null);
+
+    // 5. listActiveWithCounts
+    $pdo->exec("INSERT INTO posts (author_id, category_id, title, content, status) VALUES (1, {$catId}, 'Post 1', 'Content 1', 'published')");
+    $activeWithCounts = $repo->listActiveWithCounts();
+    $expect(count($activeWithCounts) === 1);
+    $expect((int) $activeWithCounts[0]['post_count'] === 1);
+    $expect($activeWithCounts[0]['icon_name'] === 'terminal-code');
+
+    // 6. Conflict exception on duplicate name
+    $threwConflict = false;
+    try {
+        $repo->create('Cloud & DevOps', 'Duplicate name', 1);
+    } catch (CategoryConflictException) {
+        $threwConflict = true;
+    }
+    $expect($threwConflict, 'Duplicate category name must throw CategoryConflictException.');
+});
+
+$run('Category API creates and updates categories with icon_name and custom_logo_path, and validates logo uploads', static function () use ($withSession, $createCategoryDatabase, $validConfiguration, $expect): void {
+    $withSession(static function () use ($createCategoryDatabase, $validConfiguration, $expect): void {
+        $pdo = $createCategoryDatabase();
+        $users = new UserRepository($pdo);
+        $admin = $users->findByIdentifier('admin one');
+        $author = $users->findByIdentifier('author one');
+
+        $sessions = new SessionManager(AppConfig::fromArray($validConfiguration));
+        $sessions->start();
+        $storageConfig = new SupabaseStorageConfig('https://project.supabase.co', 'secret_key');
+        $storageClient = new TestStorageClient();
+        $media = new MediaService($storageClient, $storageConfig);
+        $guard = new AuthGuard($sessions, $users);
+        $categories = new CategoryRepository($pdo);
+        $auditLogs = new AuditLogRepository($pdo);
+        $controller = new CategoryController($categories, $guard, $sessions, $media, $auditLogs);
+
+        // 1. Unauthenticated logo upload fails
+        $resUnauth = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1'));
+        $expect($resUnauth['status'] === 401, 'Unauthenticated upload must return 401.');
+
+        // 2. Author (non-admin) upload fails
+        $sessions->establish($author);
+        $resAuthor = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1'));
+        $expect($resAuthor['status'] === 403, 'Author role must return 403.');
+
+        // 3. Admin upload without CSRF token fails
+        $sessions->establish($admin);
+        $resNoCsrf = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1'));
+        $expect($resNoCsrf['status'] === 403, 'Upload without valid CSRF must return 403.');
+
+        $csrfToken = $sessions->csrfToken();
+        $validHeaders = [
+            'Origin' => 'http://localhost:8086',
+            'X-Requested-With' => 'XMLHttpRequest',
+            'X-CSRF-Token' => $csrfToken,
+        ];
+
+        // 4. Missing file returns 422
+        unset($_FILES['logo']);
+        $resNoFile = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1', $validHeaders, ['csrf_token' => $csrfToken]));
+        $expect($resNoFile['status'] === 422, 'Missing file must return 422.');
+
+        // 5. File size > 1MB returns 422
+        $tmpLarge = tempnam(sys_get_temp_dir(), 'test_large_');
+        file_put_contents($tmpLarge, str_repeat('A', 1024 * 1024 + 10));
+        $_FILES['logo'] = [
+            'name' => 'large.png',
+            'type' => 'image/png',
+            'tmp_name' => $tmpLarge,
+            'error' => UPLOAD_ERR_OK,
+            'size' => 1024 * 1024 + 10,
+        ];
+        $resLarge = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1', $validHeaders, ['csrf_token' => $csrfToken]));
+        @unlink($tmpLarge);
+        $expect($resLarge['status'] === 422, 'File > 1MB must return 422.');
+        $expect($resLarge['body']['error']['code'] === 'FILE_TOO_LARGE');
+
+        // 6. Disallowed MIME (e.g. text/html script) returns 422
+        $tmpHtml = tempnam(sys_get_temp_dir(), 'test_html_');
+        file_put_contents($tmpHtml, '<html><script>alert(1)</script></html>');
+        $_FILES['logo'] = [
+            'name' => 'malicious.html',
+            'type' => 'text/html',
+            'tmp_name' => $tmpHtml,
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($tmpHtml),
+        ];
+        $resMime = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1', $validHeaders, ['csrf_token' => $csrfToken]));
+        @unlink($tmpHtml);
+        $expect($resMime['status'] === 422, 'Invalid MIME type must return 422.');
+        $expect($resMime['body']['error']['code'] === 'INVALID_MIME_TYPE');
+
+        // 7. Fake image bytes (e.g. text pretending to be png) returns 422
+        $tmpFake = tempnam(sys_get_temp_dir(), 'test_fake_');
+        file_put_contents($tmpFake, 'This is plain text not an image');
+        $_FILES['logo'] = [
+            'name' => 'fake.png',
+            'type' => 'image/png',
+            'tmp_name' => $tmpFake,
+            'error' => UPLOAD_ERR_OK,
+            'size' => filesize($tmpFake),
+        ];
+        $resFake = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1', $validHeaders, ['csrf_token' => $csrfToken]));
+        @unlink($tmpFake);
+        $expect($resFake['status'] === 422, 'Fake image without valid dimensions must return 422.');
+
+        // 8. Valid PNG upload succeeds via MediaService / Supabase storage
+        $tmpPng = tempnam(sys_get_temp_dir(), 'test_valid_');
+        $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=');
+        file_put_contents($tmpPng, $pngBytes);
+        $_FILES['logo'] = [
+            'name' => 'valid_logo.png',
+            'type' => 'image/png',
+            'tmp_name' => $tmpPng,
+            'error' => UPLOAD_ERR_OK,
+            'size' => strlen($pngBytes),
+        ];
+        $resOk = $controller->handle(Request::fromValues('POST', '/admin/categories/upload-logo', '192.0.2.1', $validHeaders, ['csrf_token' => $csrfToken]));
+        @unlink($tmpPng);
+        unset($_FILES['logo']);
+        $expect($resOk['status'] === 200, 'Valid PNG upload must return 200.');
+        $expect(!empty($resOk['body']['data']['path']), 'Uploaded path must not be empty.');
+        $expect(!empty($resOk['body']['data']['url']), 'Uploaded URL must not be empty.');
+
+        // 9. Create category via API with icon_name and custom_logo_path
+        $resCreate = $controller->handle(Request::fromValues('POST', '/admin/categories', '192.0.2.1', $validHeaders, [
+            'csrf_token' => $csrfToken,
+            'name' => 'Robotics & Automation',
+            'description' => 'Autonomous agents and robotics.',
+            'icon_name' => 'cpu',
+            'custom_logo_path' => $resOk['body']['data']['path'],
+        ]));
+        $expect($resCreate['status'] === 201, 'Category creation with icon and logo must return 201.');
+        $createdCat = $resCreate['body']['data']['category'];
+        $expect($createdCat['icon_name'] === 'cpu');
+        $expect($createdCat['custom_logo_path'] === $resOk['body']['data']['path']);
+        $createdId = (int) $createdCat['id'];
+
+        // 10. Update category via API: update icon and remove logo
+        $resUpdate = $controller->handle(Request::fromValues('PUT', "/admin/categories/{$createdId}", '192.0.2.1', $validHeaders, [
+            'csrf_token' => $csrfToken,
+            'name' => 'Robotics & AI',
+            'description' => 'Autonomous agents and advanced robotics.',
+            'icon_name' => 'ai-brain',
+            'remove_custom_logo' => true,
+        ]));
+        $expect($resUpdate['status'] === 200, 'Category update must return 200.');
+        $updatedCat = $resUpdate['body']['data']['category'];
+        $expect($updatedCat['name'] === 'Robotics & AI');
+        $expect($updatedCat['icon_name'] === 'ai-brain');
+        $expect($updatedCat['custom_logo_path'] === null, 'remove_custom_logo must reset custom_logo_path to null.');
+    });
+});
+
+$run('Community chat and direct messaging enforce authentication redirects and dynamic room host resolution', static function () use ($withSession, $createUserDatabase, $validConfiguration, $expect): void {
+    $withSession(static function () use ($createUserDatabase, $validConfiguration, $expect): void {
+        $pdo = $createUserDatabase();
+        $pdo->exec('ALTER TABLE users ADD COLUMN avatar_path TEXT NULL');
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, icon_name TEXT NULL, custom_logo_path TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'published\')'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT, entity_type TEXT, entity_id INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS chat_rooms (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, description TEXT NULL, category_id INTEGER NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS chat_room_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, room_id INTEGER NOT NULL, user_id INTEGER NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS direct_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER NOT NULL, recipient_id INTEGER NOT NULL, body TEXT NOT NULL, is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS user_blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, blocked_user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+
+        $users = new UserRepository($pdo);
+        // 1. findFirstAdminId returns the first admin's ID
+        $firstAdminId = $users->findFirstAdminId();
+        $expect($firstAdminId === 2, 'First admin ID in seeded sqlite users should be resolved to 2.');
+
+        // 2. WebController redirects unauthenticated visitors to login with redirect param
+        $postsRepo = new PostRepository($pdo);
+        $config = AppConfig::fromArray($validConfiguration);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+        $communityRepo = new \InfinityBlog\Community\CommunityRepository($pdo);
+        $messageRepo = new \InfinityBlog\Social\MessageRepository($pdo);
+        $webController = new WebController(
+            $postsRepo,
+            new CategoryRepository($pdo),
+            $users,
+            new AdminUserRepository($pdo),
+            new AuditLogRepository($pdo),
+            $guard,
+            $sessions,
+            $config,
+            null,
+            null,
+            null,
+            $messageRepo,
+            null,
+            null,
+            $communityRepo
+        );
+
+        // Unauthenticated GET /messages -> 302 to /login?redirect=%2Fmessages
+        $msgRedirect = $webController->messages(Request::fromValues('GET', '/messages', '192.0.2.80'));
+        $expect($msgRedirect['status'] === 302, 'Unauthenticated /messages must return 302.');
+        $expect(str_contains($msgRedirect['body'], '/login?redirect=%2Fmessages'), 'Redirect must point to /login?redirect=%2Fmessages.');
+
+        // Authenticated GET /messages -> 200
+        $author = $users->findByIdentifier('author one');
+        $sessions->establish($author);
+        $msgAuthed = $webController->messages(Request::fromValues('GET', '/messages', '192.0.2.80'));
+        $expect($msgAuthed['status'] === 200, 'Authenticated /messages must render DM interface with status 200.');
+
+        // Public /chat -> 200 with room seeded dynamically
+        $chatAuthed = $webController->chat(Request::fromValues('GET', '/chat', '192.0.2.80'));
+        $expect($chatAuthed['status'] === 200, '/chat must render room interface with status 200.');
+        $expect(str_contains($chatAuthed['body'], 'Public Text Chat Rooms'), 'Chat page body should contain Public Text Chat Rooms.');
+
+        // Verify seeded rooms in database
+        $rooms = $communityRepo->getChatRooms();
+        $expect(count($rooms) >= 3, 'Chat rooms should be dynamically seeded.');
+        $slugs = array_column($rooms, 'slug');
+        $expect(in_array('web-development', $slugs, true));
+        $expect(in_array('artificial-intelligence', $slugs, true));
+        $expect(in_array('general', $slugs, true));
+    });
 });
 
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
@@ -4232,6 +4585,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130017_create_assistant_and_studio_schema', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130018_create_contact_messages_schema', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130019_add_audio_source_hash_to_posts', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130020_add_icon_fields_to_categories', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 
