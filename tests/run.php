@@ -47,6 +47,9 @@ use InfinityBlog\Posts\PostValidationException;
 use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Scores\ScoreValidationException;
 use InfinityBlog\Http\ScoreController;
+use InfinityBlog\Audio\TtsProvider;
+use InfinityBlog\Audio\TtsProviderException;
+use InfinityBlog\Audio\TtsService;
 use InfinityBlog\Storage\MediaService;
 use InfinityBlog\Storage\StorageClientInterface;
 use InfinityBlog\Storage\StorageException;
@@ -170,6 +173,27 @@ final class TestStorageClient implements StorageClientInterface
     public function download(string $bucket, string $path): ?string
     {
         return $this->storage[$bucket][$path]['data'] ?? null;
+    }
+}
+
+final class TestTtsProvider implements TtsProvider
+{
+    public bool $shouldFail = false;
+    public ?string $lastText = null;
+    public string $returnedAudio;
+
+    public function __construct()
+    {
+        $this->returnedAudio = str_repeat("ID3v2MOCKAUDIODATA12345", 10); // > 100 bytes
+    }
+
+    public function synthesize(string $text, string $voice = 'alloy', string $format = 'mp3'): string
+    {
+        if ($this->shouldFail) {
+            throw new TtsProviderException('Simulated provider TTS failure.');
+        }
+        $this->lastText = $text;
+        return $this->returnedAudio;
     }
 }
 
@@ -3058,26 +3082,29 @@ $run('Contact repository supports admin listing, counts, and status updates', st
     $expect($item1['status'] === 'resolved', 'Status should be updated to resolved.');
 });
 
-$run('PDF exporter transliterates Bengali, Devanagari, and typographic Unicode to safe characters', static function () use ($expect): void {
-    // Bengali transliteration test: 'বাংলা' (ba-ng-la)
+$run('PDF exporter embeds TrueType fonts and preserves Unicode Bengali, Devanagari, and English without replacement characters', static function () use ($expect): void {
+    $article = [
+        'title' => 'আর্টিফিশিয়াল ইন্টেলিজেন্স ও আধুনিক ওয়েব — AI Trends (आर्टिफिशियल इंटेलिजेंस)',
+        'author_name' => 'Cristine Palmer (ক্রিস্টিন পালমার / क्रिस्टीन पामर)',
+        'published_at' => '2026-10-13 14:00:00',
+        'category_name' => 'Technology',
+        'summary' => 'Research on multilingual Unicode typography in PDF documents.',
+        'content' => "# ভূমিকা\n\nবাংলা ভাষা ও সাহিত্য অত্যন্ত সমৃদ্ধ।\n\n## हिन्दी भाषा\n\nइन्फिनिटी ब्लॉग में आपका स्वागत है। तकनीक और नवाचार।\n\n- Multilingual point 1\n- পয়েন্ট ২ (Bengali item)\n- पॉइंट ३ (Hindi item)\n\n[Explore Posts](http://localhost:8086/explore)",
+    ];
+
+    $pdfData = \InfinityBlog\Export\PdfExporter::generate($article, 'http://localhost:8086/article/99');
+    $expect(strlen($pdfData) > 5000, 'Generated PDF should have non-empty binary content.');
+    $expect(str_starts_with($pdfData, '%PDF-'), 'Output must start with PDF header.');
+    $expect(str_contains($pdfData, 'CIDFontType2'), 'PDF must embed CIDFontType2 TrueType font.');
+    $expect(str_contains($pdfData, 'ToUnicode'), 'PDF must include ToUnicode CMap for Unicode extraction.');
+    $expect(str_contains($pdfData, 'Identity-H'), 'PDF must use Identity-H 2-byte font encoding.');
+
+    // Backward-compatible transliteration utility check
     $bengaliText = 'বাংলা ভাষা ও সাহিত্য';
     $translitBengali = \InfinityBlog\Export\PdfExporter::transliterateUnicode($bengaliText);
-    $expect(!str_contains($translitBengali, '?'), 'Bengali transliteration should not produce question marks.');
-    $expect(strlen($translitBengali) > 0, 'Transliterated Bengali text should not be empty.');
-
-    // Hindi / Devanagari test: 'नमस्ते दुनिया'
-    $hindiText = 'नमस्ते दुनिया और तकनीक';
-    $translitHindi = \InfinityBlog\Export\PdfExporter::transliterateUnicode($hindiText);
-    $expect(!str_contains($translitHindi, '?'), 'Hindi transliteration should not produce question marks.');
-    $expect(strlen($translitHindi) > 0, 'Transliterated Hindi text should not be empty.');
-
-    // Typographic punctuation quotes & dashes
-    $typoText = '“Smart quotes” and ‘single’ with em—dash and en–dash…';
-    $translitTypo = \InfinityBlog\Export\PdfExporter::transliterateUnicode($typoText);
-    $expect(str_contains($translitTypo, '"Smart quotes"'), 'Smart double quotes should be converted to ASCII quotes.');
-    $expect(str_contains($translitTypo, "'single'"), 'Smart single quotes should be converted to ASCII quotes.');
-    $expect(str_contains($translitTypo, '--'), 'Em dash should be converted to double hyphens.');
+    $expect(strlen($translitBengali) > 0, 'Transliteration utility should produce output.');
 });
+
 
 $run('Direct message repository enforces user blocks and rate limits', static function () use ($expect): void {
     $sqlite = new PDO('sqlite::memory:');
@@ -3189,6 +3216,121 @@ $run('Community repository enforces chat message length, rate limits, and viewer
     $expect(count($messagesForAll) === 1, 'Unblocked chat messages should be visible to others.');
 });
 
+$run('TtsService synthesizes audio, verifies source hash, cleans up superseded audio, and handles failure states safely', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, display_name TEXT, email TEXT, role TEXT, password_hash TEXT)');
+    $sqlite->exec('CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, is_active INTEGER)');
+    $sqlite->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, summary TEXT, summary_status TEXT, summary_source_hash TEXT, summary_generated_at TEXT, audio_path TEXT, audio_source_hash TEXT, audio_duration INTEGER, audio_status TEXT, audio_generated_at TEXT, status TEXT, remixed_from_post_id INTEGER, created_at TEXT, updated_at TEXT, published_at TEXT)');
+    $sqlite->exec('CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT, entity_type TEXT, entity_id INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
+
+    $sqlite->exec("INSERT INTO users (id, username, display_name, email, role, password_hash) VALUES (1, 'author1', 'Author One', 'author1@example.com', 'author', 'hash')");
+    $sqlite->exec("INSERT INTO categories (id, name, slug, is_active) VALUES (1, 'Tech', 'tech', 1)");
+    $sqlite->exec("INSERT INTO posts (id, author_id, category_id, title, content, summary, summary_status, audio_path, audio_source_hash, audio_duration, audio_status, status, created_at, updated_at, published_at) VALUES (1, 1, 1, 'Audio Article', 'This is full article content intended for audio synthesis.', 'Short summary.', 'ready', NULL, NULL, NULL, 'idle', 'published', '2026-10-13 10:00:00', '2026-10-13 10:00:00', '2026-10-13 10:00:00')");
+
+    $posts = new PostRepository($sqlite);
+    $provider = new TestTtsProvider();
+    $storageConfig = new SupabaseStorageConfig('https://project.supabase.co', 'secret_key');
+    $storageClient = new TestStorageClient();
+    $aiConfig = \InfinityBlog\Summaries\AiProviderConfig::fromArray([
+        'AI_PROVIDER' => 'openai',
+        'AI_API_KEY' => 'sk-test1234567890',
+        'AI_MODEL' => 'gpt-4o-mini',
+    ]);
+    $media = new MediaService($storageClient, $storageConfig);
+
+    $tts = new TtsService($posts, $provider, $aiConfig, $storageConfig, $media, $storageClient);
+
+    // 1. Successful generation
+    $result = $tts->generateArticleAudio(1, 1, false, 'alloy');
+    $expect($result !== null, 'Audio generation should succeed with configured provider and storage.');
+    $expect($result['audio_status'] === 'ready', 'Audio status should be ready.');
+    $expect(!empty($result['audio_path']), 'Audio path should be set.');
+    $firstAudioPath = $result['audio_path'];
+
+    // Verify storage client received the upload
+    $expect(isset($storageClient->storage['article-audio'][$firstAudioPath]), 'Audio file should be uploaded to article-audio bucket.');
+
+    // Verify database state
+    $postRow = $sqlite->query('SELECT audio_path, audio_source_hash, audio_status, audio_duration FROM posts WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
+    $expect($postRow['audio_path'] === $firstAudioPath);
+    $expect($postRow['audio_status'] === 'ready');
+    $expect((int) $postRow['audio_duration'] >= 5);
+    $expectedHash = PostRepository::sourceHash('Audio Article', 'This is full article content intended for audio synthesis.');
+    $expect($postRow['audio_source_hash'] === $expectedHash);
+
+    // Verify audit log
+    $auditAction = $sqlite->query("SELECT action FROM audit_logs WHERE entity_id = 1 AND action = 'post.audio_generated'")->fetchColumn();
+    $expect($auditAction === 'post.audio_generated', 'Audit log should record post.audio_generated.');
+
+    // 2. Concurrency check: If article content changes while old generation job runs, old audio must be rejected & purged
+    $sqlite->exec("UPDATE posts SET content = 'New article content updated by author.' WHERE id = 1");
+    $staleSaved = $posts->saveAudioIfCurrent(1, 1, 1, $expectedHash, 'audio/stale.mp3', 10);
+    $expect($staleSaved === null, 'Stale source hash must be rejected.');
+
+    // 3. Superseded audio cleanup: Generating audio for the updated content should delete the old audio file from storage
+    $result2 = $tts->generateArticleAudio(1, 1, false, 'alloy');
+    $expect($result2 !== null);
+    $newAudioPath = $result2['audio_path'];
+    $expect($newAudioPath !== $firstAudioPath);
+    $expect(in_array('article-audio/' . $firstAudioPath, $storageClient->deleted, true), 'Superseded audio file must be deleted from storage.');
+
+    // 4. Failure handling: Provider error marks status as failed and does not save corrupted data
+    $provider->shouldFail = true;
+    $sqlite->exec("UPDATE posts SET content = 'Content that will fail TTS.' WHERE id = 1");
+    $failResult = $tts->generateArticleAudio(1, 1, false, 'alloy');
+    $expect($failResult === null, 'Provider failure should return null.');
+    $postStatus = $sqlite->query('SELECT audio_status FROM posts WHERE id = 1')->fetchColumn();
+    $expect($postStatus === 'failed', 'Audio status should be marked as failed.');
+
+    // 5. Unconfigured provider/storage safely fails closed
+    $unconfiguredTts = new TtsService($posts, null, null, null, null, null);
+    $unconfResult = $unconfiguredTts->generateArticleAudio(1, 1, false, 'alloy');
+    $expect($unconfResult === null);
+    $unconfStatus = $sqlite->query('SELECT audio_status FROM posts WHERE id = 1')->fetchColumn();
+    $expect($unconfStatus === 'unconfigured', 'Unconfigured service should mark status as unconfigured.');
+});
+
+$run('TtsService getArticleSpeechData returns structured cloud audio details or clean text for speech synthesis', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $posts = new PostRepository($sqlite);
+    $storageConfig = new SupabaseStorageConfig('https://project.supabase.co', 'secret_key');
+    $tts = new TtsService($posts, null, null, $storageConfig, null, null);
+
+    // Case A: Post with server audio
+    $postWithAudio = [
+        'id' => 10,
+        'title' => 'Article with Audio',
+        'content' => 'Full text content with [markdown links](https://example.com) and **bold**.',
+        'summary' => 'Quick summary.',
+        'audio_path' => 'audio/full_p10_test.mp3',
+        'audio_status' => 'ready',
+        'audio_duration' => 45,
+    ];
+    $data = $tts->getArticleSpeechData($postWithAudio);
+    $expect($data['has_server_audio'] === true, 'has_server_audio should be true.');
+    $expect($data['audio_url'] === 'https://project.supabase.co/storage/v1/object/public/article-audio/audio/full_p10_test.mp3');
+    $expect($data['duration_seconds_est'] === 45);
+    $expect(!str_contains($data['full_text'], '['), 'Full text should be sanitized for speech.');
+
+    // Case B: Post without server audio
+    $postWithoutAudio = [
+        'id' => 11,
+        'title' => 'Article without Audio',
+        'content' => 'Plain reading text here.',
+        'summary' => null,
+        'audio_path' => null,
+        'audio_status' => 'unconfigured',
+        'audio_duration' => null,
+    ];
+    $data2 = $tts->getArticleSpeechData($postWithoutAudio);
+    $expect($data2['has_server_audio'] === false, 'has_server_audio should be false.');
+    $expect($data2['audio_url'] === null);
+    $expect($data2['audio_status'] === 'unconfigured');
+    $expect(!empty($data2['full_text']));
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [
@@ -3261,13 +3403,31 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
         echo "INFO MySQL test database currently contains {$tableCount} table(s).\n";
         $freshSchema = $existingTables === [];
         $knownSchemaTables = [
+            'article_assistant_chats',
+            'article_comments',
             'audit_logs',
             'categories',
+            'chat_room_messages',
+            'chat_rooms',
+            'collection_items',
+            'comment_reports',
+            'contact_messages',
+            'direct_messages',
             'login_rate_limits',
             'post_scores',
+            'post_versions',
             'posts',
             'schema_migrations',
             'summary_rate_limits',
+            'user_blocks',
+            'user_bookmarks',
+            'user_collections',
+            'user_follows',
+            'user_notes',
+            'user_notifications',
+            'user_reading_history',
+            'user_reports',
+            'user_topic_preferences',
             'users',
         ];
         $expect(
@@ -3301,6 +3461,11 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             '202610130012_create_user_follows',
             '202610130013_create_direct_messages',
             '202610130014_add_audio_to_posts',
+            '202610130015_create_library_schema',
+            '202610130016_create_community_schema',
+            '202610130017_create_assistant_and_studio_schema',
+            '202610130018_create_contact_messages_schema',
+            '202610130019_add_audio_source_hash_to_posts',
         ];
         if (!$freshSchema) {
             $expect(
@@ -3991,6 +4156,22 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             } catch (InvalidArgumentException $exception) {
                 $expect($countCmsTables() === 4, 'Unconfirmed rollback must leave all schema tables intact.');
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130019_add_audio_source_hash_to_posts');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130018_create_contact_messages_schema');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130017_create_assistant_and_studio_schema');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130016_create_community_schema');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130015_create_library_schema');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130014_add_audio_to_posts');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130013_create_direct_messages');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610130012_create_user_follows');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610130011_add_storage_paths');
                 $storageColumn = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'posts' AND column_name = 'cover_image_path'")->fetchColumn();
                 $expect($storageColumn === 0, 'The cover_image_path column should be removed by rollback.');
@@ -4043,6 +4224,14 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130009_create_post_scores', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130010_add_user_profile_fields', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130011_add_storage_paths', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130012_create_user_follows', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130013_create_direct_messages', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130014_add_audio_to_posts', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130015_create_library_schema', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130016_create_community_schema', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130017_create_assistant_and_studio_schema', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130018_create_contact_messages_schema', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610130019_add_audio_source_hash_to_posts', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

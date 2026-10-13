@@ -3,18 +3,24 @@ declare(strict_types=1);
 
 namespace InfinityBlog\Export;
 
+use tFPDF;
+use Throwable;
+
+require_once __DIR__ . '/tfpdf.php';
+
 final class PdfExporter
 {
     /**
-     * Generate a standards-compliant PDF document for a published article.
+     * Generate a standards-compliant PDF document for a published article with full Unicode support.
      *
      * @param array{
      *     title: string,
      *     author_name: string,
-     *     published_at: ?string,
-     *     category_name: ?string,
-     *     summary: ?string,
-     *     content: string
+     *     published_at?: ?string,
+     *     category_name?: ?string,
+     *     summary?: ?string,
+     *     content: string,
+     *     cover_image_path?: ?string
      * } $article
      * @param string $articleUrl
      */
@@ -26,379 +32,377 @@ final class PdfExporter
         $category = !empty($article['category_name']) ? html_entity_decode(strip_tags((string) $article['category_name']), ENT_QUOTES, 'UTF-8') : 'General';
         $summary = !empty($article['summary']) ? html_entity_decode(strip_tags((string) $article['summary']), ENT_QUOTES, 'UTF-8') : null;
         $body = (string) ($article['content'] ?? '');
+        $coverPath = !empty($article['cover_image_path']) ? (string) $article['cover_image_path'] : null;
 
-        // Prepare plain text paragraphs from markdown / html content
-        $paragraphs = self::extractParagraphs($body);
+        // Create PDF instance (A4: 210 x 297 mm, margins: 15mm left/right)
+        $pdf = new class($title) extends tFPDF {
+            private string $docTitle;
 
-        // Page layout: A4 = 595 x 842 points. Margins = 50 pt each side. Usable width = 495 pt.
-        // Printable Y: from 760 down to 70. Usable height = 690 pt.
-        $pages = [];
-        $currentPageOps = [];
-        $y = 750;
-
-        // Helper to push a new page
-        $startNewPage = function () use (&$pages, &$currentPageOps, &$y, $title): void {
-            if (!empty($currentPageOps)) {
-                $pages[] = $currentPageOps;
+            public function __construct(string $docTitle)
+            {
+                parent::__construct('P', 'mm', 'A4');
+                $this->docTitle = $docTitle;
             }
-            $currentPageOps = [];
-            $y = 750;
+
+            public function Header(): void
+            {
+                if ($this->PageNo() > 1) {
+                    $this->SetY(10);
+                    $this->SetFont('NotoLatin', '', 8);
+                    $this->SetTextColor(130, 140, 155);
+                    $this->Cell(0, 5, 'Infinity Blog Perspectives  •  ' . mb_substr($this->docTitle, 0, 50), 0, 0, 'L');
+                    $this->Ln(7);
+                    $this->SetDrawColor(226, 232, 240);
+                    $this->Line(15, 17, 195, 17);
+                    $this->SetY(22);
+                }
+            }
+
+            public function Footer(): void
+            {
+                $this->SetY(-15);
+                $this->SetDrawColor(226, 232, 240);
+                $this->Line(15, 282, 195, 282);
+                $this->SetFont('NotoLatin', '', 8);
+                $this->SetTextColor(140, 150, 165);
+                $this->Cell(90, 8, 'Infinity Blog  •  Read & Share', 0, 0, 'L');
+                $this->Cell(90, 8, 'Page ' . $this->PageNo() . ' of {nb}', 0, 0, 'R');
+            }
         };
 
-        // --- PAGE 1: HEADER & TITLE ---
-        // Top banner bar
-        $currentPageOps[] = "0.388 0.4 0.945 rg\n"; // Primary Indigo
-        $currentPageOps[] = "50 780 495 2 re f\n"; // Accent bar
-        $currentPageOps[] = "0 0 0 rg\n";
+        $pdf->AliasNbPages();
+        $pdf->SetMargins(15, 15, 15);
+        $pdf->SetAutoPageBreak(true, 20);
 
-        // Brand tag
-        $currentPageOps[] = "BT /F1 9 Tf 50 788 Td (" . self::pdfEscape("INFINITY BLOG PERSPECTIVES") . ") Tj ET\n";
-        $currentPageOps[] = "BT /F1 9 Tf 400 788 Td (" . self::pdfEscape($dateStr) . ") Tj ET\n";
+        // Register TrueType Unicode Fonts
+        $pdf->AddFont('NotoLatin', '', 'latin.ttf', true);
+        $pdf->AddFont('NotoLatin', 'B', 'latin-bold.ttf', true);
+        $pdf->AddFont('NotoBengali', '', 'bengali.ttf', true);
+        $pdf->AddFont('NotoDevanagari', '', 'devanagari.ttf', true);
 
-        // Title (wrapped)
-        $titleLines = self::wrapText($title, 55);
-        $y = 740;
-        foreach ($titleLines as $tLine) {
-            $currentPageOps[] = "BT /F2 18 Tf 50 {$y} Td (" . self::pdfEscape($tLine) . ") Tj ET\n";
-            $y -= 24;
+        $pdf->AddPage();
+
+        // Top decorative accent line (Indigo: #6366f1 -> RGB: 99, 102, 241)
+        $pdf->SetDrawColor(99, 102, 241);
+        $pdf->SetLineWidth(1.2);
+        $pdf->Line(15, 15, 195, 15);
+        $pdf->SetLineWidth(0.2);
+        $pdf->SetY(18);
+
+        // Publication Brand & Date Header
+        $pdf->SetFont('NotoLatin', 'B', 8);
+        $pdf->SetTextColor(99, 102, 241);
+        $pdf->Cell(90, 6, 'INFINITY BLOG PERSPECTIVES', 0, 0, 'L');
+        $pdf->SetFont('NotoLatin', '', 8);
+        $pdf->SetTextColor(120, 130, 145);
+        $pdf->Cell(90, 6, $dateStr, 0, 1, 'R');
+        $pdf->Ln(2);
+
+        // Article Title (Multilingual Unicode)
+        $pdf->SetTextColor(15, 23, 42); // Slate-900
+        self::writeMultilingual($pdf, $title, 18, true, 8);
+        $pdf->Ln(3);
+
+        // Metadata: Author & Category
+        $pdf->SetFont('NotoLatin', '', 9.5);
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Write(5, 'By ');
+        self::writeMultilingual($pdf, $author, 9.5, true, 5);
+        $pdf->SetFont('NotoLatin', '', 9.5);
+        $pdf->SetTextColor(100, 116, 139);
+        $pdf->Write(5, '  •  Category: ' . $category);
+        $pdf->Ln(5);
+
+        // Canonical Link
+        $pdf->SetFont('NotoLatin', '', 8);
+        $pdf->SetTextColor(99, 102, 241);
+        $pdf->Write(4, $articleUrl, $articleUrl);
+        $pdf->Ln(6);
+
+        // Separator Rule
+        $pdf->SetDrawColor(226, 232, 240);
+        $pdf->Line(15, $pdf->GetY(), 195, $pdf->GetY());
+        $pdf->Ln(5);
+
+        // Safe Cover Image embedding (if provided and accessible)
+        if ($coverPath !== null) {
+            self::embedImageSafely($pdf, $coverPath);
         }
 
-        // Meta info (Author & Category)
-        $y -= 4;
-        $currentPageOps[] = "0.4 0.45 0.5 rg\n";
-        $metaText = "By {$author}  •  Category: {$category}";
-        $currentPageOps[] = "BT /F1 10 Tf 50 {$y} Td (" . self::pdfEscape($metaText) . ") Tj ET\n";
-        $y -= 14;
-        $currentPageOps[] = "BT /F1 8 Tf 50 {$y} Td (" . self::pdfEscape("Canonical URL: " . $articleUrl) . ") Tj ET\n";
-        $y -= 18;
-
-        // Separator line
-        $currentPageOps[] = "0.85 0.88 0.92 RG\n";
-        $currentPageOps[] = "50 {$y} m 545 {$y} l S\n";
-        $currentPageOps[] = "0 0 0 rg\n";
-        $y -= 22;
-
-        // Executive Summary box (if available)
+        // Executive Summary Box (if present)
         if ($summary !== null && trim($summary) !== '') {
-            $summaryLines = self::wrapText("EXECUTIVE SUMMARY: " . $summary, 72);
-            $boxHeight = count($summaryLines) * 14 + 18;
-            if ($y - $boxHeight < 90) {
-                $startNewPage();
+            $startY = $pdf->GetY();
+            // Indigo pastel background fill
+            $pdf->SetFillColor(245, 247, 255);
+            $pdf->SetDrawColor(199, 210, 254);
+            $pdf->Rect(15, $startY, 180, 2, 'DF'); // Initial measurement anchor
+
+            $pdf->SetY($startY + 3);
+            $pdf->SetX(18);
+            $pdf->SetFont('NotoLatin', 'B', 8.5);
+            $pdf->SetTextColor(67, 56, 202); // Indigo-700
+            $pdf->Cell(0, 5, 'EXECUTIVE SUMMARY', 0, 1);
+            $pdf->SetX(18);
+            $pdf->SetTextColor(30, 41, 59);
+            self::writeMultilingual($pdf, $summary, 9.5, false, 5.5);
+            $pdf->Ln(4);
+            $endY = $pdf->GetY();
+
+            // Draw full background box around the summary
+            $boxHeight = max(12, $endY - $startY + 2);
+            $pdf->SetFillColor(245, 247, 255);
+            $pdf->SetDrawColor(199, 210, 254);
+            $pdf->Rect(15, $startY, 180, $boxHeight, 'D');
+            // Left indigo accent border bar
+            $pdf->SetFillColor(99, 102, 241);
+            $pdf->Rect(15, $startY, 2, $boxHeight, 'F');
+
+            $pdf->SetY($startY + $boxHeight + 6);
+        }
+
+        // Extract and render body paragraphs, headings, blockquotes, lists, and images
+        $blocks = self::parseContentBlocks($body);
+        foreach ($blocks as $block) {
+            switch ($block['type']) {
+                case 'heading1':
+                    $pdf->Ln(4);
+                    $pdf->SetTextColor(15, 23, 42);
+                    self::writeMultilingual($pdf, $block['text'], 14, true, 7);
+                    $pdf->Ln(3);
+                    break;
+
+                case 'heading2':
+                    $pdf->Ln(3);
+                    $pdf->SetTextColor(30, 41, 59);
+                    self::writeMultilingual($pdf, $block['text'], 12, true, 6);
+                    $pdf->Ln(2);
+                    break;
+
+                case 'heading3':
+                    $pdf->Ln(2);
+                    $pdf->SetTextColor(51, 65, 85);
+                    self::writeMultilingual($pdf, $block['text'], 10.5, true, 5.5);
+                    $pdf->Ln(2);
+                    break;
+
+                case 'blockquote':
+                    $bStartY = $pdf->GetY();
+                    $pdf->SetX(20);
+                    $pdf->SetTextColor(71, 85, 105);
+                    self::writeMultilingual($pdf, $block['text'], 10, false, 5.5);
+                    $pdf->Ln(3);
+                    $bEndY = $pdf->GetY();
+                    // Draw accent left bar
+                    $pdf->SetFillColor(147, 197, 253);
+                    $pdf->Rect(16, $bStartY, 1.5, max(6, $bEndY - $bStartY), 'F');
+                    break;
+
+                case 'list_item':
+                    $pdf->SetX(18);
+                    $pdf->SetFont('NotoLatin', '', 9.5);
+                    $pdf->SetTextColor(99, 102, 241);
+                    $bullet = !empty($block['bullet']) ? $block['bullet'] : '• ';
+                    $pdf->Write(5.5, $bullet);
+                    $pdf->SetTextColor(30, 41, 59);
+                    self::writeMultilingual($pdf, $block['text'], 9.5, false, 5.5);
+                    $pdf->Ln(4);
+                    break;
+
+                case 'image':
+                    self::embedImageSafely($pdf, $block['src'], $block['alt'] ?? '');
+                    break;
+
+                case 'paragraph':
+                default:
+                    $pdf->SetTextColor(30, 41, 59);
+                    self::writeMultilingual($pdf, $block['text'], 10, false, 5.5);
+                    $pdf->Ln(4);
+                    break;
             }
-            $boxY = $y - $boxHeight;
-
-            // Box background & border
-            $currentPageOps[] = "0.96 0.97 1.0 rg 0.79 0.82 0.98 RG\n";
-            $currentPageOps[] = "50 {$boxY} 495 {$boxHeight} re B\n";
-            $currentPageOps[] = "0.15 0.2 0.4 rg\n";
-
-            $sY = $y - 14;
-            foreach ($summaryLines as $sLine) {
-                $currentPageOps[] = "BT /F3 9.5 Tf 60 {$sY} Td (" . self::pdfEscape($sLine) . ") Tj ET\n";
-                $sY -= 14;
-            }
-            $currentPageOps[] = "0 0 0 rg\n";
-            $y = $boxY - 24;
         }
 
-        // Body Paragraphs
-        foreach ($paragraphs as $para) {
-            $type = $para['type'];
-            $text = $para['text'];
-
-            if ($type === 'heading') {
-                $hLines = self::wrapText($text, 60);
-                $needed = count($hLines) * 18 + 20;
-                if ($y - $needed < 80) {
-                    $startNewPage();
-                } else {
-                    $y -= 12;
-                }
-
-                $currentPageOps[] = "0.1 0.15 0.3 rg\n";
-                foreach ($hLines as $hLine) {
-                    $currentPageOps[] = "BT /F2 13 Tf 50 {$y} Td (" . self::pdfEscape($hLine) . ") Tj ET\n";
-                    $y -= 18;
-                }
-                $currentPageOps[] = "0 0 0 rg\n";
-                $y -= 6;
-            } else {
-                $pLines = self::wrapText($text, 78);
-                foreach ($pLines as $pLine) {
-                    if ($y < 80) {
-                        $startNewPage();
-                    }
-                    $currentPageOps[] = "BT /F1 10 Tf 50 {$y} Td (" . self::pdfEscape($pLine) . ") Tj ET\n";
-                    $y -= 15;
-                }
-                $y -= 8; // spacing between paragraphs
-            }
-        }
-
-        // Add last page ops
-        if (!empty($currentPageOps)) {
-            $pages[] = $currentPageOps;
-        }
-
-        // Now render the PDF object graph
-        $totalPages = count($pages);
-        $objects = [];
-        $objIndex = 1;
-
-        // Obj 1: Catalog
-        $catalogObj = $objIndex++;
-        // Obj 2: Pages container
-        $pagesObj = $objIndex++;
-
-        // Page objects and content stream objects
-        $pageObjectIds = [];
-        $streamObjectIds = [];
-        for ($i = 0; $i < $totalPages; $i++) {
-            $pageObjectIds[] = $objIndex++;
-            $streamObjectIds[] = $objIndex++;
-        }
-
-        // Font objects: F1 (Helvetica), F2 (Helvetica-Bold), F3 (Helvetica-Oblique)
-        $fontF1 = $objIndex++;
-        $fontF2 = $objIndex++;
-        $fontF3 = $objIndex++;
-
-        // Build Streams with Footer ("Page X of Y")
-        $streamContents = [];
-        for ($i = 0; $i < $totalPages; $i++) {
-            $pageNum = $i + 1;
-            $footerY = 45;
-            $footerOps = "0.5 0.5 0.5 rg\n";
-            $footerOps .= "50 58 495 0.5 re f\n"; // Thin line
-            $footerOps .= "BT /F1 8 Tf 50 {$footerY} Td (" . self::pdfEscape("Infinity Blog  •  " . mb_substr($title, 0, 40)) . ") Tj ET\n";
-            $footerOps .= "BT /F1 8 Tf 480 {$footerY} Td (" . self::pdfEscape("Page {$pageNum} of {$totalPages}") . ") Tj ET\n";
-
-            $fullContent = implode('', $pages[$i]) . $footerOps;
-            $streamContents[$i] = $fullContent;
-        }
-
-        // Construct PDF output string and calculate offsets
-        $pdf = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
-        $offsets = [];
-
-        // Obj 1: Catalog
-        $offsets[$catalogObj] = strlen($pdf);
-        $pdf .= "{$catalogObj} 0 obj\n<< /Type /Catalog /Pages {$pagesObj} 0 R >>\nendobj\n";
-
-        // Obj 2: Pages
-        $kidsStr = implode(' ', array_map(fn($id) => "{$id} 0 R", $pageObjectIds));
-        $offsets[$pagesObj] = strlen($pdf);
-        $pdf .= "{$pagesObj} 0 obj\n<< /Type /Pages /Kids [{$kidsStr}] /Count {$totalPages} >>\nendobj\n";
-
-        // Pages and Content Streams
-        for ($i = 0; $i < $totalPages; $i++) {
-            $pId = $pageObjectIds[$i];
-            $sId = $streamObjectIds[$i];
-
-            // Page Obj
-            $offsets[$pId] = strlen($pdf);
-            $pdf .= "{$pId} 0 obj\n<< /Type /Page /Parent {$pagesObj} 0 R /MediaBox [0 0 595 842] " .
-                "/Resources << /Font << /F1 {$fontF1} 0 R /F2 {$fontF2} 0 R /F3 {$fontF3} 0 R >> >> " .
-                "/Contents {$sId} 0 R >>\nendobj\n";
-
-            // Stream Obj
-            $sContent = $streamContents[$i];
-            $sLen = strlen($sContent);
-            $offsets[$sId] = strlen($pdf);
-            $pdf .= "{$sId} 0 obj\n<< /Length {$sLen} >>\nstream\n{$sContent}\nendstream\nendobj\n";
-        }
-
-        // Fonts
-        $offsets[$fontF1] = strlen($pdf);
-        $pdf .= "{$fontF1} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n";
-
-        $offsets[$fontF2] = strlen($pdf);
-        $pdf .= "{$fontF2} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n";
-
-        $offsets[$fontF3] = strlen($pdf);
-        $pdf .= "{$fontF3} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>\nendobj\n";
-
-        // Cross-reference table
-        $xrefOffset = strlen($pdf);
-        $totalObjs = $objIndex;
-        $pdf .= "xref\n0 {$totalObjs}\n";
-        $pdf .= "0000000000 65535 f \n";
-        for ($i = 1; $i < $totalObjs; $i++) {
-            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i]);
-        }
-
-        // Trailer
-        $pdf .= "trailer\n<< /Size {$totalObjs} /Root {$catalogObj} 0 R >>\n";
-        $pdf .= "startxref\n{$xrefOffset}\n%%EOF\n";
-
-        return $pdf;
+        return (string) $pdf->Output('', 'S');
     }
 
     /**
-     * Parse markdown / HTML into structured paragraphs and headings.
-     *
-     * @return list<array{type: 'heading'|'paragraph', text: string}>
+     * Render mixed multilingual text (Latin, Bengali, Devanagari) across script boundaries seamlessly.
      */
-    private static function extractParagraphs(string $content): array
+    public static function writeMultilingual(
+        tFPDF $pdf,
+        string $text,
+        float $fontSize = 10,
+        bool $bold = false,
+        float $lineHeight = 5.5
+    ): void {
+        $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+        // Match runs of Bengali (U+0980-U+09FF), Devanagari (U+0900-U+097F), or other (Latin, digits, punctuation)
+        preg_match_all('/([\x{0980}-\x{09FF}]+|[\x{0900}-\x{097F}]+|[^\x{0900}-\x{09FF}]+)/u', $text, $matches);
+
+        foreach ($matches[0] as $chunk) {
+            if ($chunk === '') {
+                continue;
+            }
+
+            if (preg_match('/[\x{0980}-\x{09FF}]/u', $chunk)) {
+                $pdf->SetFont('NotoBengali', '', $fontSize);
+            } elseif (preg_match('/[\x{0900}-\x{097F}]/u', $chunk)) {
+                $pdf->SetFont('NotoDevanagari', '', $fontSize);
+            } else {
+                $pdf->SetFont('NotoLatin', $bold ? 'B' : '', $fontSize);
+            }
+
+            $pdf->Write($lineHeight, $chunk);
+        }
+    }
+
+    /**
+     * Safely embed an image without crashing if missing or invalid.
+     */
+    private static function embedImageSafely(tFPDF $pdf, string $pathOrUrl, string $alt = ''): void
     {
-        // Strip code blocks and script tags safely
+        $cleanPath = trim($pathOrUrl);
+        if ($cleanPath === '') {
+            return;
+        }
+
+        // Check if local file exists
+        $localFile = null;
+        if (file_exists($cleanPath)) {
+            $localFile = $cleanPath;
+        } elseif (file_exists(__DIR__ . '/../../public/' . ltrim($cleanPath, '/'))) {
+            $localFile = __DIR__ . '/../../public/' . ltrim($cleanPath, '/');
+        }
+
+        if ($localFile !== null && is_file($localFile)) {
+            $info = @getimagesize($localFile);
+            if ($info !== false && in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG], true)) {
+                try {
+                    $maxWidth = 180; // Usable page width
+                    $imgWidth = min($maxWidth, ($info[0] * 0.264)); // px to mm approx
+                    $pdf->Ln(3);
+                    $pdf->Image($localFile, 15, $pdf->GetY(), $imgWidth);
+                    $pdf->Ln(4);
+                    return;
+                } catch (Throwable) {
+                    // Fallback to text caption if rendering fails
+                }
+            }
+        }
+
+        // Render clean image placeholder caption if image cannot be embedded
+        if ($alt !== '') {
+            $pdf->SetFont('NotoLatin', '', 8.5);
+            $pdf->SetTextColor(100, 116, 139);
+            $pdf->Cell(0, 5, '[Figure: ' . $alt . ']', 0, 1, 'C');
+            $pdf->Ln(2);
+        }
+    }
+
+    /**
+     * Parse markdown / HTML content into structured block elements.
+     *
+     * @return list<array{type: string, text: string, src?: string, alt?: string, bullet?: string}>
+     */
+    private static function parseContentBlocks(string $content): array
+    {
+        // Strip code blocks and script/style tags
         $cleaned = preg_replace('/```[\s\S]*?```/', '', $content);
         $cleaned = preg_replace('/<script[\s\S]*?<\/script>/i', '', (string) $cleaned);
         $cleaned = preg_replace('/<style[\s\S]*?<\/style>/i', '', (string) $cleaned);
 
         $lines = preg_split('/\r\n|\r|\n/', (string) $cleaned);
-        $paragraphs = [];
-        $currentBuffer = [];
+        $blocks = [];
+        $buffer = [];
+
+        $flushBuffer = function () use (&$blocks, &$buffer): void {
+            if (!empty($buffer)) {
+                $text = trim(implode(' ', $buffer));
+                if ($text !== '') {
+                    $blocks[] = ['type' => 'paragraph', 'text' => self::cleanInlineFormatting($text)];
+                }
+                $buffer = [];
+            }
+        };
 
         foreach ($lines as $line) {
-            $trimmed = trim((string) $line);
+            $trimmed = trim($line);
             if ($trimmed === '') {
-                if (!empty($currentBuffer)) {
-                    $text = implode(' ', $currentBuffer);
-                    $paragraphs[] = ['type' => 'paragraph', 'text' => self::cleanInline($text)];
-                    $currentBuffer = [];
-                }
+                $flushBuffer();
                 continue;
             }
 
-            if (preg_match('/^#{1,4}\s+(.+)$/', $trimmed, $m)) {
-                if (!empty($currentBuffer)) {
-                    $paragraphs[] = ['type' => 'paragraph', 'text' => self::cleanInline(implode(' ', $currentBuffer))];
-                    $currentBuffer = [];
-                }
-                $paragraphs[] = ['type' => 'heading', 'text' => self::cleanInline($m[1])];
+            // Headings
+            if (preg_match('/^###\s+(.+)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'heading3', 'text' => self::cleanInlineFormatting($m[1])];
+                continue;
+            }
+            if (preg_match('/^##\s+(.+)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'heading2', 'text' => self::cleanInlineFormatting($m[1])];
+                continue;
+            }
+            if (preg_match('/^#\s+(.+)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'heading1', 'text' => self::cleanInlineFormatting($m[1])];
                 continue;
             }
 
-            // Bullet points
+            // Blockquotes
+            if (preg_match('/^>\s+(.+)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'blockquote', 'text' => self::cleanInlineFormatting($m[1])];
+                continue;
+            }
+
+            // Bullet list items
             if (preg_match('/^[-*•]\s+(.+)$/', $trimmed, $m)) {
-                if (!empty($currentBuffer)) {
-                    $paragraphs[] = ['type' => 'paragraph', 'text' => self::cleanInline(implode(' ', $currentBuffer))];
-                    $currentBuffer = [];
-                }
-                $paragraphs[] = ['type' => 'paragraph', 'text' => '• ' . self::cleanInline($m[1])];
+                $flushBuffer();
+                $blocks[] = ['type' => 'list_item', 'bullet' => '• ', 'text' => self::cleanInlineFormatting($m[1])];
                 continue;
             }
 
-            $currentBuffer[] = $trimmed;
+            // Numbered list items
+            if (preg_match('/^([0-9]+)\.\s+(.+)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'list_item', 'bullet' => $m[1] . '. ', 'text' => self::cleanInlineFormatting($m[2])];
+                continue;
+            }
+
+            // Images ![alt](src)
+            if (preg_match('/^!\[([^\]]*)\]\(([^)]+)\)$/', $trimmed, $m)) {
+                $flushBuffer();
+                $blocks[] = ['type' => 'image', 'alt' => $m[1], 'src' => $m[2], 'text' => ''];
+                continue;
+            }
+
+            $buffer[] = $trimmed;
         }
 
-        if (!empty($currentBuffer)) {
-            $paragraphs[] = ['type' => 'paragraph', 'text' => self::cleanInline(implode(' ', $currentBuffer))];
-        }
-
-        return $paragraphs;
+        $flushBuffer();
+        return $blocks;
     }
 
-    private static function cleanInline(string $text): string
+    private static function cleanInlineFormatting(string $text): string
     {
-        // Remove markdown formatting: [text](url) -> text, **bold** -> bold, etc.
-        $text = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $text);
+        // Convert markdown links [text](url) -> text (url)
+        $text = preg_replace('/\[([^\]]+)\]\(([^)]+)\)/', '$1 ($2)', $text);
+        // Strip bold, italic, code markdown symbols
         $text = preg_replace('/[*_~`]/', '', (string) $text);
         $text = strip_tags((string) $text);
-        $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
         return trim((string) preg_replace('/\s+/', ' ', $text));
     }
 
     /**
-     * Wrap text by approximate character width.
-     *
-     * @return list<string>
-     */
-    private static function wrapText(string $text, int $maxChars): array
-    {
-        $text = self::transliterateUnicode($text);
-        if (mb_strlen($text) <= $maxChars) {
-            return [$text];
-        }
-
-        $words = explode(' ', $text);
-        $lines = [];
-        $current = '';
-
-        foreach ($words as $w) {
-            if ($current === '') {
-                $current = $w;
-            } elseif (mb_strlen($current . ' ' . $w) <= $maxChars) {
-                $current .= ' ' . $w;
-            } else {
-                $lines[] = $current;
-                $current = $w;
-            }
-        }
-
-        if ($current !== '') {
-            $lines[] = $current;
-        }
-
-        return $lines;
-    }
-
-    /**
-     * Transliterate complex Unicode characters (including Bengali and Hindi) for PDF rendering.
+     * Backward-compatible transliteration utility.
      */
     public static function transliterateUnicode(string $str): string
     {
-        // 1. Common smart typography & punctuation
         $replacements = [
             '“' => '"', '”' => '"', '‘' => "'", '’' => "'",
             '—' => ' -- ', '–' => '-', '…' => '...',
             '•' => '*', '·' => '*', '। ' => '. ', '।' => '. ', '॥' => '. ',
         ];
-        $str = strtr($str, $replacements);
-
-        // 2. Bengali Unicode Block (U+0980 - U+09FF)
-        $bengaliMap = [
-            'অ' => 'O', 'আ' => 'A', 'ই' => 'I', 'ঈ' => 'I', 'উ' => 'U', 'ঊ' => 'U', 'ঋ' => 'Ri',
-            'এ' => 'E', 'ঐ' => 'Oi', 'ও' => 'O', 'ঔ' => 'Ou',
-            'ক' => 'k', 'খ' => 'kh', 'গ' => 'g', 'ঘ' => 'gh', 'ঙ' => 'ng',
-            'চ' => 'ch', 'ছ' => 'chh', 'জ' => 'j', 'ঝ' => 'jh', 'ঞ' => 'ny',
-            'ট' => 't', 'ঠ' => 'th', 'ড' => 'd', 'ঢ' => 'dh', 'ণ' => 'n',
-            'ত' => 't', 'থ' => 'th', 'দ' => 'd', 'ধ' => 'dh', 'ন' => 'n',
-            'প' => 'p', 'ফ' => 'ph', 'ব' => 'b', 'ভ' => 'bh', 'ম' => 'm',
-            'য' => 'j', 'র' => 'r', 'ল' => 'l', 'শ' => 'sh', 'ষ' => 'sh', 'স' => 's', 'হ' => 'h',
-            'ড়' => 'r', 'ঢ়' => 'rh', 'য়' => 'y', 'ৎ' => 't',
-            'া' => 'a', 'ি' => 'i', 'ী' => 'i', 'ু' => 'u', 'ূ' => 'u', 'ৃ' => 'ri',
-            'ে' => 'e', 'ৈ' => 'oi', 'ো' => 'o', 'ৌ' => 'ou',
-            'ং' => 'ng', 'ঃ' => 'h', 'ঁ' => '', '্' => '',
-            '০' => '0', '১' => '1', '২' => '2', '৩' => '3', '৪' => '4',
-            '৫' => '5', '৬' => '6', '৭' => '7', '৮' => '8', '৯' => '9',
-        ];
-        $str = strtr($str, $bengaliMap);
-
-        // 3. Devanagari / Hindi Unicode Block (U+0900 - U+097F)
-        $devanagariMap = [
-            'अ' => 'A', 'आ' => 'Aa', 'इ' => 'I', 'ई' => 'Ii', 'उ' => 'U', 'ऊ' => 'Uu', 'ऋ' => 'Ri',
-            'ए' => 'E', 'ऐ' => 'Ai', 'ओ' => 'O', 'औ' => 'Au',
-            'क' => 'k', 'ख' => 'kh', 'ग' => 'g', 'घ' => 'gh', 'ङ' => 'ng',
-            'च' => 'ch', 'छ' => 'chh', 'ज' => 'j', 'झ' => 'jh', 'ञ' => 'ny',
-            'ट' => 't', 'ठ' => 'th', 'ड' => 'd', 'ढ' => 'dh', 'ण' => 'n',
-            'त' => 't', 'थ' => 'th', 'द' => 'd', 'ध' => 'dh', 'न' => 'n',
-            'प' => 'p', 'फ' => 'ph', 'ब' => 'b', 'भ' => 'bh', 'म' => 'm',
-            'य' => 'y', 'र' => 'r', 'ल' => 'l', 'व' => 'v', 'श' => 'sh', 'ष' => 'sh', 'स' => 's', 'ह' => 'h',
-            'क़' => 'q', 'ख़' => 'kh', 'ग़' => 'gh', 'ज़' => 'z', 'ड़' => 'r', 'ढ़' => 'rh', 'फ़' => 'f',
-            'ा' => 'a', 'ि' => 'i', 'ी' => 'ii', 'ु' => 'u', 'ू' => 'uu', 'ृ' => 'ri',
-            'े' => 'e', 'ै' => 'ai', 'ो' => 'o', 'ौ' => 'au',
-            'ं' => 'n', 'ः' => 'h', 'ँ' => 'n', '्' => '',
-            '०' => '0', '१' => '1', '२' => '2', '३' => '3', '४' => '4',
-            '५' => '5', '६' => '6', '७' => '7', '८' => '8', '९' => '9',
-        ];
-        $str = strtr($str, $devanagariMap);
-
-        return $str;
-    }
-
-    private static function pdfEscape(string $str): string
-    {
-        $str = self::transliterateUnicode($str);
-        // Convert to ISO-8859-1 / WinAnsi for standard Type 1 fonts
-        $encoded = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $str);
-        if ($encoded === false) {
-            $encoded = utf8_decode($str);
-        }
-
-        // Escape parenthesis and backslashes for PDF syntax
-        $escaped = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], (string) $encoded);
-        return $escaped;
+        return strtr($str, $replacements);
     }
 }

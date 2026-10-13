@@ -154,13 +154,14 @@
 
     <!-- Integrated Audio Player (Hidden until Listen tab is selected or user clicks play) -->
     <div class="article-audio-player" id="articleAudioPlayer" style="display: none;">
+      <audio id="html5AudioElement" preload="metadata" style="display: none;"></audio>
       <div class="audio-player-header">
         <div class="audio-player-title">
           <span>🎧</span>
           <span id="audioTrackTitle">Listening to: Full Article</span>
         </div>
         <span class="audio-source-badge" id="audioSourceBadge">
-          <?= !empty($speechData['has_server_audio']) ? 'Cloud Audio Stream' : '⚡ Browser Speech Synthesis' ?>
+          <?= !empty($speechData['has_server_audio']) ? '☁️ Stored Cloud Audio Stream (article-audio)' : '⚡ Browser Speech Synthesis (Local Fallback)' ?>
         </span>
       </div>
 
@@ -630,6 +631,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const bodyContent = document.getElementById('articleBodyContent');
   const summaryPane = document.getElementById('summaryModePane');
   const audioPlayer = document.getElementById('articleAudioPlayer');
+  const audioEl = document.getElementById('html5AudioElement');
+  const badgeEl = document.getElementById('audioSourceBadge');
   const playPauseBtn = document.getElementById('audioPlayPauseBtn');
   const playIcon = document.getElementById('audioPlayIcon');
   const pauseIcon = document.getElementById('audioPauseIcon');
@@ -641,6 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const speedBtns = document.querySelectorAll('.audio-speed-btn');
 
   let currentAudioMode = 'full';
+  let playbackType = 'synth'; // 'html5' or 'synth'
   let isPlaying = false;
   let isPaused = false;
   let speechRate = 1.0;
@@ -651,6 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let totalEstimatedSec = speechData?.duration_seconds_est || 180;
 
   function formatTime(s) {
+    if (!s || isNaN(s) || s < 0) s = 0;
     const mins = Math.floor(s / 60);
     const secs = Math.floor(s % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
@@ -673,7 +678,55 @@ document.addEventListener('DOMContentLoaded', () => {
     return result;
   }
 
+  function updateBadge(type) {
+    if (!badgeEl) return;
+    if (type === 'html5') {
+      badgeEl.textContent = '☁️ Stored Cloud Audio Stream (article-audio)';
+      badgeEl.style.color = '#1d4ed8';
+    } else {
+      badgeEl.textContent = currentAudioMode === 'summary'
+        ? '⚡ Browser Speech Synthesis (Summary)'
+        : '⚡ Browser Speech Synthesis (Local Fallback)';
+      badgeEl.style.color = '#d97706';
+    }
+  }
+
+  // HTML5 audio element event bindings
+  if (audioEl) {
+    audioEl.addEventListener('loadedmetadata', () => {
+      if (playbackType === 'html5' && audioEl.duration && totalDurationEl) {
+        totalDurationEl.textContent = formatTime(audioEl.duration);
+      }
+    });
+
+    audioEl.addEventListener('timeupdate', () => {
+      if (playbackType === 'html5' && !isPaused && isPlaying) {
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(audioEl.currentTime);
+        if (progressRange && audioEl.duration) {
+          progressRange.value = Math.min(100, Math.round((audioEl.currentTime / audioEl.duration) * 100));
+        }
+      }
+    });
+
+    audioEl.addEventListener('ended', () => {
+      stopAudio();
+    });
+
+    audioEl.addEventListener('error', (e) => {
+      console.warn('Stored audio stream error, falling back to browser speech synthesis:', e);
+      if (isPlaying) {
+        playbackType = 'synth';
+        updateBadge('synth');
+        startSpeechSynthesis(currentAudioMode);
+      }
+    });
+  }
+
   function stopAudio() {
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.currentTime = 0;
+    }
     if (synth) synth.cancel();
     isPlaying = false;
     isPaused = false;
@@ -687,7 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function playNextChunk() {
-    if (!isPlaying) return;
+    if (!isPlaying || playbackType !== 'synth') return;
     if (chunkIdx >= chunks.length) {
       stopAudio();
       return;
@@ -709,13 +762,14 @@ document.addEventListener('DOMContentLoaded', () => {
     synth.speak(utt);
   }
 
-  function startAudio(mode = 'full') {
+  function startSpeechSynthesis(mode) {
     if (!synth) {
       alert('Speech synthesis is not supported in this browser.');
       return;
     }
-    stopAudio();
-    currentAudioMode = mode;
+    playbackType = 'synth';
+    updateBadge('synth');
+
     const textToSpeak = mode === 'summary' ? (speechData.summary_text || speechData.full_text) : speechData.full_text;
     chunks = splitIntoChunks(textToSpeak);
     if (chunks.length === 0) return;
@@ -725,7 +779,11 @@ document.addEventListener('DOMContentLoaded', () => {
       : (speechData.duration_seconds_est || 180);
 
     if (totalDurationEl) totalDurationEl.textContent = formatTime(totalEstimatedSec);
-    if (trackTitleEl) trackTitleEl.textContent = mode === 'summary' ? 'Listening to: Article Summary' : 'Listening to: Full Article';
+    if (trackTitleEl) {
+      trackTitleEl.textContent = mode === 'summary'
+        ? 'Listening to: Article Summary'
+        : 'Listening to: Full Article (Browser TTS)';
+    }
 
     isPlaying = true;
     isPaused = false;
@@ -733,7 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pauseIcon) pauseIcon.style.display = 'block';
 
     timerInterval = setInterval(() => {
-      if (isPlaying && !isPaused) {
+      if (isPlaying && !isPaused && playbackType === 'synth') {
         elapsedSec += 1;
         if (currentTimeEl) currentTimeEl.textContent = formatTime(elapsedSec);
       }
@@ -742,21 +800,69 @@ document.addEventListener('DOMContentLoaded', () => {
     playNextChunk();
   }
 
+  function startAudio(mode = 'full') {
+    stopAudio();
+    currentAudioMode = mode;
+
+    // Check if persistent server-generated audio is available for full-article
+    const hasServerAudio = (mode === 'full' && speechData && speechData.has_server_audio && speechData.audio_url);
+
+    if (hasServerAudio && audioEl) {
+      playbackType = 'html5';
+      updateBadge('html5');
+      if (trackTitleEl) trackTitleEl.textContent = 'Listening to: Full Article (Cloud Audio)';
+      if (audioEl.src !== speechData.audio_url) {
+        audioEl.src = speechData.audio_url;
+      }
+      audioEl.playbackRate = speechRate;
+      if (totalDurationEl && speechData.duration_seconds_est) {
+        totalDurationEl.textContent = formatTime(speechData.duration_seconds_est);
+      }
+
+      isPlaying = true;
+      isPaused = false;
+      if (playIcon) playIcon.style.display = 'none';
+      if (pauseIcon) pauseIcon.style.display = 'block';
+
+      audioEl.play().catch(err => {
+        console.warn('HTML5 cloud playback failed; falling back to SpeechSynthesis:', err);
+        startSpeechSynthesis(mode);
+      });
+    } else {
+      startSpeechSynthesis(mode);
+    }
+  }
+
   function togglePlayPause() {
     if (!isPlaying) {
       startAudio(currentAudioMode);
       return;
     }
-    if (isPaused) {
-      synth.resume();
-      isPaused = false;
-      if (playIcon) playIcon.style.display = 'none';
-      if (pauseIcon) pauseIcon.style.display = 'block';
+
+    if (playbackType === 'html5' && audioEl) {
+      if (isPaused) {
+        audioEl.play();
+        isPaused = false;
+        if (playIcon) playIcon.style.display = 'none';
+        if (pauseIcon) pauseIcon.style.display = 'block';
+      } else {
+        audioEl.pause();
+        isPaused = true;
+        if (playIcon) playIcon.style.display = 'block';
+        if (pauseIcon) pauseIcon.style.display = 'none';
+      }
     } else {
-      synth.pause();
-      isPaused = true;
-      if (playIcon) playIcon.style.display = 'block';
-      if (pauseIcon) pauseIcon.style.display = 'none';
+      if (isPaused) {
+        synth.resume();
+        isPaused = false;
+        if (playIcon) playIcon.style.display = 'none';
+        if (pauseIcon) pauseIcon.style.display = 'block';
+      } else {
+        synth.pause();
+        isPaused = true;
+        if (playIcon) playIcon.style.display = 'block';
+        if (pauseIcon) pauseIcon.style.display = 'none';
+      }
     }
   }
 
@@ -768,7 +874,10 @@ document.addEventListener('DOMContentLoaded', () => {
       speedBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       speechRate = parseFloat(btn.getAttribute('data-rate')) || 1.0;
-      if (isPlaying && !isPaused) {
+      if (audioEl) {
+        audioEl.playbackRate = speechRate;
+      }
+      if (playbackType === 'synth' && isPlaying && !isPaused) {
         synth.cancel();
         playNextChunk();
       }
@@ -777,7 +886,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (progressRange) {
     progressRange.addEventListener('input', () => {
-      if (chunks.length > 0) {
+      if (playbackType === 'html5' && audioEl && audioEl.duration) {
+        audioEl.currentTime = (parseInt(progressRange.value, 10) / 100) * audioEl.duration;
+      } else if (playbackType === 'synth' && chunks.length > 0) {
         chunkIdx = Math.floor((parseInt(progressRange.value, 10) / 100) * chunks.length);
         if (isPlaying && !isPaused) {
           synth.cancel();
@@ -845,6 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.addEventListener('beforeunload', () => {
+    if (audioEl) audioEl.pause();
     if (synth) synth.cancel();
   });
 

@@ -19,6 +19,7 @@ final class PostController
     private ?\InfinityBlog\Storage\MediaService $media;
     private ?\InfinityBlog\Posts\StudioService $studio;
     private ?\InfinityBlog\Summaries\SummaryService $summaries;
+    private ?\InfinityBlog\Audio\TtsService $tts;
 
     public function __construct(
         PostRepository $posts,
@@ -26,13 +27,15 @@ final class PostController
         SessionManager $sessions,
         ?\InfinityBlog\Storage\MediaService $media = null,
         ?\InfinityBlog\Posts\StudioService $studio = null,
-        ?\InfinityBlog\Summaries\SummaryService $summaries = null
+        ?\InfinityBlog\Summaries\SummaryService $summaries = null,
+        ?\InfinityBlog\Audio\TtsService $tts = null
     ) {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
         $this->studio = $studio;
         $this->summaries = $summaries;
+        $this->tts = $tts;
         if ($media === null) {
             try {
                 $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
@@ -244,6 +247,17 @@ final class PostController
                     // Non-blocking: post publication succeeds regardless of AI provider status
                 }
             }
+            if ($publish && $this->tts !== null && empty($post['audio_path'])) {
+                try {
+                    $audioResult = $this->tts->generateArticleAudio($postId, $author->id);
+                    if ($audioResult !== null && !empty($audioResult['audio_path'])) {
+                        $post['audio_path'] = $audioResult['audio_path'];
+                        $post['audio_status'] = $audioResult['audio_status'] ?? 'ready';
+                    }
+                } catch (\Throwable) {
+                    // Non-blocking: post publication succeeds regardless of TTS status
+                }
+            }
             return ['status' => 200, 'body' => ['data' => ['post' => self::publicPostFields($post)]]];
         } catch (PostNotFoundException) {
             return $this->notFound();
@@ -279,6 +293,9 @@ final class PostController
                 }
                 if (!empty($deleted['video_path'])) {
                     $this->media->safeDelete($this->media->getConfig()->bucketVideos, $deleted['video_path']);
+                }
+                if (!empty($deleted['audio_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketAudio, $deleted['audio_path']);
                 }
             }
             return ['status' => 200, 'body' => ['data' => ['message' => 'Post deleted.']]];

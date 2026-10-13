@@ -118,12 +118,19 @@ try {
     $assistant = new ArticleAssistantService($pdo, $postsRepo, $aiConfig);
 
     $storageConfig = null;
+    $storageClient = null;
+    $mediaService = null;
     try {
         $storageConfig = SupabaseStorageConfig::fromEnvironment();
+        if ($storageConfig !== null && $storageConfig->isConfigured()) {
+            $storageClient = new \InfinityBlog\Storage\SupabaseStorageClient($storageConfig);
+            $mediaService = new \InfinityBlog\Storage\MediaService($storageClient, $storageConfig);
+        }
     } catch (Throwable) {
     }
 
-    $tts = new TtsService($postsRepo, null, $storageConfig, null);
+    $ttsProvider = $aiConfig !== null ? new \InfinityBlog\Audio\OpenAiTtsProvider($aiConfig->apiKey) : null;
+    $tts = new TtsService($postsRepo, $ttsProvider, $aiConfig, $storageConfig, $mediaService, $storageClient);
 
     $webController = new WebController(
         $postsRepo,
@@ -335,7 +342,7 @@ try {
             $aiConfig?->userRateLimit ?? 10
         );
         $summaryService = new SummaryService(new PostRepository($pdo), $limiter, $aiConfig, $provider);
-        $controller = new PostController(new PostRepository($pdo), $guard, $sessions, null, $studio, $summaryService);
+        $controller = new PostController(new PostRepository($pdo), $guard, $sessions, $mediaService, $studio, $summaryService, $tts);
     } elseif (preg_match('#^/posts/[0-9]+/score$#D', $request->path) === 1) {
         $controller = new ScoreController(new ScoreRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {

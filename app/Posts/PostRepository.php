@@ -416,6 +416,124 @@ final class PostRepository
         }
     }
 
+    /**
+     * Store generated audio path and metadata only if the article source still matches the hash used.
+     * Returns previous audio path (if any) so the caller can safely delete old media from storage.
+     *
+     * @return array{audio_path: string, audio_status: string, audio_duration: int, previous_audio_path: ?string}|null
+     */
+    public function saveAudioIfCurrent(int $postId, ?int $ownerId, int $actorId, string $sourceHash, string $audioPath, int $duration, bool $isSummary = false): ?array
+    {
+        $this->begin();
+        try {
+            $current = $this->find($postId, $ownerId, true);
+            if ($current === null) {
+                throw new PostNotFoundException();
+            }
+            $currentHash = self::sourceHash($current['title'], $current['content']);
+            if (!hash_equals($sourceHash, $currentHash)) {
+                $this->writeAudit('post.audio_superseded', $postId, $actorId, [
+                    'requested_source_hash' => $sourceHash,
+                    'current_source_hash' => $currentHash,
+                ]);
+                $this->pdo->commit();
+                return null;
+            }
+
+            $previousAudioPath = $isSummary ? ($current['summary_audio_path'] ?? null) : ($current['audio_path'] ?? null);
+            $generatedAt = gmdate('Y-m-d H:i:s');
+
+            if ($isSummary) {
+                $updateSql = 'UPDATE posts SET summary_audio_path = :path WHERE id = :id';
+                $params = ['path' => $audioPath, 'id' => $postId];
+            } else {
+                $updateSql = "UPDATE posts SET audio_path = :path, audio_source_hash = :source_hash, audio_status = 'ready', audio_duration = :duration, audio_generated_at = :generated_at WHERE id = :id";
+                $params = [
+                    'path' => $audioPath,
+                    'source_hash' => $sourceHash,
+                    'duration' => $duration,
+                    'generated_at' => $generatedAt,
+                    'id' => $postId,
+                ];
+            }
+
+            if ($ownerId !== null) {
+                $updateSql .= ' AND author_id = :owner_id';
+                $params['owner_id'] = $ownerId;
+            }
+
+            $update = $this->pdo->prepare($updateSql);
+            $update->execute($params);
+
+            $this->writeAudit('post.audio_generated', $postId, $actorId, [
+                'source_hash' => $sourceHash,
+                'audio_path' => $audioPath,
+                'is_summary' => $isSummary,
+                'duration' => $duration,
+            ]);
+
+            $this->pdo->commit();
+
+            return [
+                'audio_path' => $audioPath,
+                'audio_status' => 'ready',
+                'audio_duration' => $duration,
+                'previous_audio_path' => $previousAudioPath,
+            ];
+        } catch (Throwable $exception) {
+            $this->rollback();
+            throw $exception;
+        }
+    }
+
+    /** Mark a failed audio result only if the same source revision is still present. */
+    public function markAudioFailureIfCurrent(int $postId, ?int $ownerId, int $actorId, string $sourceHash, string $status = 'failed'): ?string
+    {
+        $this->begin();
+        try {
+            $current = $this->find($postId, $ownerId, true);
+            if ($current === null) {
+                throw new PostNotFoundException();
+            }
+            $currentHash = self::sourceHash($current['title'], $current['content']);
+            if (!hash_equals($sourceHash, $currentHash)) {
+                $this->writeAudit('post.audio_superseded', $postId, $actorId, [
+                    'requested_source_hash' => $sourceHash,
+                    'current_source_hash' => $currentHash,
+                ]);
+                $this->pdo->commit();
+                return null;
+            }
+
+            $updateSql = 'UPDATE posts SET audio_status = :status WHERE id = :id';
+            $params = ['status' => $status, 'id' => $postId];
+            if ($ownerId !== null) {
+                $updateSql .= ' AND author_id = :owner_id';
+                $params['owner_id'] = $ownerId;
+            }
+
+            $update = $this->pdo->prepare($updateSql);
+            $update->execute($params);
+
+            $this->writeAudit('post.audio_failed', $postId, $actorId, [
+                'source_hash' => $sourceHash,
+                'status' => $status,
+            ]);
+
+            $this->pdo->commit();
+            return $status;
+        } catch (Throwable $exception) {
+            $this->rollback();
+            throw $exception;
+        }
+    }
+
+    public function setAudioStatus(int $postId, string $status): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE posts SET audio_status = :status WHERE id = :id');
+        $stmt->execute(['status' => $status, 'id' => $postId]);
+    }
+
     /** @param array{title?: string, content?: string, category_id?: ?int} $changes
      *  @return array<string, mixed>
      */
