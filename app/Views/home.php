@@ -4,6 +4,16 @@
     <h1 class="hero-headline">Ideas. Stories.<br><span class="brand-text-accent">Perspectives.</span></h1>
     <p class="hero-subhead">Discover insightful articles on technology, lifestyle, education and more from passionate writers.</p>
 
+    <div class="hero-actions" style="display: flex; gap: 12px; margin-top: 20px; margin-bottom: 24px; flex-wrap: wrap;">
+      <?php if (!empty($currentUser)): ?>
+        <a href="/posts/new" class="btn btn-primary btn-pill btn-md">+ Write New Story</a>
+        <a href="/explore" class="btn btn-secondary btn-pill btn-md">Browse Articles →</a>
+      <?php else: ?>
+        <a href="/explore" class="btn btn-primary btn-pill btn-md">Start Reading Free →</a>
+        <a href="/register" class="btn btn-secondary btn-pill btn-md">Join as Writer</a>
+      <?php endif; ?>
+    </div>
+
     <form action="/" method="GET" class="hero-search-bar" role="search">
       <input type="search" name="search" class="hero-search-input" placeholder="Search articles by title or keyword..." value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
       <button type="submit" class="hero-search-btn" aria-label="Search articles">
@@ -17,7 +27,7 @@
 
   <div class="hero-visual" aria-hidden="true">
     <div class="hero-illustration-wrapper">
-      <img src="/assets/images/floating-blog-documents.png" class="hero-floating-illustration" alt="Infinity Blog editorial illustration">
+      <img src="/assets/images/floating-blog-documents.png" class="hero-floating-illustration" alt="Infinity Blog editorial illustration" width="460" height="340" fetchpriority="high">
     </div>
   </div>
 </section>
@@ -92,7 +102,7 @@
         <article class="glass-panel glass-panel-hover article-card">
           <!-- Card Visual Banner Header matching Reference 2 -->
           <div class="article-card-banner has-image">
-            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
+            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
                 <span class="badge badge-category">

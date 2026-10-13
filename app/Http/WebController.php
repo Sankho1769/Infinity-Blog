@@ -13,10 +13,16 @@ use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Config\AppConfig;
 use InfinityBlog\Export\EpubExporter;
 use InfinityBlog\Export\PdfExporter;
+use InfinityBlog\Library\LibraryRepository;
+use InfinityBlog\Community\CommunityRepository;
+use InfinityBlog\Ai\ArticleAssistantService;
+use InfinityBlog\Contact\ContactRepository;
 use InfinityBlog\Posts\ArticleContentRenderer;
 use InfinityBlog\Posts\ArticleImageHelper;
 use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Posts\StudioService;
 use InfinityBlog\Scores\ScoreRepository;
+use InfinityBlog\Seo\SeoService;
 use InfinityBlog\Social\FollowRepository;
 use InfinityBlog\Social\MessageRepository;
 use InfinityBlog\Storage\MediaService;
@@ -41,6 +47,12 @@ final class WebController
     private ?FollowRepository $follows;
     private ?MessageRepository $messages;
     private ?TtsService $tts;
+    private ?LibraryRepository $library;
+    private ?CommunityRepository $community;
+    private ?ArticleAssistantService $assistant;
+    private ?StudioService $studio;
+    private SeoService $seo;
+    private ?ContactRepository $contactRepo;
 
     public function __construct(
         PostRepository $posts,
@@ -55,7 +67,13 @@ final class WebController
         ?MediaService $media = null,
         ?FollowRepository $follows = null,
         ?MessageRepository $messages = null,
-        ?TtsService $tts = null
+        ?TtsService $tts = null,
+        ?LibraryRepository $library = null,
+        ?CommunityRepository $community = null,
+        ?ArticleAssistantService $assistant = null,
+        ?StudioService $studio = null,
+        ?SeoService $seo = null,
+        ?ContactRepository $contactRepo = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -81,6 +99,12 @@ final class WebController
         $this->follows = $follows;
         $this->messages = $messages;
         $this->tts = $tts;
+        $this->library = $library;
+        $this->community = $community;
+        $this->assistant = $assistant;
+        $this->studio = $studio;
+        $this->seo = $seo ?? new SeoService($config->baseUrl);
+        $this->contactRepo = $contactRepo;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -188,6 +212,20 @@ final class WebController
             'duration_seconds_est' => max(10, (int) ceil((str_word_count(strip_tags($post['content'])) / 140) * 60)),
         ];
 
+        if ($this->studio !== null) {
+            $this->studio->incrementViews($id);
+        }
+
+        $isBookmarked = false;
+        if ($account !== null && $this->library !== null) {
+            $isBookmarked = $this->library->isBookmarked($account->id, $id);
+        }
+
+        $comments = [];
+        if ($this->community !== null) {
+            $comments = $this->community->getPostComments($id, $account?->id);
+        }
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'metaDescription' => $metaDescription,
@@ -204,6 +242,8 @@ final class WebController
             'scoreSummary' => $scoreSummary,
             'userScore' => $userScore,
             'speechData' => $speechData,
+            'isBookmarked' => $isBookmarked,
+            'comments' => $comments,
             'readingTime' => $post['reading_time'] ?? max(1, (int) ceil(str_word_count(strip_tags($post['content'])) / 200)),
             'currentUser' => $account !== null ? [
                 'id' => $account->id,
@@ -502,9 +542,13 @@ final class WebController
         $dateTo = isset($_GET['date_to']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET['date_to']) ? (string) $_GET['date_to'] : null;
         $readingTime = isset($_GET['reading_time']) && in_array($_GET['reading_time'], ['quick', 'medium', 'deep'], true) ? (string) $_GET['reading_time'] : null;
         $sort = isset($_GET['sort']) && in_array($_GET['sort'], ['newest', 'oldest', 'popular', 'highest_rated', 'relevance'], true) ? (string) $_GET['sort'] : 'newest';
-        $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
+        $account = $this->guard->currentAccount();
+        $forYou = (isset($_GET['for_you']) && $_GET['for_you'] === '1' && $account !== null);
 
         $filters = [];
+        if ($forYou) {
+            $filters['exclude_muted_for_user_id'] = $account->id;
+        }
         if ($q !== '') {
             $filters['q'] = $q;
         }
@@ -540,6 +584,7 @@ final class WebController
         }
         $filters['sort'] = $sort;
 
+        $page = isset($_GET['page']) ? max(1, (int) $_GET['page']) : 1;
         $perPage = 12;
         $postsResult = $this->posts->listPublic($filters, $page, $perPage);
         $categories = $this->categories->listActiveWithCounts();
@@ -621,6 +666,16 @@ final class WebController
             ];
         }
 
+        if ($forYou) {
+            $chipQuery = $currentQuery;
+            unset($chipQuery['for_you'], $chipQuery['page']);
+            $activeFilterChips[] = [
+                'type' => 'for_you',
+                'label' => '✨ For You (Muted topics excluded)',
+                'remove_url' => '/explore' . (!empty($chipQuery) ? '?' . http_build_query($chipQuery) : ''),
+            ];
+        }
+
         $totalPages = max(1, (int) ceil($postsResult['total'] / $perPage));
 
         return $this->render('explore', [
@@ -645,6 +700,13 @@ final class WebController
             'searchQuery' => $q,
             'activeFilterChips' => $activeFilterChips,
             'currentQueryParams' => $currentQuery,
+            'forYou' => $forYou,
+            'currentUser' => $account !== null ? [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'role' => $account->role,
+            ] : null,
         ]);
     }
 
@@ -683,6 +745,8 @@ final class WebController
             $counts = $postResult['dashboard_counts'];
         }
 
+        $analytics = $this->studio !== null ? $this->studio->getAuthorAnalytics($account->id) : null;
+
         return $this->render('dashboard', [
             'pageTitle' => 'Author Dashboard',
             'metaDescription' => 'Track your publishing stats, recent drafts, reader engagement, and manage your articles on Infinity Blog.',
@@ -690,6 +754,7 @@ final class WebController
             'counts' => $counts,
             'recentPosts' => $recentPosts,
             'adminCounts' => $adminCounts,
+            'analytics' => $analytics,
         ]);
     }
 
@@ -1460,12 +1525,88 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function submitContact(Request $request): array
+    {
+        $csrf = $request->header('X-CSRF-Token') ?? ($_POST['csrf_token'] ?? null);
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->render('contact', [
+                'pageTitle' => 'Contact Us',
+                'errorMessage' => 'Security token invalid or expired. Please reload the page and try again.',
+                'formData' => $_POST,
+                'activeNav' => 'contact',
+            ], 403);
+        }
+
+        // Anti-spam honeypot check
+        $honeypot = trim((string) ($_POST['website_hp'] ?? ''));
+        if ($honeypot !== '') {
+            return $this->redirect('/contact?submitted=1&ticket=' . rand(1000, 9999));
+        }
+
+        $name = trim((string) ($_POST['name'] ?? ''));
+        $email = trim((string) ($_POST['email'] ?? ''));
+        $subject = trim((string) ($_POST['subject'] ?? ''));
+        $message = trim((string) ($_POST['message'] ?? ''));
+
+        $errors = [];
+        if ($name === '' || mb_strlen($name) < 2 || mb_strlen($name) > 100) {
+            $errors['name'] = 'Please enter your name (2–100 characters).';
+        }
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) {
+            $errors['email'] = 'Please provide a valid email address.';
+        }
+        if ($subject === '' || mb_strlen($subject) < 3 || mb_strlen($subject) > 150) {
+            $errors['subject'] = 'Please provide a clear subject (3–150 characters).';
+        }
+        if ($message === '' || mb_strlen($message) < 10 || mb_strlen($message) > 3000) {
+            $errors['message'] = 'Message must be between 10 and 3,000 characters.';
+        }
+
+        if (!empty($errors)) {
+            return $this->render('contact', [
+                'pageTitle' => 'Contact Us',
+                'errorMessage' => 'Please correct the highlighted errors before submitting.',
+                'errors' => $errors,
+                'formData' => ['name' => $name, 'email' => $email, 'subject' => $subject, 'message' => $message],
+                'activeNav' => 'contact',
+            ], 422);
+        }
+
+        $ip = $request->sourceAddress;
+        if ($this->contactRepo !== null && $this->contactRepo->countRecentFromIp($ip, 60) >= 5) {
+            return $this->render('contact', [
+                'pageTitle' => 'Contact Us',
+                'errorMessage' => 'Rate limit exceeded. You have sent 5 inquiries recently. Please wait an hour before submitting again.',
+                'formData' => ['name' => $name, 'email' => $email, 'subject' => $subject, 'message' => $message],
+                'activeNav' => 'contact',
+            ], 429);
+        }
+
+        $ticketId = 1001;
+        if ($this->contactRepo !== null) {
+            $ticketId = $this->contactRepo->createMessage($name, $email, $subject, $message, $ip);
+        }
+
+        return $this->redirect('/contact?submitted=1&ticket=' . $ticketId);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function privacy(Request $request): array
     {
         return $this->render('privacy', [
             'pageTitle' => 'Privacy Policy',
-            'metaDescription' => 'Review the Infinity Blog privacy statement, data protection guidelines, and visitor rights.',
+            'metaDescription' => 'Review the Infinity Blog privacy statement, data protection guidelines, cookie policies, and visitor rights.',
             'activeNav' => 'privacy',
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function terms(Request $request): array
+    {
+        return $this->render('terms', [
+            'pageTitle' => 'Terms and Conditions',
+            'metaDescription' => 'Review the Infinity Blog Terms of Service, creator rights, code remix licensing, and content policies.',
+            'activeNav' => 'terms',
         ]);
     }
 
@@ -1483,9 +1624,62 @@ final class WebController
         $csrfToken = $this->sessions->csrfToken();
         $basePath = Request::detectBasePath($this->config->baseUrl);
 
+        // SEO Formatting & Metadata Injection
+        $pageTitleFormatted = $this->seo->formatTitle($data['pageTitle'] ?? null);
+        $metaDescriptionFormatted = $this->seo->formatDescription($data['metaDescription'] ?? null);
+        $canonicalUrl = $data['canonicalUrl'] ?? $this->seo->buildCanonicalUrl($_SERVER['REQUEST_URI'] ?? '/');
+        $ogImageAbsolute = $this->seo->resolveAbsoluteImageUrl($data['ogImage'] ?? null);
+
+        // Schema.org Graph Construction
+        $schemas = [
+            $this->seo->buildOrganizationSchema(),
+            $this->seo->buildWebSiteSchema(),
+        ];
+
+        if ($template === 'article' && !empty($data['post'])) {
+            $schemas[] = $this->seo->buildArticleSchema($data['post'], $canonicalUrl, $ogImageAbsolute);
+            $crumbs = [
+                ['name' => 'Home', 'url' => $this->config->baseUrl . '/'],
+                ['name' => $data['post']['category_name'] ?? 'Articles', 'url' => $this->config->baseUrl . '/explore' . (!empty($data['post']['category_slug']) ? '?category=' . urlencode($data['post']['category_slug']) : '')],
+                ['name' => $data['post']['title'], 'url' => $canonicalUrl],
+            ];
+            $schemas[] = $this->seo->buildBreadcrumbSchema($crumbs);
+        } elseif ($template === 'author_profile' && !empty($data['author'])) {
+            $schemas[] = $this->seo->buildAuthorSchema($data['author'], $canonicalUrl);
+            $crumbs = [
+                ['name' => 'Home', 'url' => $this->config->baseUrl . '/'],
+                ['name' => 'Authors', 'url' => $this->config->baseUrl . '/authors'],
+                ['name' => $data['author']['display_name'] ?? $data['author']['username'], 'url' => $canonicalUrl],
+            ];
+            $schemas[] = $this->seo->buildBreadcrumbSchema($crumbs);
+        } elseif ($template === 'contact') {
+            $schemas[] = $this->seo->buildContactSchema();
+        } elseif ($template === 'public_categories') {
+            $crumbs = [
+                ['name' => 'Home', 'url' => $this->config->baseUrl . '/'],
+                ['name' => 'Categories', 'url' => $this->config->baseUrl . '/categories'],
+            ];
+            $schemas[] = $this->seo->buildBreadcrumbSchema($crumbs);
+        } elseif ($template === 'explore') {
+            $crumbs = [
+                ['name' => 'Home', 'url' => $this->config->baseUrl . '/'],
+                ['name' => 'Explore Articles', 'url' => $this->config->baseUrl . '/explore'],
+            ];
+            $schemas[] = $this->seo->buildBreadcrumbSchema($crumbs);
+        }
+
+        $jsonLd = $this->seo->renderJsonLd($schemas);
+
         $data['currentUser'] = $currentUser;
         $data['csrfToken'] = $csrfToken;
         $data['basePath'] = $basePath;
+        $data['pageTitleFormatted'] = $pageTitleFormatted;
+        $data['metaDescriptionFormatted'] = $metaDescriptionFormatted;
+        $data['canonicalUrl'] = $canonicalUrl;
+        $data['ogImageAbsolute'] = $ogImageAbsolute;
+        $data['jsonLd'] = $jsonLd;
+        $data['gaMeasurementId'] = $this->seo->getGaMeasurementId();
+        $data['gscVerificationCode'] = $this->seo->getGscVerificationCode();
 
         extract($data);
 
@@ -1559,6 +1753,218 @@ final class WebController
             return $this->media->resolvePublicUrl($this->media->getConfig()->bucketBanners, $path);
         }
         return ArticleImageHelper::resolveBannerUrl($path);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function library(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode('/library'));
+        }
+
+        $tab = isset($_GET['tab']) && in_array($_GET['tab'], ['bookmarks', 'history', 'collections', 'notes', 'preferences'], true)
+            ? $_GET['tab']
+            : 'bookmarks';
+        $searchQuery = isset($_GET['q']) && is_string($_GET['q']) ? trim($_GET['q']) : null;
+
+        $bookmarks = $this->library !== null ? $this->library->getBookmarks($account->id, $searchQuery) : [];
+        $history = $this->library !== null ? $this->library->getReadingHistory($account->id, 20) : [];
+        $collections = $this->library !== null ? $this->library->getCollections($account->id, $account->id) : [];
+        $notes = $this->library !== null ? $this->library->getUserNotes($account->id, $searchQuery) : [];
+        $topicPreferences = $this->library !== null ? $this->library->getTopicPreferences($account->id) : [];
+
+        return $this->render('library', [
+            'pageTitle' => 'My Library — Personal Knowledge Base',
+            'metaDescription' => 'Your personal saved articles, reading history, collections, and passage notes.',
+            'activeNav' => 'library',
+            'activeTab' => $tab,
+            'searchQuery' => $searchQuery,
+            'bookmarks' => $bookmarks,
+            'history' => $history,
+            'collections' => $collections,
+            'notes' => $notes,
+            'topicPreferences' => $topicPreferences,
+            'currentUser' => [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'role' => $account->role,
+            ],
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function followingFeed(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode('/following'));
+        }
+
+        $feedResult = $this->posts->listPublic(['following_user_id' => $account->id], 1, 24);
+
+        return $this->render('following_feed', [
+            'pageTitle' => 'Following Feed — Stories from Followed Writers',
+            'metaDescription' => 'The latest published stories and updates from writers you follow on Infinity Blog.',
+            'activeNav' => 'following',
+            'posts' => $feedResult['posts'],
+            'currentUser' => [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'role' => $account->role,
+            ],
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function chat(Request $request, ?string $slug = null): array
+    {
+        $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+        if (empty($rooms)) {
+            if ($this->community !== null) {
+                $this->community->createChatRoom('Web Development', 'web-development', 'Discussions about frontend, backend, APIs, and modern architecture.', 1, 1);
+                $this->community->createChatRoom('Artificial Intelligence', 'artificial-intelligence', 'Exchange thoughts on LLMs, neural networks, ethics, and AI workflows.', 2, 1);
+                $this->community->createChatRoom('General Lounge', 'general', 'Casual hangouts, writing inspiration, and community introductions.', null, 1);
+                $rooms = $this->community->getChatRooms();
+            }
+        }
+
+        $activeRoom = null;
+        if ($slug !== null && trim($slug) !== '') {
+            $activeRoom = $this->community?->getChatRoomBySlug(trim($slug));
+        }
+        if ($activeRoom === null && !empty($rooms)) {
+            $activeRoom = $rooms[0];
+        }
+
+        $messages = [];
+        if ($activeRoom !== null && $this->community !== null) {
+            $messages = $this->community->getChatMessages((int) $activeRoom['id'], 50);
+        }
+
+        $account = $this->guard->currentAccount();
+
+        return $this->render('chat', [
+            'pageTitle' => 'Public Text Chat Rooms — Community Discussions',
+            'metaDescription' => 'Join topic-based text channels to exchange ideas with writers and readers in real-time.',
+            'activeNav' => 'chat',
+            'rooms' => $rooms,
+            'activeRoom' => $activeRoom,
+            'messages' => $messages,
+            'currentUser' => $account !== null ? [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'role' => $account->role,
+            ] : null,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function sitemap(Request $request): array
+    {
+        $postsResult = $this->posts->listPublic([], 1, 500);
+        $categories = $this->categories->listActive();
+        $authors = $this->users->listPublicAuthors();
+        $baseUrl = rtrim($this->config->baseUrl, '/');
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+
+        // Main Navigation Index Pages
+        $xml .= "  <url>\n    <loc>{$baseUrl}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/explore</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.9</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/categories</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/authors</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n";
+
+        // Informational, Contact & Legal Pages
+        $xml .= "  <url>\n    <loc>{$baseUrl}/about</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/contact</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.5</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/privacy</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.3</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/terms</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.3</priority>\n  </url>\n";
+
+        // Categories
+        foreach ($categories as $cat) {
+            $slug = htmlspecialchars($cat['slug'] ?? '', ENT_XML1, 'UTF-8');
+            $xml .= "  <url>\n    <loc>{$baseUrl}/explore?category={$slug}</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.75</priority>\n  </url>\n";
+        }
+
+        // Articles with W3C Datetime Lastmod
+        foreach ($postsResult['posts'] as $post) {
+            $loc = htmlspecialchars("{$baseUrl}/article/{$post['id']}", ENT_XML1, 'UTF-8');
+            $rawDate = !empty($post['updated_at']) ? $post['updated_at'] : (!empty($post['published_at']) ? $post['published_at'] : 'now');
+            $lastmod = date('Y-m-d\TH:i:sP', strtotime($rawDate));
+            $xml .= "  <url>\n    <loc>{$loc}</loc>\n    <lastmod>{$lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.85</priority>\n  </url>\n";
+        }
+
+        // Public Authors
+        foreach ($authors as $author) {
+            $loc = htmlspecialchars("{$baseUrl}/author/{$author['id']}", ENT_XML1, 'UTF-8');
+            $xml .= "  <url>\n    <loc>{$loc}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n";
+        }
+
+        $xml .= '</urlset>';
+
+        return [
+            'status' => 200,
+            'type' => 'application/xml; charset=utf-8',
+            'body' => $xml,
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function robots(Request $request): array
+    {
+        $baseUrl = rtrim($this->config->baseUrl, '/');
+        $robots = "User-agent: *\n" .
+            "Allow: /\n" .
+            "Allow: /assets/\n" .
+            "Disallow: /admin/\n" .
+            "Disallow: /auth/\n" .
+            "Disallow: /api/\n" .
+            "Disallow: /messages\n" .
+            "Disallow: /library\n" .
+            "Disallow: /following\n" .
+            "Disallow: /profile/edit\n\n" .
+            "Sitemap: {$baseUrl}/sitemap.xml\n";
+
+        return [
+            'status' => 200,
+            'type' => 'text/plain; charset=utf-8',
+            'body' => $robots,
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function assistant(Request $request, int $postId): array
+    {
+        $account = $this->guard->currentAccount();
+        $input = $request->input();
+        $question = trim((string) ($input['question'] ?? ''));
+
+        if ($question === '') {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Please provide a question.']]);
+        }
+
+        $sessionId = session_id() ?: 'guest_' . substr(md5($request->sourceAddress), 0, 16);
+
+        if ($this->assistant === null) {
+            return $this->jsonResponse(200, [
+                'data' => [
+                    'answer' => 'Assistant service is not available in current configuration.',
+                    'passage_reference' => null,
+                ],
+            ]);
+        }
+
+        try {
+            $res = $this->assistant->ask($postId, $account?->id, $sessionId, $question);
+            return $this->jsonResponse(200, ['data' => $res]);
+        } catch (Throwable $e) {
+            return $this->jsonResponse(500, ['error' => ['code' => 'ASSISTANT_ERROR', 'message' => 'Could not process question.']]);
+        }
     }
 
     /**

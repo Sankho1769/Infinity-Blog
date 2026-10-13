@@ -561,6 +561,7 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'cover_image_path TEXT NULL, video_path TEXT NULL, audio_path TEXT NULL, audio_status TEXT NOT NULL DEFAULT \'idle\', audio_duration INTEGER NULL, audio_generated_at TEXT NULL, ' .
         'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
         'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
+        'scheduled_at TEXT NULL, views_count INTEGER NOT NULL DEFAULT 0, ' .
         'published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
         'updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
         "CHECK (status <> 'published' OR (category_id IS NOT NULL AND published_at IS NOT NULL)), " .
@@ -2299,7 +2300,7 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', scheduled_at TEXT NULL, views_count INTEGER NOT NULL DEFAULT 0, published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec('ALTER TABLE users ADD COLUMN bio TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN location TEXT NULL');
@@ -2894,6 +2895,121 @@ MD;
 
     $extracted = \InfinityBlog\Posts\ArticleContentRenderer::extractVideoPaths($markdown);
     $expect(in_array('videos/u1_demo.mp4', $extracted, true), 'extractVideoPaths must find uploaded video path in markdown');
+});
+
+$run('SEO service formats titles, meta descriptions, canonical URLs, and Schema.org JSON-LD graph', static function () use ($expect): void {
+    $seo = new \InfinityBlog\Seo\SeoService('http://localhost:8086', 'G-TEST12345', 'gsc-test-token');
+
+    $expect($seo->getBaseUrl() === 'http://localhost:8086');
+    $expect($seo->getGaMeasurementId() === 'G-TEST12345');
+    $expect($seo->getGscVerificationCode() === 'gsc-test-token');
+
+    // Title formatting
+    $expect($seo->formatTitle(null) === 'Infinity Blog — Ideas. Stories. Perspectives.');
+    $expect($seo->formatTitle('How to Code') === 'How to Code — Infinity Blog');
+    $expect($seo->formatTitle('Welcome — Infinity Blog') === 'Welcome — Infinity Blog');
+
+    // Description formatting
+    $desc = $seo->formatDescription(null);
+    $expect(str_contains($desc, 'Infinity Blog — A modern publishing platform'));
+    $long = str_repeat('Word ', 50);
+    $formattedLong = $seo->formatDescription($long);
+    $expect(mb_strlen($formattedLong) <= 160 && str_ends_with($formattedLong, '...'));
+    $stripped = $seo->formatDescription('<p>Hello <strong>World</strong>!</p>');
+    $expect($stripped === 'Hello World!');
+
+    // Canonical URL
+    $canon1 = $seo->buildCanonicalUrl('/article/12/');
+    $expect($canon1 === 'http://localhost:8086/article/12');
+    $canon2 = $seo->buildCanonicalUrl('/explore', ['category' => 'tech', 'page' => 2]);
+    $expect($canon2 === 'http://localhost:8086/explore?category=tech&page=2');
+
+    // Image resolution
+    $img1 = $seo->resolveAbsoluteImageUrl('/assets/images/cover.jpg');
+    $expect($img1 === 'http://localhost:8086/assets/images/cover.jpg');
+    $img2 = $seo->resolveAbsoluteImageUrl('https://cdn.example.com/photo.png');
+    $expect($img2 === 'https://cdn.example.com/photo.png');
+    $img3 = $seo->resolveAbsoluteImageUrl(null);
+    $expect($img3 === 'http://localhost:8086/assets/images/floating-blog-documents.png');
+
+    // Schema structures
+    $org = $seo->buildOrganizationSchema();
+    $expect($org['@type'] === 'Organization' && $org['name'] === 'Infinity Blog');
+
+    $site = $seo->buildWebSiteSchema();
+    $expect($site['@type'] === 'WebSite' && isset($site['potentialAction']));
+
+    $postData = [
+        'id' => 9,
+        'title' => 'Building Modern Glassmorphism UIs',
+        'summary' => 'A comprehensive guide.',
+        'content' => 'Full article content here.',
+        'author_id' => 1,
+        'author_name' => 'Cristine Palmer',
+        'published_at' => '2026-10-13 12:00:00',
+        'updated_at' => '2026-10-13 14:00:00',
+    ];
+    $articleSchema = $seo->buildArticleSchema($postData, 'http://localhost:8086/article/9', 'http://localhost:8086/cover.jpg');
+    $expect($articleSchema['@type'] === 'BlogPosting');
+    $expect($articleSchema['headline'] === 'Building Modern Glassmorphism UIs');
+    $expect($articleSchema['author']['name'] === 'Cristine Palmer');
+
+    $authorData = [
+        'id' => 1,
+        'username' => 'cristine',
+        'display_name' => 'Cristine Palmer',
+        'bio' => 'Senior Developer',
+    ];
+    $authorSchema = $seo->buildAuthorSchema($authorData, 'http://localhost:8086/author/1');
+    $expect($authorSchema['@type'] === 'ProfilePage');
+    $expect($authorSchema['mainEntity']['name'] === 'Cristine Palmer');
+
+    $contactSchema = $seo->buildContactSchema();
+    $expect($contactSchema['@type'] === 'ContactPage');
+
+    $crumbs = [
+        ['name' => 'Home', 'url' => 'http://localhost:8086/'],
+        ['name' => 'Explore', 'url' => 'http://localhost:8086/explore'],
+    ];
+    $crumbSchema = $seo->buildBreadcrumbSchema($crumbs);
+    $expect($crumbSchema['@type'] === 'BreadcrumbList' && count($crumbSchema['itemListElement']) === 2);
+
+    $jsonLd = $seo->renderJsonLd([$org, $site, $articleSchema]);
+    $expect(str_contains($jsonLd, 'https://schema.org'), 'JSON-LD must contain schema.org context');
+    $expect(str_contains($jsonLd, '"@graph"'), 'JSON-LD must contain @graph root');
+});
+
+$run('Contact repository persists messages with sliding-window IP rate limiting', static function () use ($expect): void {
+    $sqlite = new PDO('sqlite::memory:');
+    $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $sqlite->exec(
+        "CREATE TABLE contact_messages (" .
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, " .
+        "name TEXT NOT NULL, " .
+        "email TEXT NOT NULL, " .
+        "subject TEXT NOT NULL, " .
+        "message TEXT NOT NULL, " .
+        "ip_address TEXT NULL, " .
+        "status TEXT NOT NULL DEFAULT 'received', " .
+        "created_at TEXT NOT NULL" .
+        ");"
+    );
+
+    $repo = new \InfinityBlog\Contact\ContactRepository($sqlite);
+    $ip = '192.0.2.77';
+
+    $expect($repo->countRecentFromIp($ip, 60) === 0);
+
+    $msg1 = $repo->createMessage('Cristine Palmer', 'cristine.palmer@example.com', 'Editorial Pitch', 'Hello team, I would like to pitch an article.', $ip);
+    $expect($msg1 === 1);
+    $expect($repo->countRecentFromIp($ip, 60) === 1);
+
+    $msg2 = $repo->createMessage('Cristine Palmer', 'cristine.palmer@example.com', 'Bug Report', 'Found an issue with button hover.', $ip);
+    $expect($msg2 === 2);
+    $expect($repo->countRecentFromIp($ip, 60) === 2);
+
+    // Another IP should not be counted
+    $expect($repo->countRecentFromIp('192.0.2.88', 60) === 0);
 });
 
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');

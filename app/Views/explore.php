@@ -42,10 +42,24 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
     </button>
     <div class="category-filter-bar">
-      <a href="/explore<?= !empty($baseCategoryQuery) ? '?' . http_build_query($baseCategoryQuery) : '' ?>" class="filter-pill <?= empty($activeCategorySlug) ? 'active' : '' ?>">
+      <a href="/explore<?= !empty($baseCategoryQuery) ? '?' . http_build_query($baseCategoryQuery) : '' ?>" class="filter-pill <?= empty($activeCategorySlug) && empty($forYou) ? 'active' : '' ?>">
         <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon(null, 15) ?>
         <span>All Categories</span>
       </a>
+      <?php if (!empty($currentUser)): ?>
+        <?php
+          $forYouQuery = $baseCategoryQuery;
+          if (empty($forYou)) {
+              $forYouQuery['for_you'] = '1';
+          } else {
+              unset($forYouQuery['for_you']);
+          }
+        ?>
+        <a href="/explore<?= !empty($forYouQuery) ? '?' . http_build_query($forYouQuery) : '' ?>" class="filter-pill <?= !empty($forYou) ? 'active' : '' ?>" style="<?= !empty($forYou) ? 'background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff;' : '' ?>">
+          <span>✨</span>
+          <span>For You</span>
+        </a>
+      <?php endif; ?>
       <?php foreach ($categories as $cat): ?>
         <?php
           $catQuery = array_merge($baseCategoryQuery, ['category' => $cat['slug']]);
@@ -297,7 +311,7 @@
         ?>
         <article class="glass-panel glass-panel-hover article-card">
           <div class="article-card-banner has-image">
-            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy">
+            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
                 <span class="badge badge-category">

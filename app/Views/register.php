@@ -8,6 +8,12 @@
     <h1 class="auth-title">Join Infinity Blog</h1>
     <p class="auth-subtitle">Create your account to read, write, and share perspectives on Infinity Blog.</p>
 
+    <?php if (!empty($_GET['error'])): ?>
+      <div class="alert-banner alert-error" style="display: flex; margin-bottom: 20px;">
+        <span><?= htmlspecialchars(urldecode((string)$_GET['error']), ENT_QUOTES, 'UTF-8') ?></span>
+      </div>
+    <?php endif; ?>
+
     <div id="register-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
     <form id="register-form" method="POST" action="/register" novalidate>

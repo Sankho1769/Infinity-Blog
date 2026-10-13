@@ -3,25 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog</title>
-  <meta name="description" content="<?= htmlspecialchars($metaDescription ?? 'Infinity Blog — A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
+  <title><?= htmlspecialchars($pageTitleFormatted ?? ($pageTitle ?? 'Ideas. Stories. Perspectives. — Infinity Blog'), ENT_QUOTES, 'UTF-8') ?></title>
+  <meta name="description" content="<?= htmlspecialchars($metaDescriptionFormatted ?? ($metaDescription ?? 'Infinity Blog — A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.'), ENT_QUOTES, 'UTF-8') ?>">
   <meta property="og:site_name" content="Infinity Blog">
-  <meta property="og:title" content="<?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog">
-  <meta property="og:description" content="<?= htmlspecialchars($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
+  <meta property="og:title" content="<?= htmlspecialchars($pageTitleFormatted ?? ($pageTitle ?? 'Ideas. Stories. Perspectives. — Infinity Blog'), ENT_QUOTES, 'UTF-8') ?>">
+  <meta property="og:description" content="<?= htmlspecialchars($metaDescriptionFormatted ?? ($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.'), ENT_QUOTES, 'UTF-8') ?>">
   <meta property="og:type" content="<?= htmlspecialchars($ogType ?? 'website', ENT_QUOTES, 'UTF-8') ?>">
-  <?php if (!empty($ogImage)): ?>
+  <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086' . ($canonicalPath ?? ($_SERVER['REQUEST_URI'] ?? '/'))), ENT_QUOTES, 'UTF-8') ?>">
+  <?php if (!empty($ogImageAbsolute)): ?>
+    <meta property="og:image" content="<?= htmlspecialchars($ogImageAbsolute, ENT_QUOTES, 'UTF-8') ?>">
+  <?php elseif (!empty($ogImage)): ?>
     <meta property="og:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
   <?php endif; ?>
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="<?= htmlspecialchars($pageTitle ?? 'Ideas. Stories. Perspectives.', ENT_QUOTES, 'UTF-8') ?> — Infinity Blog">
-  <meta name="twitter:description" content="<?= htmlspecialchars($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.', ENT_QUOTES, 'UTF-8') ?>">
-  <?php if (!empty($ogImage)): ?>
+  <meta name="twitter:title" content="<?= htmlspecialchars($pageTitleFormatted ?? ($pageTitle ?? 'Ideas. Stories. Perspectives. — Infinity Blog'), ENT_QUOTES, 'UTF-8') ?>">
+  <meta name="twitter:description" content="<?= htmlspecialchars($metaDescriptionFormatted ?? ($metaDescription ?? 'A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.'), ENT_QUOTES, 'UTF-8') ?>">
+  <?php if (!empty($ogImageAbsolute)): ?>
+    <meta name="twitter:image" content="<?= htmlspecialchars($ogImageAbsolute, ENT_QUOTES, 'UTF-8') ?>">
+  <?php elseif (!empty($ogImage)): ?>
     <meta name="twitter:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
   <?php endif; ?>
   <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl ?? ('http://localhost:8086' . ($canonicalPath ?? ($_SERVER['REQUEST_URI'] ?? '/'))), ENT_QUOTES, 'UTF-8') ?>">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/png" href="/favicon.png">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="apple-touch-icon" href="/favicon-apple.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#3b82f6">
+  <?php if (!empty($gscVerificationCode)): ?>
+    <meta name="google-site-verification" content="<?= htmlspecialchars($gscVerificationCode, ENT_QUOTES, 'UTF-8') ?>">
+  <?php endif; ?>
+  <?php if (!empty($jsonLd)): ?>
+    <script type="application/ld+json"><?= $jsonLd ?></script>
+  <?php endif; ?>
   <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
   <link rel="stylesheet" href="/assets/css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -50,7 +64,10 @@
         <li><a href="/categories" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
         <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
         <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
+        <li><a href="/chat" class="nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Chat</a></li>
         <?php if (!empty($currentUser)): ?>
+          <li><a href="/library" class="nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>">Library</a></li>
+          <li><a href="/following" class="nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>">Following</a></li>
           <li><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
           <li><a href="/dashboard" class="nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
           <li><a href="/posts/manage" class="nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">All Posts</a></li>
@@ -133,7 +150,10 @@
         <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
         <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
         <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
+        <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Topic Chat</a></li>
         <?php if (!empty($currentUser)): ?>
+          <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>">My Library</a></li>
+          <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>">Following Feed</a></li>
           <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
           <li><a href="/profile" class="mobile-nav-link <?= ($activeNav ?? '') === 'profile' ? 'active' : '' ?>">My Profile</a></li>
           <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>
@@ -252,6 +272,8 @@
             <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About Platform</a></li>
             <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
             <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
+            <li><a href="/terms" style="color: var(--text-muted); text-decoration: none;">Terms &amp; Conditions</a></li>
+            <li><button type="button" class="footer-link-btn" onclick="openCookiePreferences()" style="background: none; border: none; padding: 0; color: var(--text-muted); font-size: inherit; font-family: inherit; cursor: pointer; text-align: left;">Cookie Preferences</button></li>
           </ul>
         </div>
 
@@ -259,7 +281,8 @@
           <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Connect</div>
           <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
             <a href="mailto:support@infinityblog.local" style="color: var(--primary-600, #4f46e5); text-decoration: none;">support@infinityblog.local</a>
-            <a href="tel:+18005550199" style="color: var(--primary-600, #4f46e5); text-decoration: none;">+1 (800) 555-0199</a>
+            <a href="mailto:editorial@infinityblog.local" style="color: var(--primary-600, #4f46e5); text-decoration: none;">editorial@infinityblog.local</a>
+            <a href="/contact" style="color: var(--text-muted); text-decoration: none; margin-top: 4px;">Support &amp; Feedback Form →</a>
           </div>
         </div>
       </div>
@@ -267,7 +290,7 @@
 
     <div style="border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.84rem; color: var(--text-muted);">
       <div>© <?= date('Y') ?> Infinity Blog. All rights reserved.</div>
-      <div>Crafted with PHP, PDO & MySQL.</div>
+      <div>Crafted with PHP, PDO &amp; MySQL.</div>
     </div>
   </footer>
 
@@ -286,6 +309,154 @@
     </div>
   </div>
 
+  <!-- Cookie Consent Banner -->
+  <div id="cookie-consent-banner" class="cookie-banner glass-panel" role="region" aria-label="Cookie consent banner" style="display: none;">
+    <div class="cookie-banner-content">
+      <div class="cookie-banner-icon" aria-hidden="true">🍪</div>
+      <div class="cookie-banner-text">
+        <h4 class="cookie-banner-title">We value your privacy</h4>
+        <p class="cookie-banner-desc">
+          We use essential cookies for account security and session maintenance. Optional analytics cookies help us measure performance and improve your reading experience. Read our <a href="/privacy" class="link-inline">Privacy Policy</a> to learn more.
+        </p>
+      </div>
+    </div>
+    <div class="cookie-banner-actions">
+      <button type="button" class="btn btn-secondary btn-sm btn-pill" id="cookie-btn-reject">Reject Non-Essential</button>
+      <button type="button" class="btn btn-outline btn-sm btn-pill" id="cookie-btn-preferences">Preferences</button>
+      <button type="button" class="btn btn-primary btn-sm btn-pill" id="cookie-btn-accept">Accept All</button>
+    </div>
+  </div>
+
+  <!-- Cookie Preferences Modal -->
+  <div id="cookie-preferences-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cookie-pref-title" style="display: none;">
+    <div class="modal-card" style="max-width: 540px; text-align: left;">
+      <h3 id="cookie-pref-title" class="modal-title" style="margin-bottom: 8px;">Cookie &amp; Privacy Preferences</h3>
+      <p class="modal-desc" style="margin-bottom: 20px;">
+        Choose which cookies Infinity Blog may store. Essential cookies are required to authenticate and safeguard your account.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px;">
+        <!-- Strictly Necessary -->
+        <div style="background: rgba(255, 255, 255, 0.65); padding: 14px 16px; border-radius: 12px; border: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; gap: 14px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-heading);">Strictly Necessary Cookies</div>
+            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">Enables authentication, CSRF tokens, and security. Cannot be disabled.</div>
+          </div>
+          <div>
+            <span class="badge" style="font-size: 0.75rem; background: rgba(59, 130, 246, 0.15); color: #2563eb; font-weight: 700; padding: 4px 10px; border-radius: 999px;">Required</span>
+          </div>
+        </div>
+
+        <!-- Performance & Analytics -->
+        <div style="background: rgba(255, 255, 255, 0.65); padding: 14px 16px; border-radius: 12px; border: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; gap: 14px;">
+          <div>
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-heading);">Performance &amp; Analytics</div>
+            <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">Measures page views and reading trends anonymously. Scripts execute only with your consent.</div>
+          </div>
+          <div>
+            <input type="checkbox" id="cookie-pref-analytics" style="width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary-color);">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="closeCookiePreferences()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm btn-pill" id="cookie-pref-save-btn">Save Preferences</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/assets/js/app.js"></script>
+
+  <!-- Cookie Consent & Privacy Gatekeeper Script -->
+  <script>
+    (function() {
+      const GA_ID = <?= !empty($gaMeasurementId) ? json_encode($gaMeasurementId) : 'null' ?>;
+      const CONSENT_KEY = 'infinity_blog_cookie_consent';
+
+      function loadAnalytics() {
+        if (!GA_ID || window.__ga_loaded) return;
+        window.__ga_loaded = true;
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(GA_ID);
+        document.head.appendChild(script);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){ dataLayer.push(arguments); }
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', GA_ID, { 'anonymize_ip': true });
+      }
+
+      function getConsent() {
+        try {
+          const raw = localStorage.getItem(CONSENT_KEY);
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function saveConsent(analyticsAllowed) {
+        const consent = {
+          essential: true,
+          analytics: Boolean(analyticsAllowed),
+          timestamp: new Date().toISOString()
+        };
+        try {
+          localStorage.setItem(CONSENT_KEY, JSON.stringify(consent));
+        } catch (e) {}
+
+        const banner = document.getElementById('cookie-consent-banner');
+        if (banner) banner.style.display = 'none';
+
+        if (consent.analytics) {
+          loadAnalytics();
+        }
+      }
+
+      window.openCookiePreferences = function() {
+        const consent = getConsent();
+        const checkbox = document.getElementById('cookie-pref-analytics');
+        if (checkbox) {
+          checkbox.checked = consent ? Boolean(consent.analytics) : false;
+        }
+        const modal = document.getElementById('cookie-preferences-modal');
+        if (modal) modal.style.display = 'flex';
+      };
+
+      window.closeCookiePreferences = function() {
+        const modal = document.getElementById('cookie-preferences-modal');
+        if (modal) modal.style.display = 'none';
+      };
+
+      // Check current consent on page load
+      const current = getConsent();
+      if (!current) {
+        const banner = document.getElementById('cookie-consent-banner');
+        if (banner) banner.style.display = 'flex';
+      } else if (current.analytics) {
+        loadAnalytics();
+      }
+
+      document.getElementById('cookie-btn-accept')?.addEventListener('click', function() {
+        saveConsent(true);
+      });
+
+      document.getElementById('cookie-btn-reject')?.addEventListener('click', function() {
+        saveConsent(false);
+      });
+
+      document.getElementById('cookie-btn-preferences')?.addEventListener('click', function() {
+        window.openCookiePreferences();
+      });
+
+      document.getElementById('cookie-pref-save-btn')?.addEventListener('click', function() {
+        const checkbox = document.getElementById('cookie-pref-analytics');
+        saveConsent(checkbox ? checkbox.checked : false);
+        window.closeCookiePreferences();
+      });
+    })();
+  </script>
 </body>
 </html>

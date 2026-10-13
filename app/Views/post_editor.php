@@ -36,6 +36,20 @@
   </div>
 <?php endif; ?>
 
+<div id="draft-recovery-banner" class="alert-banner" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px; background: rgba(254, 243, 199, 0.9); border: 1px solid rgba(245, 158, 11, 0.6); color: #92400e; border-radius: var(--radius-md); padding: 12px 18px;">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <span style="font-size: 1.25rem;">💾</span>
+    <div>
+      <strong>Unsaved Local Draft Detected:</strong>
+      <span style="font-size: 0.88rem; margin-left: 4px;">Found unsaved work from <span id="draft-saved-time" style="font-weight: 600;"></span>.</span>
+    </div>
+  </div>
+  <div style="display: flex; gap: 8px;">
+    <button type="button" id="restore-draft-btn" class="btn btn-sm btn-primary">Restore Draft</button>
+    <button type="button" id="discard-draft-btn" class="btn btn-sm btn-secondary">Discard</button>
+  </div>
+</div>
+
 <div id="editor-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
 <form id="post-editor-form" method="POST" action="<?= $isEdit ? '/author/posts/' . (int) $post['id'] : '/author/posts' ?>">
@@ -218,6 +232,12 @@
           </div>
         </div>
 
+        <div class="form-group" style="margin-top: 14px;">
+          <label for="scheduled-at" class="form-label" style="font-size: 0.88rem;">Schedule Publication <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
+          <input type="datetime-local" id="scheduled-at" name="scheduled_at" class="form-input" value="<?= !empty($post['scheduled_at']) ? date('Y-m-d\TH:i', strtotime($post['scheduled_at'])) : '' ?>" style="font-size: 0.88rem;">
+          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Post will be automatically published on or after this time.</p>
+        </div>
+
         <?php if ($isEdit && !empty($post['published_at'])): ?>
           <div class="form-group" style="font-size: 0.85rem; color: var(--text-muted);">
             <div><strong>Published on:</strong> <?= date('M j, Y H:i', strtotime($post['published_at'])) ?></div>
@@ -227,7 +247,12 @@
           </div>
         <?php endif; ?>
 
-        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 24px;">
+        <div id="autosave-status" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+          <span id="autosave-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+          <span id="autosave-text">Autosave active</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
           <button type="button" id="save-draft-btn" class="btn btn-secondary btn-full">
             Save as Draft
           </button>
@@ -236,7 +261,10 @@
           </button>
 
           <?php if ($isEdit): ?>
-            <button type="button" class="btn btn-danger-subtle btn-full" style="margin-top: 8px;"
+            <button type="button" id="open-versions-btn" class="btn btn-secondary btn-full" style="margin-top: 4px;">
+              📜 Version History
+            </button>
+            <button type="button" class="btn btn-danger-subtle btn-full" style="margin-top: 4px;"
                     onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
               Delete Post
             </button>
@@ -250,6 +278,20 @@
     </aside>
   </div>
 </form>
+
+<!-- Modal: Version History -->
+<div id="versions-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="versions-modal-title" style="display: none;">
+  <div class="modal-card" style="max-width: 600px;">
+    <h3 id="versions-modal-title" class="modal-title">Revision History</h3>
+    <p class="modal-desc">Review prior revisions and restore content if needed.</p>
+    <div id="versions-list-container" style="max-height: 320px; overflow-y: auto; margin: 16px 0;">
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Loading revisions...</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('versions-modal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: Insert Video -->
 <div id="insert-video-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="insert-video-modal-title">
@@ -445,13 +487,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const coverPath = document.getElementById('post-cover-image-path')?.value || null;
     const videoPath = document.getElementById('post-video-path')?.value || null;
 
+    const scheduledAtVal = document.getElementById('scheduled-at')?.value || null;
+
     const payload = {
       title,
       content,
       category_id: categoryId,
       remixed_from_post_id: remixedFromId,
       cover_image_path: coverPath,
-      video_path: videoPath
+      video_path: videoPath,
+      scheduled_at: scheduledAtVal
     };
 
     const saveDraftBtn = document.getElementById('save-draft-btn');
@@ -480,6 +525,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const data = await res.json();
       if (res.ok) {
+        try {
+          localStorage.removeItem('infinity_blog_draft_' + (postId ? postId : 'new'));
+        } catch (e) {}
         const effectiveId = isEdit ? postId : data.data?.post?.id;
         if (targetStatus === 'published' && (currentPostStatus !== 'published' || !isEdit)) {
           const pubRes = await fetch(`${apiBase}/${effectiveId}/publish`, {

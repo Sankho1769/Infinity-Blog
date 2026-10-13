@@ -1,4 +1,11 @@
 <!-- Screen 8: Single Post Page (Public View) -->
+<div id="readingProgressBar" class="reading-progress-bar"></div>
+<div id="exitFocusModePill" style="display: none; position: fixed; bottom: 24px; right: 24px; z-index: 99999;">
+  <button type="button" onclick="toggleFocusMode()" class="btn btn-primary" style="box-shadow: 0 4px 20px rgba(37, 99, 235, 0.45); border-radius: 30px; padding: 10px 20px;">
+    Exit Focus Mode ✕
+  </button>
+</div>
+
 <nav class="breadcrumb-nav" aria-label="Breadcrumb">
   <a href="/">Home</a>
   <span>›</span>
@@ -102,8 +109,8 @@
       <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" fetchpriority="high">
     </div>
 
-    <!-- Reader Experience Toolbar (Reader Mode & Audio Experience) -->
-    <div class="article-reader-toolbar">
+    <!-- Reader Experience Toolbar (Reader Mode, Audio, Focus, Bookmark, AI) -->
+    <div class="article-reader-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
       <div class="reader-mode-tabs" role="tablist" aria-label="Reading Experience Options">
         <button type="button" class="reader-tab-btn active" id="tab-read-full" data-mode="read-full" role="tab" aria-selected="true">
           <span>📖</span> Read Full
@@ -121,9 +128,24 @@
             <span>⚡</span> Listen Summary
           </button>
         <?php endif; ?>
+        <button type="button" class="reader-tab-btn" id="focusModeBtn" onclick="toggleFocusMode()" title="Toggle Distraction-Free Reading Mode">
+          <span>👁️</span> Focus Mode
+        </button>
+        <button type="button" class="reader-tab-btn <?= !empty($isBookmarked) ? 'active' : '' ?>" id="bookmarkArticleBtn" onclick="toggleBookmarkArticle(<?= (int) $post['id'] ?>)" title="Save to Personal Library">
+          <span>🔖</span> <span id="bookmarkBtnText"><?= !empty($isBookmarked) ? 'Saved' : 'Save' ?></span>
+        </button>
+        <button type="button" class="reader-tab-btn" id="openAssistantBtn" onclick="toggleAssistantDrawer()" title="Ask Questions About Article">
+          <span>🤖</span> Ask AI
+        </button>
       </div>
 
-      <div style="display: flex; gap: 8px; align-items: center;">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <!-- Font Size Adjuster Controls -->
+        <div style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.05); padding: 2px 8px; border-radius: 8px;">
+          <button type="button" onclick="adjustArticleFontSize(-1)" style="border: none; background: transparent; font-size: 0.8rem; font-weight: 700; cursor: pointer; padding: 2px 6px; color: var(--text-dark);" title="Decrease Text Size">A-</button>
+          <button type="button" onclick="adjustArticleFontSize(0)" style="border: none; background: transparent; font-size: 0.85rem; font-weight: 700; cursor: pointer; padding: 2px 4px; color: var(--text-dark);" title="Default Text Size">A</button>
+          <button type="button" onclick="adjustArticleFontSize(1)" style="border: none; background: transparent; font-size: 0.95rem; font-weight: 700; cursor: pointer; padding: 2px 6px; color: var(--text-dark);" title="Increase Text Size">A+</button>
+        </div>
         <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">
           ⏱️ <?= (int) ($readingTime ?? 1) ?> min read
         </span>
@@ -291,6 +313,148 @@
         🔀 Remix This Article
       </a>
     </div>
+
+    <!-- Threaded Comments & Community Discussions -->
+    <section class="article-comments-section glass-panel" id="commentsSection" style="margin-top: 36px; padding: 28px; border-radius: var(--radius-lg); background: var(--glass-bg-card); border: 1px solid var(--glass-border);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.3rem;">💬</span>
+          <h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-dark); margin: 0;">
+            Discussion (<span id="commentsCount"><?= count($comments ?? []) ?></span>)
+          </h3>
+        </div>
+      </div>
+
+      <!-- New Comment Form -->
+      <?php if (!empty($currentUser)): ?>
+        <form id="commentPostForm" onsubmit="handlePostComment(event)" style="margin-bottom: 28px;">
+          <input type="hidden" id="replyParentId" value="">
+          <div id="replyingToBanner" style="display: none; padding: 6px 12px; background: rgba(37, 99, 235, 0.08); border-radius: 8px; font-size: 0.85rem; color: var(--primary-color); margin-bottom: 8px; justify-content: space-between; align-items: center;">
+            <span>Replying to comment...</span>
+            <button type="button" onclick="cancelReply()" style="border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-weight: 700;">✕ Cancel</button>
+          </div>
+          <div style="display: flex; gap: 12px; align-items: flex-start;">
+            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0;">
+              <?= htmlspecialchars(mb_substr($currentUser['display_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+            </div>
+            <div style="flex: 1;">
+              <textarea id="commentContentInput" class="form-input" rows="3" placeholder="Share your constructive perspective or question on this story..." required maxlength="3000" style="resize: vertical;"></textarea>
+              <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+                <button type="submit" class="btn btn-primary btn-sm btn-pill" id="submitCommentBtn">
+                  Post Comment
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      <?php else: ?>
+        <div style="padding: 16px 20px; border-radius: 12px; background: rgba(255,255,255,0.5); text-align: center; margin-bottom: 24px; border: 1px dashed var(--glass-border);">
+          <span style="font-size: 0.9rem; color: var(--text-muted);">
+            Want to join the conversation? <a href="/login?redirect=<?= urlencode('/article/' . (int) $post['id'] . '#commentsSection') ?>" style="color: var(--primary-color); font-weight: 700; text-decoration: underline;">Sign in</a> to leave a comment.
+          </span>
+        </div>
+      <?php endif; ?>
+
+      <!-- Comments Stream List -->
+      <div id="commentsStream" style="display: flex; flex-direction: column; gap: 14px;">
+        <?php if (empty($comments)): ?>
+          <div id="noCommentsNotice" style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.92rem;">
+            No comments yet. Be the first to share your thoughts on this story!
+          </div>
+        <?php else: ?>
+          <?php foreach ($comments as $comm): ?>
+            <div class="comment-item" id="comment-<?= (int) $comm['id'] ?>">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+                    <?= htmlspecialchars(mb_substr($comm['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                  <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-dark);"><?= htmlspecialchars($comm['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
+                  <span style="font-size: 0.75rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($comm['created_at'])) ?></span>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <?php if (!empty($currentUser)): ?>
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="initReply(<?= (int) $comm['id'] ?>, '<?= htmlspecialchars(addslashes($comm['user_name'] ?? 'User'), ENT_QUOTES, 'UTF-8') ?>')">Reply</button>
+                    <?php if ((int) $currentUser['id'] === (int) $comm['user_id'] || $currentUser['role'] === 'admin'): ?>
+                      <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem; color: #ef4444;" onclick="deleteComment(<?= (int) $comm['id'] ?>)">Delete</button>
+                    <?php endif; ?>
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="reportComment(<?= (int) $comm['id'] ?>)">Report</button>
+                  <?php endif; ?>
+                </div>
+              </div>
+              <div style="font-size: 0.92rem; color: var(--text-main); line-height: 1.5; padding-left: 42px;">
+                <?= nl2br(htmlspecialchars($comm['content'], ENT_QUOTES, 'UTF-8')) ?>
+              </div>
+
+              <!-- Nested Replies -->
+              <?php if (!empty($comm['replies'])): ?>
+                <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+                  <?php foreach ($comm['replies'] as $reply): ?>
+                    <div class="comment-item reply" id="comment-<?= (int) $reply['id'] ?>">
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                          <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">
+                            <?= htmlspecialchars(mb_substr($reply['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                          </div>
+                          <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-dark);"><?= htmlspecialchars($reply['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
+                          <span style="font-size: 0.72rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($reply['created_at'])) ?></span>
+                        </div>
+                        <?php if (!empty($currentUser) && ((int) $currentUser['id'] === (int) $reply['user_id'] || $currentUser['role'] === 'admin')): ?>
+                          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.72rem; color: #ef4444;" onclick="deleteComment(<?= (int) $reply['id'] ?>)">Delete</button>
+                        <?php endif; ?>
+                      </div>
+                      <div style="font-size: 0.9rem; color: var(--text-main); line-height: 1.45; padding-left: 36px;">
+                        <?= nl2br(htmlspecialchars($reply['content'], ENT_QUOTES, 'UTF-8')) ?>
+                      </div>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        <?php endif; ?>
+      </div>
+    </section>
+
+    <!-- Resume Reading Toast Notification -->
+    <div id="resumeReadingToast" style="display: none; position: fixed; bottom: 24px; left: 24px; z-index: 9999; padding: 14px 20px; border-radius: 16px; background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); align-items: center; gap: 14px; border: 1px solid var(--primary-color);">
+      <span style="font-size: 1.2rem;">⏱️</span>
+      <div>
+        <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Resume reading?</div>
+        <div style="font-size: 0.78rem; color: var(--text-muted);">You previously left off at <span id="savedProgressPct">0%</span></div>
+      </div>
+      <button type="button" onclick="resumeSavedScroll()" class="btn btn-primary btn-sm btn-pill">Resume</button>
+      <button type="button" onclick="dismissResumeToast()" style="border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-weight: 700;">✕</button>
+    </div>
+
+    <!-- Article-Specific AI Assistant Drawer -->
+    <aside class="article-assistant-drawer" id="articleAssistantDrawer">
+      <div style="padding: 18px 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.5);">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.3rem;">🤖</span>
+          <div>
+            <h4 style="font-size: 1.05rem; font-weight: 800; margin: 0; color: var(--text-dark);">Article AI Assistant</h4>
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Contextual Q&A strictly from this article</span>
+          </div>
+        </div>
+        <button type="button" onclick="toggleAssistantDrawer()" style="border: none; background: transparent; font-size: 1.3rem; cursor: pointer; color: var(--text-dark);">✕</button>
+      </div>
+
+      <div id="assistantChatStream" style="flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="padding: 12px 14px; border-radius: 12px; background: rgba(37, 99, 235, 0.08); font-size: 0.85rem; color: var(--text-dark); line-height: 1.45;">
+          👋 Hi! Ask any question about <strong>"<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"</strong>. I will answer concisely using only facts from this article and provide passage citations.
+        </div>
+      </div>
+
+      <div style="padding: 14px 18px; border-top: 1px solid var(--glass-border); background: rgba(255,255,255,0.85);">
+        <form id="assistantAskForm" onsubmit="handleAskAssistant(event)" style="display: flex; gap: 8px;">
+          <input type="text" id="assistantQuestionInput" class="form-input" placeholder="Ask about this article..." required autocomplete="off" style="flex: 1; font-size: 0.88rem; border-radius: 20px; padding: 8px 14px;">
+          <button type="submit" id="assistantAskBtn" class="btn btn-primary btn-sm btn-pill" style="padding: 8px 16px;">
+            Ask
+          </button>
+        </form>
+      </div>
+    </aside>
 
     <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
       <a href="/" class="btn btn-secondary btn-pill">
@@ -683,5 +847,278 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('beforeunload', () => {
     if (synth) synth.cancel();
   });
+
+  // Reading Progress Bar
+  const progressBar = document.getElementById('readingProgressBar');
+  let lastProgressSave = 0;
+  window.addEventListener('scroll', () => {
+    const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+    if (docHeight > 0) {
+      const pct = Math.min(100, Math.max(0, Math.round((window.scrollY / docHeight) * 100)));
+      if (progressBar) progressBar.style.width = pct + '%';
+
+      // Save reading progress every 5 seconds or on major scroll
+      const now = Date.now();
+      if (now - lastProgressSave > 4000) {
+        lastProgressSave = now;
+        localStorage.setItem('inf_read_' + <?= (int) $post['id'] ?>, JSON.stringify({ pct, scroll: window.scrollY }));
+        fetch('/api/library/progress/' + <?= (int) $post['id'] ?>, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ progress_percent: pct, scroll_position: window.scrollY })
+        }).catch(() => {});
+      }
+    }
+  });
+
+  // Resume Reading Check
+  const savedDataStr = localStorage.getItem('inf_read_' + <?= (int) $post['id'] ?>);
+  if (savedDataStr) {
+    try {
+      const savedData = JSON.parse(savedDataStr);
+      if (savedData.pct > 15 && savedData.pct < 95 && savedData.scroll > 200) {
+        const toast = document.getElementById('resumeReadingToast');
+        const pctSpan = document.getElementById('savedProgressPct');
+        if (toast && pctSpan) {
+          pctSpan.textContent = savedData.pct + '%';
+          toast.style.display = 'flex';
+          window._savedScrollPos = savedData.scroll;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Restore saved text size preference
+  const savedFontSize = localStorage.getItem('inf_article_font_size');
+  if (savedFontSize) {
+    const bodyEl = document.querySelector('.article-body');
+    if (bodyEl) bodyEl.style.fontSize = savedFontSize;
+  }
 });
+
+// Text Size Adjuster
+let currentFontSizeMultiplier = 1;
+function adjustArticleFontSize(step) {
+  const bodyEl = document.querySelector('.article-body');
+  if (!bodyEl) return;
+  if (step === 0) {
+    currentFontSizeMultiplier = 1;
+    bodyEl.style.fontSize = '';
+    localStorage.removeItem('inf_article_font_size');
+  } else {
+    currentFontSizeMultiplier = Math.max(0.85, Math.min(1.4, currentFontSizeMultiplier + (step * 0.1)));
+    const newSize = (1.05 * currentFontSizeMultiplier).toFixed(2) + 'rem';
+    bodyEl.style.fontSize = newSize;
+    localStorage.setItem('inf_article_font_size', newSize);
+  }
+}
+
+// Distraction-Free Focus Mode
+function toggleFocusMode() {
+  document.body.classList.toggle('distraction-free-mode');
+  const isFocus = document.body.classList.contains('distraction-free-mode');
+  const exitPill = document.getElementById('exitFocusModePill');
+  if (exitPill) exitPill.style.display = isFocus ? 'block' : 'none';
+}
+
+// Resume Reading Handlers
+function resumeSavedScroll() {
+  if (window._savedScrollPos) {
+    window.scrollTo({ top: window._savedScrollPos, behavior: 'smooth' });
+  }
+  dismissResumeToast();
+}
+function dismissResumeToast() {
+  const toast = document.getElementById('resumeReadingToast');
+  if (toast) toast.style.display = 'none';
+}
+
+// Bookmark Article Toggle
+async function toggleBookmarkArticle(postId) {
+  const btn = document.getElementById('bookmarkArticleBtn');
+  const txt = document.getElementById('bookmarkBtnText');
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/library/bookmark/' + postId, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const isBookmarked = data.data?.is_bookmarked;
+      if (btn) btn.classList.toggle('active', isBookmarked);
+      if (txt) txt.textContent = isBookmarked ? 'Saved' : 'Save';
+    } else {
+      if (res.status === 401) {
+        window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+      } else {
+        alert('Could not update library.');
+      }
+    }
+  } catch (e) {
+    alert('Connection error.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// AI Assistant Drawer
+function toggleAssistantDrawer() {
+  const drawer = document.getElementById('articleAssistantDrawer');
+  if (drawer) drawer.classList.toggle('open');
+}
+
+async function handleAskAssistant(e) {
+  e.preventDefault();
+  const input = document.getElementById('assistantQuestionInput');
+  const q = input.value.trim();
+  if (!q) return;
+
+  const btn = document.getElementById('assistantAskBtn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking...';
+  const chatStream = document.getElementById('assistantChatStream');
+
+  // Render question
+  const qDiv = document.createElement('div');
+  qDiv.style.alignSelf = 'flex-end';
+  qDiv.style.background = 'var(--primary-gradient)';
+  qDiv.style.color = '#fff';
+  qDiv.style.padding = '10px 14px';
+  qDiv.style.borderRadius = '14px';
+  qDiv.style.fontSize = '0.88rem';
+  qDiv.style.maxWidth = '85%';
+  qDiv.textContent = q;
+  chatStream.appendChild(qDiv);
+  input.value = '';
+  chatStream.scrollTop = chatStream.scrollHeight;
+
+  try {
+    const res = await fetch('/api/article/' + <?= (int) $post['id'] ?> + '/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ question: q })
+    });
+    const data = await res.json();
+    const ans = data.data?.answer || 'I could not find an answer in this article.';
+    const pref = data.data?.passage_reference;
+
+    const aDiv = document.createElement('div');
+    aDiv.style.background = '#fff';
+    aDiv.style.padding = '12px 14px';
+    aDiv.style.borderRadius = '14px';
+    aDiv.style.border = '1px solid var(--glass-border)';
+    aDiv.style.fontSize = '0.88rem';
+    aDiv.style.color = 'var(--text-dark)';
+    aDiv.style.lineHeight = '1.45';
+    aDiv.style.maxWidth = '90%';
+
+    let html = `<div>${escapeHtml(ans)}</div>`;
+    if (pref) {
+      html += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.1); font-size: 0.78rem; color: var(--text-muted); font-style: italic;">Reference: "${escapeHtml(pref)}"</div>`;
+    }
+    aDiv.innerHTML = html;
+    chatStream.appendChild(aDiv);
+    chatStream.scrollTop = chatStream.scrollHeight;
+  } catch (e) {
+    const errDiv = document.createElement('div');
+    errDiv.style.color = '#ef4444';
+    errDiv.style.fontSize = '0.82rem';
+    errDiv.textContent = 'Error connecting to assistant.';
+    chatStream.appendChild(errDiv);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+}
+
+// Comments Handlers
+function initReply(commentId, authorName) {
+  document.getElementById('replyParentId').value = commentId;
+  const banner = document.getElementById('replyingToBanner');
+  banner.querySelector('span').textContent = 'Replying to ' + authorName;
+  banner.style.display = 'flex';
+  const input = document.getElementById('commentContentInput');
+  input.focus();
+}
+function cancelReply() {
+  document.getElementById('replyParentId').value = '';
+  document.getElementById('replyingToBanner').style.display = 'none';
+}
+
+async function handlePostComment(e) {
+  e.preventDefault();
+  const input = document.getElementById('commentContentInput');
+  const content = input.value.trim();
+  if (!content) return;
+
+  const parentId = document.getElementById('replyParentId').value;
+  const btn = document.getElementById('submitCommentBtn');
+  btn.disabled = true;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  try {
+    const res = await fetch('/api/posts/' + <?= (int) $post['id'] ?> + '/comments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      },
+      body: JSON.stringify({ content, parent_id: parentId || null })
+    });
+    if (res.ok) {
+      window.location.reload();
+    } else {
+      const d = await res.json();
+      alert(d.error?.message || 'Failed to post comment.');
+    }
+  } catch (e) {
+    alert('Network error.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteComment(commentId) {
+  if (!confirm('Are you sure you want to delete this comment?')) return;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  try {
+    const res = await fetch('/api/comments/' + commentId + '/delete', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf || '', 'Accept': 'application/json' }
+    });
+    if (res.ok) window.location.reload();
+  } catch (e) {
+    alert('Error deleting comment.');
+  }
+}
+
+async function reportComment(commentId) {
+  const reason = prompt('Please describe why this comment is abusive or inappropriate:');
+  if (!reason) return;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  try {
+    const res = await fetch('/api/comments/' + commentId + '/report', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      },
+      body: JSON.stringify({ reason })
+    });
+    if (res.ok) {
+      alert('Thank you. The comment has been flagged for moderation.');
+    }
+  } catch (e) {
+    alert('Error reporting comment.');
+  }
+}
 </script>

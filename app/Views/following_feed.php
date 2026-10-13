@@ -1,0 +1,72 @@
+<!-- Screen: Followed Authors Feed -->
+<div class="page-container" style="max-width: 1200px; margin: 0 auto; padding: 32px 20px;">
+
+  <!-- Header -->
+  <div style="margin-bottom: 28px;">
+    <div style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--primary-color); background: rgba(37, 99, 235, 0.08); padding: 4px 12px; border-radius: 20px; margin-bottom: 8px;">
+      <span>👥</span> COMMUNITY NETWORK
+    </div>
+    <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-main); margin: 0;">Following Feed</h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem; margin-top: 6px;">Latest published articles from writers and creators you follow.</p>
+  </div>
+
+  <?php if (empty($posts)): ?>
+    <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+      <div style="font-size: 3rem; margin-bottom: 12px;">👥</div>
+      <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Your following feed is quiet</h3>
+      <p style="color: var(--text-muted); max-width: 480px; margin: 0 auto 20px;">
+        Follow insightful authors to get their latest stories delivered directly to this personalized stream.
+      </p>
+      <a href="/authors" class="btn btn-primary">Discover Authors to Follow</a>
+    </div>
+  <?php else: ?>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px;">
+      <?php foreach ($posts as $post): ?>
+        <div class="glass-panel article-card" style="display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border);">
+          <?php
+            $thumb = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
+          ?>
+          <div style="height: 180px; overflow: hidden; position: relative;">
+            <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;">
+            <span class="badge" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem;">
+              <?= htmlspecialchars($post['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?>
+            </span>
+          </div>
+
+          <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+              <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">
+                <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
+              </span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">● <?= date('M j, Y', strtotime($post['published_at'])) ?></span>
+            </div>
+
+            <h3 style="font-size: 1.18rem; font-weight: 700; margin: 0 0 10px; line-height: 1.35;">
+              <a href="/article/<?= (int) $post['id'] ?>" style="color: var(--text-main); text-decoration: none;">
+                <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </h3>
+
+            <?php if (!empty($post['summary'])): ?>
+              <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin: 0 0 16px; flex: 1;">
+                <?= htmlspecialchars(mb_substr($post['summary'], 0, 130) . '...', ENT_QUOTES, 'UTF-8') ?>
+              </p>
+            <?php else: ?>
+              <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin: 0 0 16px; flex: 1;">
+                <?= htmlspecialchars(mb_substr(strip_tags((string)$post['content']), 0, 130) . '...', ENT_QUOTES, 'UTF-8') ?>
+              </p>
+            <?php endif; ?>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--glass-border); padding-top: 14px; margin-top: auto;">
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
+                ⏱️ <?= (int) ($post['reading_time'] ?? 1) ?> min read
+              </span>
+              <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-primary btn-sm">Read Article</a>
+            </div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+
+</div>

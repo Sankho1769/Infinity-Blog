@@ -1,0 +1,301 @@
+<?php
+declare(strict_types=1);
+
+namespace InfinityBlog\Community;
+
+use PDO;
+
+final class CommunityRepository
+{
+    private PDO $pdo;
+
+    public function __construct(PDO $pdo)
+    {
+        $this->pdo = $pdo;
+    }
+
+    /**
+     * Add comment to post.
+     */
+    public function addComment(int $postId, int $userId, string $content, ?int $parentId = null): int
+    {
+        $content = trim($content);
+        if ($content === '') {
+            throw new \InvalidArgumentException('Comment content cannot be empty.');
+        }
+
+        // Validate parent_id belongs to same post if supplied
+        if ($parentId !== null) {
+            $check = $this->pdo->prepare('SELECT id FROM article_comments WHERE id = :pid AND post_id = :post_id LIMIT 1');
+            $check->execute([':pid' => $parentId, ':post_id' => $postId]);
+            if ($check->fetchColumn() === false) {
+                $parentId = null;
+            }
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO article_comments (post_id, user_id, parent_id, content, status, created_at, updated_at) ' .
+            'VALUES (:pid, :uid, :parent, :content, \'published\', NOW(), NOW())'
+        );
+        $stmt->execute([
+            ':pid' => $postId,
+            ':uid' => $userId,
+            ':parent' => $parentId,
+            ':content' => $content,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Get threaded comments for a post.
+     * @return array<int, array<string, mixed>>
+     */
+    public function getPostComments(int $postId, ?int $viewerId = null): array
+    {
+        $sql = 'SELECT c.id, c.post_id, c.user_id, c.parent_id, c.content, c.status, c.created_at, c.updated_at, ' .
+            'u.display_name AS user_name, u.username AS user_username, u.avatar_path AS user_avatar, u.role AS user_role ' .
+            'FROM article_comments c ' .
+            'JOIN users u ON c.user_id = u.id ' .
+            'WHERE c.post_id = :pid AND c.status != \'deleted\' ';
+
+        if ($viewerId !== null) {
+            // Exclude comments from blocked users
+            $sql .= 'AND c.user_id NOT IN (SELECT blocked_user_id FROM user_blocks WHERE user_id = ' . (int) $viewerId . ') ';
+        }
+
+        $sql .= 'ORDER BY c.created_at ASC';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':pid' => $postId]);
+        $allComments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Build hierarchical tree
+        $commentMap = [];
+        $rootComments = [];
+
+        foreach ($allComments as &$comment) {
+            $comment['replies'] = [];
+            $commentMap[$comment['id']] = &$comment;
+        }
+        unset($comment);
+
+        foreach ($allComments as &$comment) {
+            if ($comment['parent_id'] !== null && isset($commentMap[$comment['parent_id']])) {
+                $commentMap[$comment['parent_id']]['replies'][] = &$comment;
+            } else {
+                $rootComments[] = &$comment;
+            }
+        }
+
+        return $rootComments;
+    }
+
+    public function editComment(int $commentId, int $userId, string $content, bool $isAdmin = false): bool
+    {
+        $content = trim($content);
+        if ($content === '') {
+            throw new \InvalidArgumentException('Comment content cannot be empty.');
+        }
+
+        $sql = 'UPDATE article_comments SET content = :content, updated_at = NOW() WHERE id = :id ';
+        $params = [':content' => $content, ':id' => $commentId];
+        if (!$isAdmin) {
+            $sql .= 'AND user_id = :uid';
+            $params[':uid'] = $userId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function deleteComment(int $commentId, int $userId, bool $isAdmin = false): bool
+    {
+        $sql = 'UPDATE article_comments SET status = \'deleted\', content = \'[This comment was deleted by user]\', updated_at = NOW() WHERE id = :id ';
+        $params = [':id' => $commentId];
+        if (!$isAdmin) {
+            $sql .= 'AND user_id = :uid';
+            $params[':uid'] = $userId;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function reportComment(int $commentId, int $reporterId, string $reason): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO comment_reports (comment_id, reporter_id, reason, status, created_at) ' .
+            'VALUES (:cid, :rid, :reason, \'pending\', NOW())'
+        );
+        $stmt->execute([
+            ':cid' => $commentId,
+            ':rid' => $reporterId,
+            ':reason' => trim($reason),
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Chat Rooms.
+     */
+    public function getChatRooms(): array
+    {
+        $stmt = $this->pdo->query(
+            'SELECT r.id, r.slug, r.name, r.description, r.category_id, r.is_active, r.created_at, ' .
+            'c.name AS category_name, ' .
+            '(SELECT COUNT(*) FROM chat_room_messages m WHERE m.room_id = r.id) AS message_count ' .
+            'FROM chat_rooms r ' .
+            'LEFT JOIN categories c ON r.category_id = c.id ' .
+            'WHERE r.is_active = 1 ' .
+            'ORDER BY r.created_at ASC'
+        );
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getChatRoomBySlug(string $slug): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM chat_rooms WHERE slug = :slug AND is_active = 1 LIMIT 1');
+        $stmt->execute([':slug' => $slug]);
+        $room = $stmt->fetch(PDO::FETCH_ASSOC);
+        return is_array($room) ? $room : null;
+    }
+
+    public function createChatRoom(string $name, string $slug, ?string $description, ?int $categoryId, int $userId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO chat_rooms (slug, name, description, category_id, created_by, is_active, created_at) ' .
+            'VALUES (:slug, :name, :desc, :cat, :uid, 1, NOW())'
+        );
+        $stmt->execute([
+            ':slug' => $slug,
+            ':name' => $name,
+            ':desc' => $description,
+            ':cat' => $categoryId,
+            ':uid' => $userId,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function getChatMessages(int $roomId, int $limit = 50, ?int $afterId = null): array
+    {
+        $limit = max(1, min(100, $limit));
+        $sql = 'SELECT m.id, m.room_id, m.user_id, m.message, m.created_at, ' .
+            'u.display_name AS user_name, u.username AS user_username, u.avatar_path AS user_avatar ' .
+            'FROM chat_room_messages m ' .
+            'JOIN users u ON m.user_id = u.id ' .
+            'WHERE m.room_id = :rid ';
+
+        $params = [':rid' => $roomId];
+        if ($afterId !== null && $afterId > 0) {
+            $sql .= 'AND m.id > :afterId ';
+            $params[':afterId'] = $afterId;
+        }
+
+        $sql .= 'ORDER BY m.id ASC LIMIT ' . $limit;
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function postChatMessage(int $roomId, int $userId, string $message): int
+    {
+        $message = trim($message);
+        if ($message === '') {
+            throw new \InvalidArgumentException('Message cannot be empty.');
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO chat_room_messages (room_id, user_id, message, created_at) ' .
+            'VALUES (:rid, :uid, :msg, NOW())'
+        );
+        $stmt->execute([
+            ':rid' => $roomId,
+            ':uid' => $userId,
+            ':msg' => $message,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
+     * Safety & Notifications.
+     */
+    public function blockUser(int $userId, int $blockedUserId): bool
+    {
+        if ($userId === $blockedUserId) {
+            return false;
+        }
+
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT OR IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (:uid, :bid, CURRENT_TIMESTAMP)'
+            : 'INSERT IGNORE INTO user_blocks (user_id, blocked_user_id, created_at) VALUES (:uid, :bid, NOW())';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([':uid' => $userId, ':bid' => $blockedUserId]);
+        return true;
+    }
+
+    public function unblockUser(int $userId, int $blockedUserId): bool
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM user_blocks WHERE user_id = :uid AND blocked_user_id = :bid');
+        $stmt->execute([':uid' => $userId, ':bid' => $blockedUserId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function reportUser(int $reporterId, int $reportedUserId, string $reason): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO user_reports (reporter_id, reported_user_id, reason, status, created_at) ' .
+            'VALUES (:rid, :ruid, :reason, \'pending\', NOW())'
+        );
+        $stmt->execute([
+            ':rid' => $reporterId,
+            ':ruid' => $reportedUserId,
+            ':reason' => trim($reason),
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function createNotification(int $userId, ?int $actorId, string $type, ?int $refId, string $message): int
+    {
+        if ($userId === $actorId) {
+            return 0; // Don't notify yourself
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO user_notifications (user_id, actor_id, type, reference_id, message, is_read, created_at) ' .
+            'VALUES (:uid, :aid, :type, :ref, :msg, 0, NOW())'
+        );
+        $stmt->execute([
+            ':uid' => $userId,
+            ':aid' => $actorId,
+            ':type' => $type,
+            ':ref' => $refId,
+            ':msg' => $message,
+        ]);
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    public function getUserNotifications(int $userId, int $limit = 30): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT n.id, n.user_id, n.actor_id, n.type, n.reference_id, n.message, n.is_read, n.created_at, ' .
+            'u.display_name AS actor_name, u.avatar_path AS actor_avatar ' .
+            'FROM user_notifications n ' .
+            'LEFT JOIN users u ON n.actor_id = u.id ' .
+            'WHERE n.user_id = :uid ' .
+            'ORDER BY n.created_at DESC LIMIT ' . max(1, min(100, $limit))
+        );
+        $stmt->execute([':uid' => $userId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function markNotificationsRead(int $userId): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE user_notifications SET is_read = 1 WHERE user_id = :uid');
+        $stmt->execute([':uid' => $userId]);
+    }
+}

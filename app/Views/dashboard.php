@@ -98,6 +98,69 @@
   <?php endif; ?>
 </div>
 
+<?php if (!empty($analytics)): ?>
+  <div style="margin-top: 24px; margin-bottom: 24px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+      <h2 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); display: flex; align-items: center; gap: 8px;">
+        <span>📈</span> Author Engagement Analytics
+      </h2>
+      <span style="font-size: 0.8rem; color: var(--text-muted);">Real-time reader interactions & feedback</span>
+    </div>
+    <div class="stats-grid">
+      <div class="glass-panel stat-card">
+        <div class="stat-icon blue">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </div>
+        <div>
+          <div class="stat-value"><?= number_format((int) ($analytics['total_views'] ?? 0)) ?></div>
+          <div class="stat-label">Article Views</div>
+        </div>
+      </div>
+
+      <div class="glass-panel stat-card">
+        <div class="stat-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </div>
+        <div>
+          <div class="stat-value"><?= number_format((float) ($analytics['avg_reader_score'] ?? 0), 1) ?> ★</div>
+          <div class="stat-label">Avg Reader Score</div>
+        </div>
+      </div>
+
+      <div class="glass-panel stat-card">
+        <div class="stat-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="8.5" cy="7" r="4"></circle>
+            <polyline points="17 11 19 13 23 9"></polyline>
+          </svg>
+        </div>
+        <div>
+          <div class="stat-value"><?= number_format((int) ($analytics['total_followers'] ?? 0)) ?></div>
+          <div class="stat-label">Followers</div>
+        </div>
+      </div>
+
+      <div class="glass-panel stat-card">
+        <div class="stat-icon purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="stat-value"><?= number_format((int) ($analytics['total_comments'] ?? 0)) ?></div>
+          <div class="stat-label">Total Comments</div>
+        </div>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <!-- Dashboard Main Grid -->
 <div class="dashboard-grid">
   <!-- Recent Posts -->

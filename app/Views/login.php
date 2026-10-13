@@ -14,6 +14,12 @@
       </div>
     <?php endif; ?>
 
+    <?php if (!empty($_GET['error'])): ?>
+      <div class="alert-banner alert-error" style="display: flex; margin-bottom: 20px;">
+        <span><?= htmlspecialchars($_GET['error'] === 'csrf' ? 'Security check or session expired. Please try again.' : ($_GET['error'] === 'rate_limited' ? 'Too many failed login attempts. Please try again later.' : 'The login identifier or password is invalid.'), ENT_QUOTES, 'UTF-8') ?></span>
+      </div>
+    <?php endif; ?>
+
     <div id="login-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
     <form id="login-form" method="POST" action="/auth/login" novalidate>

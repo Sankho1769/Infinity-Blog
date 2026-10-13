@@ -17,12 +17,14 @@ final class PostController
     private AuthGuard $guard;
     private SessionManager $sessions;
     private ?\InfinityBlog\Storage\MediaService $media;
+    private ?\InfinityBlog\Posts\StudioService $studio;
 
-    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null)
+    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null, ?\InfinityBlog\Posts\StudioService $studio = null)
     {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        $this->studio = $studio;
         if ($media === null) {
             try {
                 $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
@@ -58,6 +60,20 @@ final class PostController
             }
             if ($request->method === 'DELETE') {
                 return $this->delete($request, $matches[1]);
+            }
+            return $this->methodNotAllowed();
+        }
+
+        if (preg_match('#^/author/posts/([0-9]+)/versions$#D', $request->path, $matches) === 1) {
+            if ($request->method === 'GET') {
+                return $this->versionsList($request, $matches[1]);
+            }
+            return $this->methodNotAllowed();
+        }
+
+        if (preg_match('#^/author/posts/([0-9]+)/versions/([0-9]+)$#D', $request->path, $matches) === 1) {
+            if ($request->method === 'GET') {
+                return $this->versionDetail($request, $matches[1], (int) $matches[2]);
             }
             return $this->methodNotAllowed();
         }
@@ -166,6 +182,14 @@ final class PostController
         try {
             $current = $this->posts->findForAuthor($postId, $author->id);
             $post = $this->posts->updateForAuthor($postId, $author->id, $fields);
+            if ($this->studio !== null && is_array($current)) {
+                if (($current['title'] ?? '') !== ($post['title'] ?? '') || ($current['content'] ?? '') !== ($post['content'] ?? '')) {
+                    try {
+                        $this->studio->saveVersion($postId, $author->id, (string) $post['title'], (string) $post['content']);
+                    } catch (\Throwable) {
+                    }
+                }
+            }
             if ($this->media !== null && is_array($current)) {
                 if (array_key_exists('cover_image_path', $fields) && !empty($current['cover_image_path']) && $current['cover_image_path'] !== $fields['cover_image_path']) {
                     $this->media->safeDelete($this->media->getConfig()->bucketArticles, $current['cover_image_path']);
@@ -242,6 +266,39 @@ final class PostController
         } catch (PostNotFoundException) {
             return $this->notFound();
         }
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    private function versionsList(Request $request, string $idText): array
+    {
+        $author = $this->requireAuthor();
+        if (is_array($author)) {
+            return $author;
+        }
+        $postId = self::parseId($idText);
+        if ($postId === null) {
+            return $this->notFound();
+        }
+        $versions = $this->studio !== null ? $this->studio->getVersions($postId, $author->id) : [];
+        return ['status' => 200, 'body' => ['data' => ['versions' => $versions]]];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    private function versionDetail(Request $request, string $idText, int $vnum): array
+    {
+        $author = $this->requireAuthor();
+        if (is_array($author)) {
+            return $author;
+        }
+        $postId = self::parseId($idText);
+        if ($postId === null) {
+            return $this->notFound();
+        }
+        $version = $this->studio !== null ? $this->studio->getVersion($postId, $vnum, $author->id) : null;
+        if ($version === null) {
+            return $this->notFound();
+        }
+        return ['status' => 200, 'body' => ['data' => ['version' => $version]]];
     }
 
     /** @return UserAccount|array{status: int, body: array<string, mixed>} */

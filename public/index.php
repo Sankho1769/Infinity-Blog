@@ -1,6 +1,24 @@
 <?php
 declare(strict_types=1);
 
+$requestUriPath = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+if (in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true)
+    && is_string($requestUriPath)
+    && strlen($requestUriPath) > 1
+    && str_ends_with($requestUriPath, '/')) {
+    $canonical = rtrim($requestUriPath, '/');
+    $qs = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+    http_response_code(301);
+    header('Location: ' . $canonical . $qs, true, 301);
+    exit;
+}
+
+if (PHP_SAPI === 'cli-server') {
+    if ($requestUriPath !== '/' && is_file(__DIR__ . $requestUriPath)) {
+        return false;
+    }
+}
+
 use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\AuthenticationService;
 use InfinityBlog\Auth\DatabaseLoginAttemptLimiter;
@@ -10,6 +28,7 @@ use InfinityBlog\Audio\TtsService;
 use InfinityBlog\Categories\CategoryRepository;
 use InfinityBlog\Audit\AuditLogRepository;
 use InfinityBlog\Config\AppConfig;
+use InfinityBlog\Contact\ContactRepository;
 use InfinityBlog\Database\ConnectionFactory;
 use InfinityBlog\Http\ApiErrorResponder;
 use InfinityBlog\Http\AdminPostController;
@@ -25,9 +44,15 @@ use InfinityBlog\Http\Request;
 use InfinityBlog\Http\RequestOriginPolicy;
 use InfinityBlog\Http\RequestException;
 use InfinityBlog\Http\SocialController;
+use InfinityBlog\Http\LibraryController;
+use InfinityBlog\Http\CommunityController;
 use InfinityBlog\Http\SummaryController;
 use InfinityBlog\Http\WebController;
+use InfinityBlog\Library\LibraryRepository;
+use InfinityBlog\Community\CommunityRepository;
+use InfinityBlog\Ai\ArticleAssistantService;
 use InfinityBlog\Posts\PostRepository;
+use InfinityBlog\Posts\StudioService;
 use InfinityBlog\Scores\ScoreRepository;
 use InfinityBlog\Http\ScoreController;
 use InfinityBlog\Social\FollowRepository;
@@ -65,8 +90,9 @@ try {
         return;
     }
 
+
     if (!headers_sent()) {
-        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
+        header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com; base-uri 'self'; form-action 'self'; frame-ancestors 'self';");
         header("X-Content-Type-Options: nosniff");
         header("X-Frame-Options: SAMEORIGIN");
         header("Referrer-Policy: strict-origin-when-cross-origin");
@@ -79,6 +105,17 @@ try {
     $follows = new FollowRepository($pdo);
     $messages = new MessageRepository($pdo);
     $postsRepo = new PostRepository($pdo);
+    $library = new LibraryRepository($pdo);
+    $community = new CommunityRepository($pdo);
+    $studio = new StudioService($pdo, $postsRepo);
+    $contactRepo = new ContactRepository($pdo);
+
+    $aiConfig = null;
+    try {
+        $aiConfig = AiProviderConfig::fromEnvironment();
+    } catch (Throwable) {
+    }
+    $assistant = new ArticleAssistantService($pdo, $postsRepo, $aiConfig);
 
     $storageConfig = null;
     try {
@@ -101,7 +138,13 @@ try {
         null,
         $follows,
         $messages,
-        $tts
+        $tts,
+        $library,
+        $community,
+        $assistant,
+        $studio,
+        null,
+        $contactRepo
     );
 
     // Browser POST form submissions for user profile & media uploads
@@ -155,6 +198,20 @@ try {
             echo $webResult['body'];
             return;
         }
+        if ($request->path === '/contact') {
+            $webResult = $webController->submitContact($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/api/article/([0-9]+)/assistant$#D', $request->path, $m)) {
+            $webResult = $webController->assistant($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
     }
 
     // Web Browser Views (HTML)
@@ -173,10 +230,17 @@ try {
             $request->path === '/profile/edit' => $webController->editProfile($request),
             $request->path === '/contact' => $webController->contact($request),
             $request->path === '/privacy' => $webController->privacy($request),
+            $request->path === '/terms' => $webController->terms($request),
             $request->path === '/categories' && !$wantsJson => $webController->publicCategories($request),
             $request->path === '/authors' => $webController->publicAuthors($request),
             (bool) preg_match('#^/author/([0-9]+)$#D', $request->path, $m) => $webController->authorProfile($request, (int) $m[1]),
             $request->path === '/explore' => $webController->explore($request),
+            $request->path === '/library' => $webController->library($request),
+            $request->path === '/following' => $webController->followingFeed($request),
+            $request->path === '/chat' => $webController->chat($request),
+            (bool) preg_match('#^/chat/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
+            $request->path === '/sitemap.xml' => $webController->sitemap($request),
+            $request->path === '/robots.txt' => $webController->robots($request),
             $request->path === '/messages' => $webController->messages($request),
             (bool) preg_match('#^/messages/([0-9]+)$#D', $request->path, $m) => $webController->messages($request, (int) $m[1]),
             $request->path === '/about' => $webController->about($request),
@@ -215,7 +279,13 @@ try {
         }
     }
 
-    if ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
+    if (str_starts_with($request->path, '/api/library')) {
+        $controller = new LibraryController($library, $guard, $sessions, $postsRepo);
+    } elseif (str_starts_with($request->path, '/api/posts/') && str_ends_with($request->path, '/comments')) {
+        $controller = new CommunityController($community, $guard, $sessions, $postsRepo);
+    } elseif (str_starts_with($request->path, '/api/comments') || str_starts_with($request->path, '/api/chat') || str_starts_with($request->path, '/api/notifications') || (str_starts_with($request->path, '/api/users/') && (str_ends_with($request->path, '/block') || str_ends_with($request->path, '/unblock') || str_ends_with($request->path, '/report')))) {
+        $controller = new CommunityController($community, $guard, $sessions, $postsRepo);
+    } elseif ($request->path === '/categories' || str_starts_with($request->path, '/admin/categories')) {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
@@ -243,7 +313,7 @@ try {
     } elseif ($request->path === '/admin/audit-logs') {
         $controller = new AdminAuditLogController(new AuditLogRepository($pdo), $guard);
     } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
-        $controller = new PostController(new PostRepository($pdo), $guard, $sessions);
+        $controller = new PostController(new PostRepository($pdo), $guard, $sessions, null, $studio);
     } elseif (preg_match('#^/posts/[0-9]+/score$#D', $request->path) === 1) {
         $controller = new ScoreController(new ScoreRepository($pdo), $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
@@ -271,6 +341,21 @@ try {
                 return;
             }
             header('Location: /dashboard');
+            return;
+        }
+        if ($result['status'] !== 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
+            $errCode = $result['body']['error']['code'] ?? 'invalid';
+            $errType = match($errCode) {
+                'CSRF_INVALID' => 'csrf',
+                'RATE_LIMITED' => 'rate_limited',
+                default => 'invalid',
+            };
+            header('Location: /login?error=' . $errType);
+            return;
+        }
+        if ($result['status'] !== 201 && ($request->path === '/register' || $request->path === '/auth/register')) {
+            $errMsg = urlencode($result['body']['error']['message'] ?? 'Registration failed.');
+            header('Location: /register?error=' . $errMsg);
             return;
         }
     }

@@ -240,10 +240,11 @@ final class PostRepository
 
             $coverImagePath = isset($post['cover_image_path']) && is_string($post['cover_image_path']) ? $post['cover_image_path'] : null;
             $videoPath = isset($post['video_path']) && is_string($post['video_path']) ? $post['video_path'] : null;
+            $scheduledAt = isset($post['scheduled_at']) && is_string($post['scheduled_at']) ? $post['scheduled_at'] : null;
 
             $insert = $this->pdo->prepare(
-                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, cover_image_path, video_path, title, content, status) " .
-                "VALUES (:author_id, :category_id, :remixed_from_post_id, :cover_image_path, :video_path, :title, :content, 'draft')"
+                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, cover_image_path, video_path, title, content, status, scheduled_at) " .
+                "VALUES (:author_id, :category_id, :remixed_from_post_id, :cover_image_path, :video_path, :title, :content, 'draft', :scheduled_at)"
             );
             $insert->execute([
                 'author_id' => $authorId,
@@ -253,10 +254,11 @@ final class PostRepository
                 'video_path' => $videoPath,
                 'title' => $post['title'],
                 'content' => $post['content'],
+                'scheduled_at' => $scheduledAt,
             ]);
             $postId = (int) $this->pdo->lastInsertId();
             $this->writeAudit('post.created', $postId, $authorId, [
-                'fields' => ['title', 'content', 'category_id', 'cover_image_path', 'video_path'],
+                'fields' => ['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at'],
                 'remixed_from_post_id' => $remixedFromId,
             ]);
             $saved = $this->find($postId, $authorId, false);
@@ -439,7 +441,7 @@ final class PostRepository
             if ($ownerId !== null) {
                 $parameters['author_id'] = $ownerId;
             }
-            foreach (['title', 'content', 'category_id', 'cover_image_path', 'video_path'] as $field) {
+            foreach (['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at'] as $field) {
                 if (array_key_exists($field, $changes)) {
                     $sets[] = $field . ' = :' . $field;
                     $parameters[$field] = $changes[$field];
@@ -651,6 +653,14 @@ final class PostRepository
                 $conditions[] = 'LENGTH(p.content) > 7000';
             }
         }
+        if (!empty($filters['following_user_id'])) {
+            $conditions[] = 'p.author_id IN (SELECT following_id FROM user_follows WHERE follower_id = :following_user_id)';
+            $parameters['following_user_id'] = (int) $filters['following_user_id'];
+        }
+        if (!empty($filters['exclude_muted_for_user_id'])) {
+            $conditions[] = '(p.category_id IS NULL OR p.category_id NOT IN (SELECT category_id FROM user_topic_preferences WHERE user_id = :muted_user_id AND is_muted = 1))';
+            $parameters['muted_user_id'] = (int) $filters['exclude_muted_for_user_id'];
+        }
 
         return [$conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions), $parameters];
     }
@@ -773,6 +783,8 @@ final class PostRepository
             'summary_source_hash' => $row['summary_source_hash'] === null ? null : (string) $row['summary_source_hash'],
             'summary_generated_at' => $row['summary_generated_at'] === null ? null : (string) $row['summary_generated_at'],
             'status' => (string) $row['status'],
+            'scheduled_at' => $row['scheduled_at'] ?? null,
+            'views_count' => isset($row['views_count']) ? (int) $row['views_count'] : 0,
             'published_at' => $row['published_at'] === null ? null : (string) $row['published_at'],
             'created_at' => (string) $row['created_at'],
             'updated_at' => (string) $row['updated_at'],

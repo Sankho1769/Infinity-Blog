@@ -14,7 +14,7 @@ final class PostInputValidator
         $fields = [];
         $errors = [];
         foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id', 'cover_image_path', 'video_path'], true)) {
+            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id', 'cover_image_path', 'video_path', 'scheduled_at'], true)) {
                 $errors[$key === 'author_id' ? 'author_id' : '_request'] = $key === 'author_id'
                     ? 'The author is assigned by the authenticated session.'
                     : 'Unsupported post field.';
@@ -98,8 +98,25 @@ final class PostInputValidator
         } elseif ($creating) {
             $fields['video_path'] = null;
         }
+        if (array_key_exists('scheduled_at', $input)) {
+            $scheduledAt = $input['scheduled_at'];
+            if ($scheduledAt === null || $scheduledAt === '') {
+                $fields['scheduled_at'] = null;
+            } elseif (is_string($scheduledAt)) {
+                $time = strtotime($scheduledAt);
+                if ($time === false) {
+                    $errors['scheduled_at'] = 'Enter a valid scheduled publication date and time.';
+                } else {
+                    $fields['scheduled_at'] = date('Y-m-d H:i:s', $time);
+                }
+            } else {
+                $errors['scheduled_at'] = 'Enter a valid scheduled publication date and time.';
+            }
+        } elseif ($creating) {
+            $fields['scheduled_at'] = null;
+        }
         if (!$creating && $fields === [] && $errors === []) {
-            $errors['_request'] = 'Provide a title, content, category_id, cover_image_path, or video_path to update.';
+            $errors['_request'] = 'Provide a title, content, category_id, cover_image_path, video_path, or scheduled_at to update.';
         }
 
         return [$fields, $errors];
