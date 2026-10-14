@@ -330,7 +330,7 @@ final class AuthController
         $input = $request->input();
         $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
         if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
-            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+            return $this->error(403, 'CSRF_INVALID', 'Your session or security token has expired. Please refresh the page and try again.');
         }
 
         $displayName = $input['display_name'] ?? $input['name'] ?? null;
@@ -342,29 +342,31 @@ final class AuthController
         $fields = [];
         if (!is_string($displayName) || trim($displayName) === '' || strlen($displayName) > 190
             || preg_match('/[\x00-\x1F\x7F]/', $displayName) === 1) {
-            $fields['display_name'] = 'Enter your full name (up to 190 characters).';
+            $fields['display_name'] = 'Please enter your full name (up to 190 characters).';
         }
 
         if (!is_string($email) || trim($email) === '' || strlen($email) > 190
             || filter_var($email, FILTER_VALIDATE_EMAIL) === false
             || preg_match('/[\x00-\x1F\x7F]/', $email) === 1) {
-            $fields['email'] = 'Enter a valid email address.';
+            $fields['email'] = 'Please enter a valid email address.';
         } elseif ($this->users->emailExists($email)) {
-            $fields['email'] = 'An account with this email address already exists.';
+            $fields['email'] = 'An account with this email address already exists. Please sign in or use a different email.';
         }
 
         if (!is_string($password) || strlen($password) < 8 || strlen($password) > 1024) {
             $fields['password'] = 'Password must be at least 8 characters long.';
         }
 
-        if (!is_string($confirmPassword) || $confirmPassword !== $password) {
+        if (!is_string($confirmPassword) || $confirmPassword === '') {
+            $fields['confirm_password'] = 'Please confirm your password.';
+        } elseif ($confirmPassword !== $password) {
             $fields['confirm_password'] = 'Passwords do not match.';
         }
 
         $regService = $this->resolveRegistrationChallenges();
         if ($regService !== null) {
             if (!is_string($phone) || trim($phone) === '') {
-                $fields['phone'] = 'A mobile phone number is required for registration verification.';
+                $fields['phone'] = 'A mobile phone number is required for verification.';
             } else {
                 try {
                     $mobileService = new \InfinityBlog\Security\MobileNumberService();
@@ -374,7 +376,7 @@ final class AuthController
                         $fields['phone'] = 'This mobile phone number is already registered to an account.';
                     }
                 } catch (\InvalidArgumentException $e) {
-                    $fields['phone'] = 'Enter a valid mobile phone number in international format (e.g. +91 98765 43210).';
+                    $fields['phone'] = 'Please enter a valid mobile phone number in international format (e.g. +91 98765 43210).';
                 }
             }
         }
@@ -382,7 +384,7 @@ final class AuthController
         if ($fields !== []) {
             return [
                 'status' => 422,
-                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', $fields),
+                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'Please correct the highlighted errors and try again.', $fields),
             ];
         }
 
@@ -457,7 +459,7 @@ final class AuthController
         $input = $request->input();
         $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
         if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
-            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+            return $this->error(403, 'CSRF_INVALID', 'Your session or security token has expired. Please refresh the page and try again.');
         }
 
         $challengeToken = $input['challenge_token'] ?? $request->postParameter('challenge_token') ?? null;
@@ -474,7 +476,7 @@ final class AuthController
         if ($fields !== []) {
             return [
                 'status' => 422,
-                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', $fields),
+                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'Please correct the highlighted errors and try again.', $fields),
             ];
         }
 
@@ -516,7 +518,7 @@ final class AuthController
         $input = $request->input();
         $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
         if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
-            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+            return $this->error(403, 'CSRF_INVALID', 'Your session or security token has expired. Please refresh the page and try again.');
         }
 
         $challengeToken = $input['challenge_token'] ?? $request->postParameter('challenge_token') ?? null;

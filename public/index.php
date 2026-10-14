@@ -423,6 +423,19 @@ try {
             return;
         }
         if ($result['status'] !== 201 && ($request->path === '/register' || $request->path === '/auth/register')) {
+            $_SESSION['register_errors'] = [
+                'message' => $result['body']['error']['message'] ?? 'Registration failed.',
+                'fields' => $result['body']['error']['fields'] ?? [],
+            ];
+            $_SESSION['register_old_input'] = [
+                'display_name' => $request->postParameter('display_name') ?? '',
+                'email' => $request->postParameter('email') ?? '',
+                'phone' => $request->postParameter('phone') ?? '',
+                'bio' => $request->postParameter('bio') ?? '',
+                'location' => $request->postParameter('location') ?? '',
+                'interests' => $request->postParameter('interests') ?? '',
+                'website' => $request->postParameter('website') ?? '',
+            ];
             $errMsg = urlencode($result['body']['error']['message'] ?? 'Registration failed.');
             header('Location: /register?error=' . $errMsg);
             return;

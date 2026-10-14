@@ -4590,6 +4590,126 @@ $run('Registration email verification enforces unique phone and email, OTP email
 
         $csrf = $sessions->csrfToken();
 
+        // 0a. Empty form submission rejected with all required field errors
+        $emptyForm = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], []));
+        $expect($emptyForm['status'] === 422, 'Empty form must be rejected with 422');
+        $expect(isset($emptyForm['body']['error']['fields']['display_name']), 'Empty form must require display_name');
+        $expect(isset($emptyForm['body']['error']['fields']['email']), 'Empty form must require email');
+        $expect(isset($emptyForm['body']['error']['fields']['password']), 'Empty form must require password');
+        $expect(isset($emptyForm['body']['error']['fields']['confirm_password']), 'Empty form must require confirm_password');
+        $expect(isset($emptyForm['body']['error']['fields']['phone']), 'Empty form must require phone');
+
+        // 0b. Whitespace-only name rejected
+        $wsName = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => "   \t \n ",
+            'email' => 'valid@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '+919876543210'
+        ]));
+        $expect($wsName['status'] === 422, 'Whitespace name must be rejected with 422');
+        $expect(isset($wsName['body']['error']['fields']['display_name']), 'Error fields must report display_name');
+
+        // 0c. Invalid email format rejected
+        $badEmail = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name',
+            'email' => 'not-an-email-address',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '+919876543210'
+        ]));
+        $expect($badEmail['status'] === 422, 'Malformed email must be rejected with 422');
+        $expect(isset($badEmail['body']['error']['fields']['email']), 'Error fields must report email');
+
+        // 0d. Weak password (< 8 chars) rejected
+        $shortPass = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name',
+            'email' => 'valid@example.com',
+            'password' => 'pass',
+            'confirm_password' => 'pass',
+            'phone' => '+919876543210'
+        ]));
+        $expect($shortPass['status'] === 422, 'Short password must be rejected with 422');
+        $expect(isset($shortPass['body']['error']['fields']['password']), 'Error fields must report password');
+
+        // 0e. Mismatched confirm password rejected
+        $mismatchPass = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Valid Name',
+            'email' => 'valid@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'different-pass-999',
+            'phone' => '+919876543210'
+        ]));
+        $expect($mismatchPass['status'] === 422, 'Mismatched password must be rejected with 422');
+        $expect(isset($mismatchPass['body']['error']['fields']['confirm_password']), 'Error fields must report confirm_password');
+
+        // 0f. Invalid CSRF token rejected with helpful session expiry message
+        $badCsrf = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => 'invalid-token-here'], [
+            'display_name' => 'Valid Name',
+            'email' => 'valid@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '+919876543210'
+        ]));
+        $expect($badCsrf['status'] === 403, 'Invalid CSRF must return 403');
+        $expect($badCsrf['body']['error']['code'] === 'CSRF_INVALID');
+        $expect(str_contains($badCsrf['body']['error']['message'], 'expired') || str_contains($badCsrf['body']['error']['message'], 'session'), 'CSRF message must explain session expiry');
+
+        // 0g. SMTP delivery failure handled gracefully with actionable message
+        $failingTransport = new class implements \InfinityBlog\Mail\MailTransportInterface {
+            public function send(string $to, string $subject, string $bodyText, ?string $bodyHtml = null, array $headers = []): array {
+                return [
+                    'delivered' => false,
+                    'status' => 'FAILED',
+                    'reason' => 'Connection to smtp.gmail.com:587 timed out',
+                ];
+            }
+        };
+        $failingMailer = new \InfinityBlog\Mail\MailerService($failingTransport);
+        $failingRegChallenge = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $failingMailer, $mobileService, $users);
+        $failingAuthController = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            $guard,
+            $sessions,
+            $users,
+            null,
+            $failingRegChallenge
+        );
+        $smtpFailAttempt = $failingAuthController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Smtp Fail User',
+            'email' => 'smtp_fail@example.com',
+            'password' => 'pass12345678',
+            'confirm_password' => 'pass12345678',
+            'phone' => '+919876543001'
+        ]));
+        $expect($smtpFailAttempt['status'] === 422, 'SMTP delivery failure must return 422');
+        $expect($smtpFailAttempt['body']['error']['code'] === 'EMAIL_DELIVERY_FAILED');
+        $expect(str_contains($smtpFailAttempt['body']['error']['message'], 'could not be sent'), 'SMTP failure must explain verification code could not be sent');
+
+        // 0h. Unconfigured SMTP in production returns EMAIL_SERVICE_UNAVAILABLE
+        $origEnv = getenv('APP_ENV');
+        putenv('APP_ENV=production');
+        $unconfiguredMailer = new \InfinityBlog\Mail\MailerService(null, null, null, null, null, null, null, null, null, []);
+        $unconfiguredRegChallenge = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $unconfiguredMailer, $mobileService, $users);
+        $unconfiguredAuthController = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            $guard,
+            $sessions,
+            $users,
+            null,
+            $unconfiguredRegChallenge
+        );
+        $prodUnconfigured = $unconfiguredAuthController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Prod Unconfigured User',
+            'email' => 'prod_unconf@example.com',
+            'password' => 'pass12345678',
+            'confirm_password' => 'pass12345678',
+            'phone' => '+919876543002'
+        ]));
+        $expect($prodUnconfigured['status'] === 422, 'Unconfigured SMTP in production must return 422');
+        $expect($prodUnconfigured['body']['error']['code'] === 'EMAIL_SERVICE_UNAVAILABLE');
+        putenv('APP_ENV=' . ($origEnv ?: ''));
+
         // 1. Missing phone number rejected
         $missingPhone = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'display_name' => 'Charlie Reader',

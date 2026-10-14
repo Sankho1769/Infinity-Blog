@@ -270,6 +270,26 @@ final class RegistrationChallengeService
 
         $isDev = getenv('APP_ENV') !== 'production';
 
+        if ($mailResult['status'] === 'FAILED') {
+            return [
+                'success' => false,
+                'error' => 'EMAIL_DELIVERY_FAILED',
+                'message' => 'Verification code could not be sent to your email address' . (!empty($mailResult['reason']) ? ' (' . $mailResult['reason'] . ')' : '') . '. Please check your email address or try again in a few moments.',
+                'delivery_status' => 'FAILED',
+                'delivery_reason' => $mailResult['reason'] ?? 'Email delivery failed.',
+            ];
+        }
+
+        if ($mailResult['status'] === 'BLOCKED' && !$isDev) {
+            return [
+                'success' => false,
+                'error' => 'EMAIL_SERVICE_UNAVAILABLE',
+                'message' => 'The verification email service is currently unavailable. Please contact support or try again later.',
+                'delivery_status' => 'BLOCKED',
+                'delivery_reason' => $mailResult['reason'] ?? 'Email service unconfigured.',
+            ];
+        }
+
         return [
             'success' => true,
             'challenge_required' => true,
@@ -520,6 +540,26 @@ final class RegistrationChallengeService
         $displayName = (string) $row['display_name'];
         $mailResult = $this->mailer->sendRegistrationOtp($email, $displayName, $otp);
         $isDev = getenv('APP_ENV') !== 'production';
+
+        if ($mailResult['status'] === 'FAILED') {
+            return [
+                'success' => false,
+                'error' => 'EMAIL_DELIVERY_FAILED',
+                'message' => 'Verification code could not be resent to your email address' . (!empty($mailResult['reason']) ? ' (' . $mailResult['reason'] . ')' : '') . '. Please try again in a few moments.',
+                'delivery_status' => 'FAILED',
+                'delivery_reason' => $mailResult['reason'] ?? 'Email delivery failed.',
+            ];
+        }
+
+        if ($mailResult['status'] === 'BLOCKED' && !$isDev) {
+            return [
+                'success' => false,
+                'error' => 'EMAIL_SERVICE_UNAVAILABLE',
+                'message' => 'The verification email service is currently unavailable. Please try again later.',
+                'delivery_status' => 'BLOCKED',
+                'delivery_reason' => $mailResult['reason'] ?? 'Email service unconfigured.',
+            ];
+        }
 
         return [
             'success' => true,
