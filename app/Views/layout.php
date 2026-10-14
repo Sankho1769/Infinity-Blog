@@ -303,7 +303,7 @@
   </header>
 
   <!-- Flash Messages Container -->
-  <div class="container flash-messages">
+  <div class="container container-wide flash-messages">
     <?php if (!empty($_GET['logged_out'])): ?>
       <div class="alert-banner alert-success alert-dismissible" role="alert">
         <span>You have been signed out.</span>
@@ -337,72 +337,74 @@
   </div>
 
   <!-- Main View Slot -->
-  <main class="container">
+  <main class="container container-wide">
     <?= $content ?? '' ?>
   </main>
 
   <!-- Footer with Clean Multi-Column Layout -->
-  <footer class="container site-footer glass-panel">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px; margin-bottom: 24px;">
-      <div style="max-width: 320px;">
-        <a href="/" class="brand-logo" aria-label="Infinity Blog Home" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-          <span class="brand-logo-icon">✦</span>
-          <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
-        </a>
-        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
-          A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.
-        </p>
-      </div>
-
-      <div style="display: flex; gap: 40px; flex-wrap: wrap;">
-        <div>
-          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Explore</div>
-          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
-            <li><a href="/" style="color: var(--text-muted); text-decoration: none;">Home</a></li>
-            <li><a href="/explore" style="color: var(--text-muted); text-decoration: none;">Articles</a></li>
-            <li><a href="/categories" style="color: var(--text-muted); text-decoration: none;">Categories</a></li>
-            <li><a href="/authors" style="color: var(--text-muted); text-decoration: none;">Authors</a></li>
-            <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About</a></li>
-          </ul>
+  <footer class="site-footer-wrapper container container-wide">
+    <div class="site-footer glass-panel">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px; margin-bottom: 24px;">
+        <div style="max-width: 320px;">
+          <a href="/" class="brand-logo" aria-label="Infinity Blog Home" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <span class="brand-logo-icon">✦</span>
+            <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
+          </a>
+          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+            A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.
+          </p>
         </div>
 
-        <div>
-          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Platform</div>
-          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
-            <?php if (!empty($currentUser)): ?>
-              <li><a href="/profile" style="color: var(--text-muted); text-decoration: none;">My Profile</a></li>
-              <li><a href="/dashboard" style="color: var(--text-muted); text-decoration: none;">Dashboard</a></li>
-              <li><a href="/posts/new" style="color: var(--text-muted); text-decoration: none;">Write Post</a></li>
-            <?php else: ?>
-              <li><a href="/login" style="color: var(--text-muted); text-decoration: none;">Sign In</a></li>
-              <li><a href="/register" style="color: var(--text-muted); text-decoration: none;">Create Account</a></li>
-            <?php endif; ?>
-            <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About Platform</a></li>
-            <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
-            <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
-            <li><a href="/terms" style="color: var(--text-muted); text-decoration: none;">Terms &amp; Conditions</a></li>
-            <li><button type="button" class="footer-link-btn" onclick="openCookiePreferences()" style="background: none; border: none; padding: 0; color: var(--text-muted); font-size: inherit; font-family: inherit; cursor: pointer; text-align: left;">Cookie Preferences</button></li>
-          </ul>
-        </div>
+        <div style="display: flex; gap: 40px; flex-wrap: wrap;">
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Explore</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
+              <li><a href="/" style="color: var(--text-muted); text-decoration: none;">Home</a></li>
+              <li><a href="/explore" style="color: var(--text-muted); text-decoration: none;">Articles</a></li>
+              <li><a href="/categories" style="color: var(--text-muted); text-decoration: none;">Categories</a></li>
+              <li><a href="/authors" style="color: var(--text-muted); text-decoration: none;">Authors</a></li>
+              <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About</a></li>
+            </ul>
+          </div>
 
-        <div>
-          <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Connect</div>
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
-            <?php if (!empty($supportEmail)): ?>
-              <a href="mailto:<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?></a>
-            <?php endif; ?>
-            <?php if (!empty($editorialEmail)): ?>
-              <a href="mailto:<?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?></a>
-            <?php endif; ?>
-            <a href="/contact" style="color: var(--primary-600, #4f46e5); text-decoration: none; font-weight: 600;">Support &amp; Feedback Form →</a>
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Platform</div>
+            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
+              <?php if (!empty($currentUser)): ?>
+                <li><a href="/profile" style="color: var(--text-muted); text-decoration: none;">My Profile</a></li>
+                <li><a href="/dashboard" style="color: var(--text-muted); text-decoration: none;">Dashboard</a></li>
+                <li><a href="/posts/new" style="color: var(--text-muted); text-decoration: none;">Write Post</a></li>
+              <?php else: ?>
+                <li><a href="/login" style="color: var(--text-muted); text-decoration: none;">Sign In</a></li>
+                <li><a href="/register" style="color: var(--text-muted); text-decoration: none;">Create Account</a></li>
+              <?php endif; ?>
+              <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About Platform</a></li>
+              <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
+              <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
+              <li><a href="/terms" style="color: var(--text-muted); text-decoration: none;">Terms &amp; Conditions</a></li>
+              <li><button type="button" class="footer-link-btn" onclick="openCookiePreferences()" style="background: none; border: none; padding: 0; color: var(--text-muted); font-size: inherit; font-family: inherit; cursor: pointer; text-align: left;">Cookie Preferences</button></li>
+            </ul>
+          </div>
+
+          <div>
+            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Connect</div>
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
+              <?php if (!empty($supportEmail)): ?>
+                <a href="mailto:<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?></a>
+              <?php endif; ?>
+              <?php if (!empty($editorialEmail)): ?>
+                <a href="mailto:<?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?></a>
+              <?php endif; ?>
+              <a href="/contact" style="color: var(--primary-600, #4f46e5); text-decoration: none; font-weight: 600;">Support &amp; Feedback Form →</a>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <div style="border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.84rem; color: var(--text-muted);">
-      <div>© <?= date('Y') ?> Infinity Blog. All rights reserved.</div>
-      <div>Crafted with PHP, PDO &amp; MySQL.</div>
+      <div style="border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.84rem; color: var(--text-muted);">
+        <div>© <?= date('Y') ?> Infinity Blog. All rights reserved.</div>
+        <div>Crafted with PHP, PDO &amp; MySQL.</div>
+      </div>
     </div>
   </footer>
 
