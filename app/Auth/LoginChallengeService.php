@@ -133,14 +133,7 @@ final class LoginChallengeService
 
         // Send notification email
         $maskedEmail = MailerService::maskEmail($account->email);
-        $mailSubject = 'Your Infinity Blog Verification Code: ' . $otp;
-        $mailBody = "Hello {$account->displayName},\n\n" .
-            "Your single-use verification code for logging into Infinity Blog is:\n\n" .
-            "  {$otp}\n\n" .
-            "This code is valid for 10 minutes. If you did not make this request, please change your password immediately.\n\n" .
-            "— Infinity Blog Security";
-
-        $mailResult = $this->mailer->send($account->email, $mailSubject, $mailBody);
+        $mailResult = $this->mailer->sendOtp($account->email, $account->displayName, $otp);
 
         $isDev = getenv('APP_ENV') !== 'production';
 

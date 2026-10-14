@@ -132,6 +132,7 @@ try {
     $ttsProvider = $aiConfig !== null ? new \InfinityBlog\Audio\OpenAiTtsProvider($aiConfig->apiKey) : null;
     $tts = new TtsService($postsRepo, $ttsProvider, $aiConfig, $storageConfig, $mediaService, $storageClient);
     $postReports = new \InfinityBlog\Moderation\PostReportRepository($pdo);
+    $mailer = new \InfinityBlog\Mail\MailerService();
 
     $webController = new WebController(
         $postsRepo,
@@ -153,7 +154,8 @@ try {
         $studio,
         null,
         $contactRepo,
-        $postReports
+        $postReports,
+        $mailer
     );
 
     // Browser POST form submissions for user profile & media uploads
@@ -379,7 +381,7 @@ try {
             $guard,
             $sessions,
             $users,
-            new \InfinityBlog\Auth\LoginChallengeService($pdo)
+            new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer)
         );
     }
 

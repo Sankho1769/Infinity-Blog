@@ -17,6 +17,7 @@ id_rsa*
 /var/log/
 /storage/logs/
 /tmp/
+/tests/output/
 *.log
 *.sql
 *.sql.gz

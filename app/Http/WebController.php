@@ -17,6 +17,7 @@ use InfinityBlog\Export\PdfExporter;
 use InfinityBlog\Library\LibraryRepository;
 use InfinityBlog\Community\CommunityRepository;
 use InfinityBlog\Ai\ArticleAssistantService;
+use InfinityBlog\Mail\MailerService;
 use InfinityBlog\Moderation\PostReportRepository;
 use InfinityBlog\Posts\ArticleContentRenderer;
 use InfinityBlog\Posts\ArticleImageHelper;
@@ -55,6 +56,7 @@ final class WebController
     private SeoService $seo;
     private ?ContactRepository $contactRepo;
     private ?PostReportRepository $postReports;
+    private ?MailerService $mailer;
 
     public function __construct(
         PostRepository $posts,
@@ -76,7 +78,8 @@ final class WebController
         ?StudioService $studio = null,
         ?SeoService $seo = null,
         ?ContactRepository $contactRepo = null,
-        ?PostReportRepository $postReports = null
+        ?PostReportRepository $postReports = null,
+        ?MailerService $mailer = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -109,6 +112,7 @@ final class WebController
         $this->seo = $seo ?? new SeoService($config->baseUrl);
         $this->contactRepo = $contactRepo;
         $this->postReports = $postReports;
+        $this->mailer = $mailer ?? new MailerService();
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -1774,6 +1778,24 @@ final class WebController
             $ticketId = $this->contactRepo->createMessage($name, $email, $subject, $message, $ip);
         }
 
+        // Deliver contact notification via MailerService to configured CONTACT_TO_EMAIL
+        if ($this->mailer !== null) {
+            try {
+                $this->mailer->sendContactNotification([
+                    'ticket_id' => $ticketId,
+                    'name' => $name,
+                    'email' => $email,
+                    'subject' => $subject,
+                    'message' => $message,
+                    'ip' => $ip,
+                    'timestamp' => gmdate('Y-m-d H:i:s'),
+                ]);
+            } catch (Throwable $e) {
+                // Graceful failure: do not crash the contact page or leak errors to visitors
+                error_log('Contact form email notification failed: ' . $e->getMessage());
+            }
+        }
+
         return $this->redirect('/contact?submitted=1&ticket=' . $ticketId);
     }
 
@@ -1903,10 +1925,13 @@ final class WebController
     /** @return array{status: int, type: string, body: string} */
     private function redirect(string $url): array
     {
-        header('Location: ' . $url);
+        if (!headers_sent()) {
+            header('Location: ' . $url);
+        }
         return [
             'status' => 302,
             'type' => 'text/html; charset=utf-8',
+            'headers' => ['Location' => $url],
             'body' => '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '"></head><body>Redirecting...</body></html>',
         ];
     }

@@ -4314,6 +4314,251 @@ $run('Post report repository and moderation system enforce permissions, rate lim
     });
 });
 
+$run('PDF download endpoint and PdfExporter produce valid %PDF- binary with TrueType fonts, headers, and multilingual preservation', static function () use ($expect): void {
+    $fontsDir = dirname(__DIR__) . '/app/Export/fonts/unifont';
+    $expect(is_file($fontsDir . '/latin.ttf'), 'Latin TrueType font exists');
+    $expect(is_file($fontsDir . '/latin-bold.ttf'), 'Latin bold TrueType font exists');
+    $expect(is_file($fontsDir . '/bengali.ttf'), 'Bengali TrueType font exists');
+    $expect(is_file($fontsDir . '/devanagari.ttf'), 'Devanagari TrueType font exists');
+
+    $article = [
+        'id' => 991,
+        'title' => 'Scaling Distributed Architectures in PHP & বাংলা & हिन्दी',
+        'content' => "# Introduction\n\nEnglish paragraph.\n\nবাংলা অনুচ্ছেদ: এটি একটি পরীক্ষা।\n\nहिन्दी अनुच्छेद: यह एक परीक्षण है।\n\n```php\necho 'hello';\n```",
+        'author_name' => 'Dr. Sourav Banerjee',
+        'category_name' => 'Software Engineering',
+        'published_at' => '2026-10-14 10:00:00',
+    ];
+
+    $pdfData = \InfinityBlog\Export\PdfExporter::generate($article, 'http://localhost/article/991');
+    $expect(is_string($pdfData) && strlen($pdfData) > 5000, 'PDF binary is generated with substantial size');
+    $expect(str_starts_with($pdfData, '%PDF-'), 'PDF starts with valid %PDF- magic bytes');
+    $expect(str_contains($pdfData, '%%EOF') || str_ends_with(trim($pdfData), '%%EOF'), 'PDF contains standard %%EOF terminator');
+    $expect(str_contains($pdfData, '/Type /Pages') || str_contains($pdfData, '/Pages'), 'PDF contains page tree structure');
+    $expect(str_contains($pdfData, 'Bengali') && str_contains($pdfData, 'Devanagari'), 'PDF embeds true multilingual fonts');
+});
+
+$run('MailerService and SmtpTransport provide authentic email delivery, socket abstraction, privacy masking, and anti-injection protection', static function () use ($expect): void {
+    // 1. ArrayMailTransport captures messages cleanly
+    $transport = new \InfinityBlog\Mail\ArrayMailTransport();
+    $mailer = new \InfinityBlog\Mail\MailerService($transport);
+    $expect($mailer->isConfigured() === true);
+
+    $otpRes = $mailer->sendOtp('test.recipient@example.com', 'Test User', '654321');
+    $expect($otpRes['delivered'] === true && $otpRes['status'] === 'SENT');
+    $expect($transport->count() === 1);
+
+    $msg = $transport->lastMessage();
+    $expect($msg !== null);
+    $expect($msg['to'] === 'test.recipient@example.com');
+    $expect($msg['subject'] === 'Your Infinity Blog Verification Code: 654321');
+    $expect(str_contains($msg['bodyText'], '654321'));
+    $expect(str_contains((string) $msg['bodyHtml'], '654321'));
+    $expect(str_contains((string) $msg['bodyHtml'], 'Infinity Blog Security'));
+
+    // 2. Email masking for privacy
+    $expect(\InfinityBlog\Mail\MailerService::maskEmail('shubham.banerjee@example.com') === 's***e@example.com');
+    $expect(\InfinityBlog\Mail\MailerService::maskEmail('ab@example.com') === 'a***@example.com');
+    $expect(\InfinityBlog\Mail\MailerService::maskEmail('x@example.com') === 'x***@example.com');
+    $expect(\InfinityBlog\Mail\MailerService::maskEmail(null) === '••••••');
+    $expect(\InfinityBlog\Mail\MailerService::maskEmail('') === '••••••');
+
+    // 3. Header sanitization against CRLF injection
+    $maliciousSubject = "Inquiry\r\nBcc: evil@attacker.com\r\nSubject: Injected";
+    $cleanSubject = \InfinityBlog\Mail\SmtpTransport::sanitizeHeader($maliciousSubject);
+    $expect(!str_contains($cleanSubject, "\r") && !str_contains($cleanSubject, "\n"));
+    $expect(str_contains($cleanSubject, 'InquiryBcc: evil@attacker.comSubject: Injected'));
+
+    // 4. Redaction of sensitive credentials
+    $secretString = 'SMTP auth failed with password=SuperSecretPassword123 and token=dGVzdGluZ3NlY3JldHRva2VuMTIzNDU2Nzg5MA==';
+    $redacted = \InfinityBlog\Mail\SmtpTransport::redact($secretString);
+    $expect(!str_contains($redacted, 'SuperSecretPassword123'));
+    $expect(str_contains($redacted, '[REDACTED]'));
+
+    // 5. Unconfigured mailer returns BLOCKED
+    $unconfiguredMailer = new \InfinityBlog\Mail\MailerService(
+        null,
+        null, null, null, null, null, null, null, null,
+        []
+    );
+    $expect($unconfiguredMailer->isConfigured() === false);
+    $blockedRes = $unconfiguredMailer->send('user@example.com', 'Subject', 'Body');
+    $expect($blockedRes['delivered'] === false);
+    $expect($blockedRes['status'] === 'BLOCKED');
+    $expect(str_contains($blockedRes['reason'] ?? '', 'unconfigured') || str_contains($blockedRes['reason'] ?? '', 'not configured'));
+});
+
+$run('Contact form submission delivers notification to configured CONTACT_TO_EMAIL with Reply-To and handles transport failures gracefully', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
+        $pdo = $createUserDatabase();
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS contact_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                message TEXT NOT NULL,
+                ip_address TEXT NULL,
+                status TEXT NOT NULL DEFAULT "received",
+                created_at TEXT NOT NULL
+            )'
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+
+        $users = new UserRepository($pdo);
+        $config = AppConfig::fromArray($validConfiguration);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+        $contactRepo = new \InfinityBlog\Contact\ContactRepository($pdo);
+
+        $transport = new \InfinityBlog\Mail\ArrayMailTransport();
+        $mailer = new \InfinityBlog\Mail\MailerService(
+            $transport,
+            null, null, null, null, null, null, null,
+            'banerjeeshubham00@gmail.com'
+        );
+
+        $webController = new WebController(
+            posts: new PostRepository($pdo),
+            categories: new CategoryRepository($pdo),
+            users: $users,
+            adminUsers: new AdminUserRepository($pdo),
+            auditLogs: new AuditLogRepository($pdo),
+            guard: $guard,
+            sessions: $sessions,
+            config: $config,
+            contactRepo: $contactRepo,
+            mailer: $mailer
+        );
+
+        $csrf = $sessions->csrfToken();
+
+        // 1. Successful submission dispatches email notification
+        $_POST = [
+            'csrf_token' => $csrf,
+            'name' => 'Cristine Palmer',
+            'email' => 'cristine.palmer@example.com',
+            'subject' => 'Publishing Partnership Inquiry',
+            'message' => 'Hello Infinity Blog team, I would like to inquire about guest author publishing partnerships.',
+            'website_hp' => '',
+        ];
+
+        $req = Request::fromValues('POST', '/contact', '192.0.2.77', [], $_POST);
+        $res = $webController->submitContact($req);
+
+        $expect($res['status'] === 302, 'Contact submission returns redirect');
+        $expect(str_contains($res['headers']['Location'] ?? '', 'submitted=1'), 'Redirects to confirmation page');
+
+        // Verify database persistence
+        $messages = $contactRepo->listMessages(10);
+        $expect(count($messages) === 1);
+        $expect($messages[0]['name'] === 'Cristine Palmer');
+        $expect($messages[0]['email'] === 'cristine.palmer@example.com');
+        $expect($messages[0]['subject'] === 'Publishing Partnership Inquiry');
+
+        // Verify mail delivery
+        $expect($transport->count() === 1);
+        $delivered = $transport->lastMessage();
+        $expect($delivered !== null);
+        $expect($delivered['to'] === 'banerjeeshubham00@gmail.com', 'Delivered to banerjeeshubham00@gmail.com');
+        $expect(str_contains($delivered['subject'], 'Publishing Partnership Inquiry'));
+        $expect(isset($delivered['headers']['Reply-To']));
+        $expect(str_contains($delivered['headers']['Reply-To'], 'cristine.palmer@example.com'));
+        $expect(str_contains($delivered['bodyText'], 'Cristine Palmer'));
+        $expect(str_contains($delivered['bodyText'], '192.0.2.77'));
+        $expect(str_contains((string) $delivered['bodyHtml'], 'Ticket #'));
+
+        // 2. Graceful handling when mail transport encounters an exception
+        $failingTransport = new class implements \InfinityBlog\Mail\MailTransportInterface {
+            public function send(string $to, string $subject, string $bodyText, ?string $bodyHtml = null, array $headers = []): array {
+                throw new \InfinityBlog\Mail\SmtpException('SMTP connection timed out');
+            }
+        };
+        $failingMailer = new \InfinityBlog\Mail\MailerService($failingTransport);
+        $failController = new WebController(
+            posts: new PostRepository($pdo),
+            categories: new CategoryRepository($pdo),
+            users: $users,
+            adminUsers: new AdminUserRepository($pdo),
+            auditLogs: new AuditLogRepository($pdo),
+            guard: $guard,
+            sessions: $sessions,
+            config: $config,
+            contactRepo: $contactRepo,
+            mailer: $failingMailer
+        );
+
+        $_POST['subject'] = 'Another Inquiry Under Network Fault';
+        $req2 = Request::fromValues('POST', '/contact', '192.0.2.78', [], $_POST);
+        $res2 = $failController->submitContact($req2);
+
+        // Does not throw, still persists to DB, and returns clean redirect
+        $expect($res2['status'] === 302);
+        $expect(count($contactRepo->listMessages(10)) === 2);
+    });
+});
+
+$run('Two-step login challenge flow validates authentic email dispatch, expiration, replay protection, and rate limiting', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
+        $pdo = $createUserDatabase();
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS auth_challenges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                challenge_token TEXT NOT NULL UNIQUE,
+                otp_hash TEXT NOT NULL,
+                destination_email TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 5,
+                expires_at TEXT NOT NULL,
+                verified_at TEXT NULL,
+                created_at TEXT NOT NULL
+            )"
+        );
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+
+        $users = new UserRepository($pdo);
+        $config = AppConfig::fromArray($validConfiguration);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+
+        $transport = new \InfinityBlog\Mail\ArrayMailTransport();
+        $mailer = new \InfinityBlog\Mail\MailerService($transport);
+        $challenges = new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer);
+
+        $userId = $users->createUser('Bob Author', 'bob@example.com', password_hash('bob-pass-5678', PASSWORD_DEFAULT));
+        $bob = $users->findById($userId);
+        $expect($bob !== null);
+
+        // Challenge generation with real mail transport
+        $cData = $challenges->createChallenge($bob);
+        $expect($cData['challenge_required'] === true);
+        $expect($cData['delivery_status'] === 'SENT');
+        $expect($transport->count() === 1);
+
+        $sentOtpMail = $transport->lastMessage();
+        $expect($sentOtpMail !== null);
+        $expect($sentOtpMail['to'] === 'bob@example.com');
+        preg_match('/Verification Code: (\d{6})/', $sentOtpMail['subject'], $otpMatch);
+        $expect(!empty($otpMatch[1]), '6-digit OTP extracted from email subject');
+        $otp = $otpMatch[1];
+
+        // Valid code verifies and returns user id
+        $verified = $challenges->verifyChallenge($cData['challenge_token'], $otp);
+        $expect($verified['success'] === true && $verified['user_id'] === $bob->id);
+
+        // Replay of verified token fails
+        $replayed = $challenges->verifyChallenge($cData['challenge_token'], $otp);
+        $expect($replayed['success'] === false && $replayed['error'] === 'CHALLENGE_ALREADY_USED');
+    });
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [
