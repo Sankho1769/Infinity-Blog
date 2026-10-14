@@ -71,7 +71,8 @@
     </form>
 
     <!-- Step 2: Verification Challenge Form -->
-    <form id="challenge-form" style="display: none;" novalidate>
+    <form id="challenge-form" method="POST" action="/auth/challenge/verify" style="display: none;" novalidate>
+      <input type="hidden" name="csrf_token" id="challenge-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
       <input type="hidden" id="challenge_token" name="challenge_token" value="">
 
       <div style="text-align: center; margin-bottom: 20px;">
@@ -178,6 +179,12 @@ document.addEventListener('DOMContentLoaded', () => {
           // Two-step challenge triggered
           challengeTokenInput.value = data.data.challenge_token;
           challengeMaskedEmail.textContent = data.data.masked_email;
+          if (data.data.csrf_token) {
+            const chCsrf = document.getElementById('challenge-csrf-token');
+            if (chCsrf) chCsrf.value = data.data.csrf_token;
+            const metaCsrf = document.querySelector('meta[name="csrf-token"]');
+            if (metaCsrf) metaCsrf.setAttribute('content', data.data.csrf_token);
+          }
           if (data.data.delivery_status === 'BLOCKED') {
             challengeDeliveryNotice.style.display = 'block';
             if (data.data.dev_code) {
@@ -214,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle Challenge Verification
   challengeForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     errorBox.style.display = 'none';
 
     const challenge_token = challengeTokenInput.value.trim();
@@ -229,8 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
     challengeSubmitBtn.disabled = true;
     challengeSubmitBtn.textContent = 'Verifying code...';
 
+    let csrf = '';
     try {
-      const csrf = await getCsrfToken();
+      csrf = await getCsrfToken();
       const res = await fetch('/auth/challenge/verify', {
         method: 'POST',
         headers: {
@@ -238,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
           'Accept': 'application/json',
           'X-CSRF-Token': csrf
         },
-        body: JSON.stringify({ challenge_token, code })
+        body: JSON.stringify({ challenge_token, code, csrf_token: csrf })
       });
 
       const data = await res.json();
@@ -253,10 +261,10 @@ document.addEventListener('DOMContentLoaded', () => {
         challengeCodeInput.select();
       }
     } catch (err) {
-      errorBox.textContent = 'Connection error. Please try again.';
-      errorBox.style.display = 'flex';
-      challengeSubmitBtn.disabled = false;
-      challengeSubmitBtn.textContent = 'Verify & Sign In';
+      // Fallback to standard form post
+      const chCsrf = document.getElementById('challenge-csrf-token');
+      if (chCsrf && csrf) chCsrf.value = csrf;
+      challengeForm.submit();
     }
   });
 

@@ -179,6 +179,55 @@ final class UserRepository
         return $statement->fetchColumn() !== false;
     }
 
+    public function existsByMobileHash(string $mobileHash): bool
+    {
+        try {
+            $statement = $this->pdo->prepare('SELECT 1 FROM users WHERE mobile_number_hash = :hash LIMIT 1');
+            $statement->execute([':hash' => $mobileHash]);
+            return $statement->fetchColumn() !== false;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public function findByMobileHash(string $mobileHash): ?UserAccount
+    {
+        try {
+            $statement = $this->pdo->prepare('SELECT * FROM users WHERE mobile_number_hash = :hash LIMIT 1');
+            $statement->execute([':hash' => $mobileHash]);
+            $row = $statement->fetch(PDO::FETCH_ASSOC);
+            return $row ? $this->mapRowToAccount($row) : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** @var list<string>|null */
+    private ?array $userColumnNames = null;
+
+    /** @return list<string> */
+    public function getUserColumnNames(): array
+    {
+        if ($this->userColumnNames !== null) {
+            return $this->userColumnNames;
+        }
+
+        try {
+            $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $cols = $this->pdo->query('PRAGMA table_info(users)')->fetchAll(PDO::FETCH_ASSOC);
+                $this->userColumnNames = array_map('strtolower', array_column($cols, 'name'));
+            } else {
+                $stmt = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users'");
+                $this->userColumnNames = array_map('strtolower', $stmt->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (Throwable) {
+            $this->userColumnNames = ['id', 'username', 'email', 'display_name', 'password_hash', 'role', 'status', 'auth_version', 'must_change_password'];
+        }
+
+        return $this->userColumnNames;
+    }
+
     /**
      * @param array<string, mixed> $fields
      * @throws ProfileValidationException
@@ -297,21 +346,25 @@ final class UserRepository
                         $errors['phone'] = 'This mobile number is already in use by another account.';
                     } else {
                         $cipher = $mobileService->encrypt($normalized);
-                        $updates[] = 'phone = :phone';
-                        $params['phone'] = $rawPhone;
+                        if (in_array('phone', $this->getUserColumnNames(), true)) {
+                            $updates[] = 'phone = :phone';
+                            $params['phone'] = $rawPhone;
+                        }
                         $updates[] = 'mobile_number_ciphertext = :mobile_cipher';
                         $params['mobile_cipher'] = $cipher;
                         $updates[] = 'mobile_number_hash = :mobile_hash';
                         $params['mobile_hash'] = $hash;
                         $updates[] = 'mobile_number_verified_at = :mobile_verified_at';
-                        $params['mobile_verified_at'] = null;
+                        $params['mobile_verified_at'] = $fields['mobile_number_verified_at'] ?? null;
                     }
                 } catch (\InvalidArgumentException $e) {
                     $errors['phone'] = $e->getMessage();
                 }
             } else {
-                $updates[] = 'phone = :phone';
-                $params['phone'] = null;
+                if (in_array('phone', $this->getUserColumnNames(), true)) {
+                    $updates[] = 'phone = :phone';
+                    $params['phone'] = null;
+                }
                 $updates[] = 'mobile_number_ciphertext = :mobile_cipher';
                 $params['mobile_cipher'] = null;
                 $updates[] = 'mobile_number_hash = :mobile_hash';

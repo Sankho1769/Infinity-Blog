@@ -9,6 +9,8 @@ use InfinityBlog\Auth\LoginChallengeService;
 use InfinityBlog\Auth\LoginResult;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Security\RegistrationChallengeService;
+use PDO;
 
 final class AuthController
 {
@@ -17,19 +19,37 @@ final class AuthController
     private SessionManager $sessions;
     private UserRepository $users;
     private ?LoginChallengeService $challenges;
+    private ?RegistrationChallengeService $registrationChallenges;
 
     public function __construct(
         AuthenticationService $authentication,
         AuthGuard $guard,
         SessionManager $sessions,
         ?UserRepository $users = null,
-        ?LoginChallengeService $challenges = null
+        ?LoginChallengeService $challenges = null,
+        ?RegistrationChallengeService $registrationChallenges = null
     ) {
         $this->authentication = $authentication;
         $this->guard = $guard;
         $this->sessions = $sessions;
         $this->users = $users ?? $authentication->users();
         $this->challenges = $challenges;
+        $this->registrationChallenges = $registrationChallenges;
+    }
+
+    private function resolveRegistrationChallenges(): ?RegistrationChallengeService
+    {
+        if ($this->registrationChallenges !== null) {
+            return $this->registrationChallenges;
+        }
+        $toggle = getenv('REGISTRATION_PHONE_VERIFICATION');
+        if ($toggle === '1' || $toggle === 'true') {
+            if (method_exists($this->users, 'getPdo')) {
+                $this->registrationChallenges = new RegistrationChallengeService($this->users->getPdo(), null, null, $this->users);
+                return $this->registrationChallenges;
+            }
+        }
+        return null;
     }
 
     private function resolveChallenges(): ?LoginChallengeService
@@ -54,6 +74,8 @@ final class AuthController
             ['POST', '/auth/challenge/verify'], ['POST', '/challenge/verify'], ['POST', '/api/auth/challenge/verify'] => $this->verifyChallenge($request),
             ['POST', '/auth/challenge/resend'], ['POST', '/challenge/resend'], ['POST', '/api/auth/challenge/resend'] => $this->resendChallenge($request),
             ['POST', '/auth/register'], ['POST', '/register'] => $this->register($request),
+            ['POST', '/auth/register/verify'], ['POST', '/register/verify'], ['POST', '/api/auth/register/verify'] => $this->verifyRegistration($request),
+            ['POST', '/auth/register/resend'], ['POST', '/register/resend'], ['POST', '/api/auth/register/resend'] => $this->resendRegistration($request),
             ['POST', '/auth/logout'], ['POST', '/logout'] => $this->logout($request),
             ['GET', '/auth/me'], ['GET', '/me'] => $this->me(),
             ['GET', '/auth/csrf'], ['GET', '/csrf'] => $this->csrf(),
@@ -68,6 +90,8 @@ final class AuthController
             '/auth/challenge/verify', '/challenge/verify', '/api/auth/challenge/verify',
             '/auth/challenge/resend', '/challenge/resend', '/api/auth/challenge/resend',
             '/auth/register', '/register',
+            '/auth/register/verify', '/register/verify', '/api/auth/register/verify',
+            '/auth/register/resend', '/register/resend', '/api/auth/register/resend',
             '/auth/logout', '/logout',
             '/auth/me', '/auth/csrf'
         ], true);
@@ -303,16 +327,17 @@ final class AuthController
     /** @return array{status: int, body: array<string, mixed>} */
     public function register(Request $request): array
     {
-        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($_POST['csrf_token'] ?? null);
+        $input = $request->input();
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
         if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
             return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
         }
 
-        $input = $request->input();
         $displayName = $input['display_name'] ?? $input['name'] ?? null;
         $email = $input['email'] ?? null;
         $password = $input['password'] ?? null;
         $confirmPassword = $input['confirm_password'] ?? $input['password_confirmation'] ?? null;
+        $phone = $input['phone'] ?? $input['mobile_number'] ?? null;
 
         $fields = [];
         if (!is_string($displayName) || trim($displayName) === '' || strlen($displayName) > 190
@@ -336,6 +361,24 @@ final class AuthController
             $fields['confirm_password'] = 'Passwords do not match.';
         }
 
+        $regService = $this->resolveRegistrationChallenges();
+        if ($regService !== null) {
+            if (!is_string($phone) || trim($phone) === '') {
+                $fields['phone'] = 'A mobile phone number is required for registration verification.';
+            } else {
+                try {
+                    $mobileService = new \InfinityBlog\Security\MobileNumberService();
+                    $normalizedPhone = $mobileService->normalize((string) $phone);
+                    $phoneHash = $mobileService->hash($normalizedPhone);
+                    if ($this->users->existsByMobileHash($phoneHash)) {
+                        $fields['phone'] = 'This mobile phone number is already registered to an account.';
+                    }
+                } catch (\InvalidArgumentException $e) {
+                    $fields['phone'] = 'Enter a valid mobile phone number in international format (e.g. +91 98765 43210).';
+                }
+            }
+        }
+
         if ($fields !== []) {
             return [
                 'status' => 422,
@@ -343,12 +386,49 @@ final class AuthController
             ];
         }
 
-        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
         $profile = [];
-        foreach (['bio', 'location', 'interests', 'website', 'phone'] as $fieldKey) {
+        foreach (['bio', 'location', 'interests', 'website'] as $fieldKey) {
             if (isset($input[$fieldKey]) && is_string($input[$fieldKey]) && trim($input[$fieldKey]) !== '') {
                 $profile[$fieldKey] = trim($input[$fieldKey]);
             }
+        }
+
+        if ($regService !== null) {
+            $challengeResult = $regService->createChallenge([
+                'display_name' => trim((string) $displayName),
+                'email' => trim((string) $email),
+                'password' => (string) $password,
+                'phone' => trim((string) $phone),
+                'profile' => $profile,
+            ], $request->sourceAddress);
+
+            if (!$challengeResult['success']) {
+                $errCode = $challengeResult['error'] ?? 'REGISTRATION_FAILED';
+                return $this->error(422, $errCode, $challengeResult['message'] ?? 'Registration could not be started.');
+            }
+
+            return [
+                'status' => 200,
+                'body' => [
+                    'data' => [
+                        'challenge_required' => true,
+                        'challenge_token' => $challengeResult['challenge_token'],
+                        'masked_phone' => $challengeResult['masked_phone'],
+                        'expires_in' => $challengeResult['expires_in'] ?? 600,
+                        'delivery_status' => $challengeResult['delivery_status'],
+                        'delivery_reason' => $challengeResult['delivery_reason'] ?? null,
+                        'dev_code' => $challengeResult['dev_code'] ?? null,
+                        'csrf_token' => $this->sessions->csrfToken(),
+                        'message' => 'Verification code sent to your phone number.',
+                    ],
+                ],
+            ];
+        }
+
+        // Direct registration fallback when registration challenges are not active
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        if (is_string($phone) && trim($phone) !== '') {
+            $profile['phone'] = trim($phone);
         }
         $newUserId = $this->users->createUser(trim($displayName), trim($email), $passwordHash, $profile);
 
@@ -365,6 +445,107 @@ final class AuthController
                         'status' => 'active',
                     ],
                     'csrf_token' => $this->sessions->csrfToken(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function verifyRegistration(Request $request): array
+    {
+        $input = $request->input();
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
+            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+        }
+
+        $challengeToken = $input['challenge_token'] ?? $request->postParameter('challenge_token') ?? null;
+        $otp = $input['code'] ?? $input['otp'] ?? $request->postParameter('code') ?? null;
+
+        $fields = [];
+        if (!is_string($challengeToken) || trim($challengeToken) === '') {
+            $fields['challenge_token'] = 'Challenge token is missing.';
+        }
+        if (!is_string($otp) || trim($otp) === '') {
+            $fields['code'] = 'Enter the 6-digit verification code.';
+        }
+
+        if ($fields !== []) {
+            return [
+                'status' => 422,
+                'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'One or more fields need attention.', $fields),
+            ];
+        }
+
+        $regService = $this->resolveRegistrationChallenges();
+        if ($regService === null) {
+            return $this->error(500, 'CHALLENGE_UNAVAILABLE', 'Registration challenge service is unavailable.');
+        }
+
+        $verification = $regService->verifyChallenge((string) $challengeToken, (string) $otp);
+        if (!$verification['success']) {
+            $errCode = $verification['error'] ?? 'INVALID_CODE';
+            $statusCode = match ($errCode) {
+                'MAX_ATTEMPTS_EXCEEDED', 'CHALLENGE_EXPIRED' => 429,
+                'CHALLENGE_NOT_FOUND', 'CHALLENGE_ALREADY_USED' => 404,
+                'EMAIL_ALREADY_EXISTS', 'PHONE_ALREADY_REGISTERED' => 409,
+                default => 401,
+            };
+            return $this->error($statusCode, $errCode, $verification['message'] ?? 'Verification failed.');
+        }
+
+        $userId = (int) $verification['user_id'];
+        $user = $this->users->findById($userId);
+
+        return [
+            'status' => 201,
+            'body' => [
+                'data' => [
+                    'message' => 'Registration and phone verification successful. You may now sign in.',
+                    'user' => $user ? $user->toPublicArray() : ['id' => $userId],
+                    'csrf_token' => $this->sessions->csrfToken(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function resendRegistration(Request $request): array
+    {
+        $input = $request->input();
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($input['csrf_token'] ?? null) ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
+            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+        }
+
+        $challengeToken = $input['challenge_token'] ?? $request->postParameter('challenge_token') ?? null;
+        if (!is_string($challengeToken) || trim($challengeToken) === '') {
+            return $this->error(422, 'VALIDATION_ERROR', 'Challenge token is missing.');
+        }
+
+        $regService = $this->resolveRegistrationChallenges();
+        if ($regService === null) {
+            return $this->error(500, 'CHALLENGE_UNAVAILABLE', 'Registration challenge service is unavailable.');
+        }
+
+        $resend = $regService->resendChallenge((string) $challengeToken, $request->sourceAddress);
+        if (!$resend['success']) {
+            $code = $resend['error'] ?? 'RESEND_FAILED';
+            return $this->error(400, $code, $resend['message'] ?? 'Could not resend verification code.');
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'data' => [
+                    'challenge_token' => $resend['challenge_token'],
+                    'masked_phone' => $resend['masked_phone'],
+                    'expires_in' => $resend['expires_in'] ?? 600,
+                    'delivery_status' => $resend['delivery_status'],
+                    'delivery_reason' => $resend['delivery_reason'] ?? null,
+                    'dev_code' => $resend['dev_code'] ?? null,
+                    'csrf_token' => $this->sessions->csrfToken(),
+                    'message' => $resend['message'],
                 ],
             ],
         ];

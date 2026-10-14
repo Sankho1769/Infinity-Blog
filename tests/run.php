@@ -4559,6 +4559,214 @@ $run('Two-step login challenge flow validates authentic email dispatch, expirati
     });
 });
 
+$run('Registration phone verification enforces phone presence, E.164 normalization, uniqueness, OTP SMS delivery, verification, replay prevention, attempt limits, and single-step password login', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
+    $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
+        $pdo = $createUserDatabase();
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, metadata TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        );
+        $users = new UserRepository($pdo);
+        $config = AppConfig::fromArray($validConfiguration);
+        $sessions = new SessionManager($config);
+        $sessions->start();
+        $guard = new AuthGuard($sessions, $users);
+
+        $smsProvider = new \InfinityBlog\Sms\ArraySmsProvider();
+        $smsService = new \InfinityBlog\Sms\SmsService($smsProvider);
+        $mobileService = new \InfinityBlog\Security\MobileNumberService();
+        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $smsService, $mobileService, $users);
+
+        $authController = new AuthController(
+            new AuthenticationService($users, new TestLoginAttemptLimiter()),
+            $guard,
+            $sessions,
+            $users,
+            null, // Login challenges null -> login does not challenge OTP
+            $regChallengeService
+        );
+
+        $csrf = $sessions->csrfToken();
+
+        // 1. Missing phone number rejected
+        $missingPhone = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Charlie Reader',
+            'email' => 'charlie@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => ''
+        ]));
+        $expect($missingPhone['status'] === 422, 'Missing phone must be rejected with 422');
+        $expect(isset($missingPhone['body']['error']['fields']['phone']), 'Error fields must contain phone');
+
+        // Invalid phone number rejected
+        $invalidPhone = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Charlie Reader',
+            'email' => 'charlie@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => 'not-a-phone-number'
+        ]));
+        $expect($invalidPhone['status'] === 422, 'Malformed phone must be rejected with 422');
+        $expect(isset($invalidPhone['body']['error']['fields']['phone']), 'Error fields must contain phone');
+
+        // 2 & 3. Seed an existing user with email and phone
+        $existingPhone = '+919876543210';
+        $existingNorm = $mobileService->normalize($existingPhone);
+        $existingHash = $mobileService->hash($existingNorm);
+        $existingCipher = $mobileService->encrypt($existingNorm);
+        $seededUserId = $users->createUser('Existing User', 'existing@example.com', password_hash('pass123456', PASSWORD_DEFAULT), [
+            'phone' => $existingNorm,
+            'mobile_number_ciphertext' => $existingCipher,
+            'mobile_number_hash' => $existingHash,
+            'mobile_number_verified_at' => date('Y-m-d H:i:s')
+        ]);
+        $expect($seededUserId > 0);
+
+        // Duplicate email rejected
+        $dupEmail = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Duplicate Email User',
+            'email' => 'existing@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '+919999888877'
+        ]));
+        $expect($dupEmail['status'] === 422, 'Duplicate email must be rejected with 422');
+        $expect(isset($dupEmail['body']['error']['fields']['email']), 'Error fields must report email error');
+
+        // Duplicate phone rejected
+        $dupPhone = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Duplicate Phone User',
+            'email' => 'unique-email@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '9876543210' // 10-digit format resolves to existing +919876543210
+        ]));
+        $expect($dupPhone['status'] === 422, 'Duplicate phone number must be rejected with 422');
+        $expect(isset($dupPhone['body']['error']['fields']['phone']), 'Error fields must report phone error');
+
+        // 4. Available phone generates OTP and invokes SMS service
+        $initialSmsCount = $smsProvider->count();
+        $regAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Charlie Reader',
+            'email' => 'charlie@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '9123456780' // Indian 10 digits
+        ]));
+        $expect($regAttempt['status'] === 200, 'Registration initiation must return 200 with challenge required');
+        $expect(!empty($regAttempt['body']['data']['challenge_required']));
+        $cToken = $regAttempt['body']['data']['challenge_token'];
+        $expect(strlen($cToken) === 64, 'Challenge token must be 64-char hex');
+        $expect($regAttempt['body']['data']['masked_phone'] === '+91 ••••• •6780', 'Phone must be masked correctly');
+        $expect($smsProvider->count() === $initialSmsCount + 1, 'SMS provider must have received 1 outgoing SMS');
+
+        $lastSms = $smsProvider->lastMessage();
+        $expect($lastSms !== null && $lastSms['to'] === '+919123456780', 'SMS must be sent to normalized E.164 phone');
+        preg_match('/code is: (\d{6})/', $lastSms['message'], $otpMatch);
+        $expect(!empty($otpMatch[1]), '6-digit OTP extracted from SMS');
+        $correctOtp = $otpMatch[1];
+
+        // 6. Incorrect OTP rejected with attempt count tracked
+        $wrongVerify = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $cToken,
+            'code' => '999999'
+        ]));
+        $expect($wrongVerify['status'] === 401, 'Incorrect OTP must return 401');
+        $expect($wrongVerify['body']['error']['code'] === 'INVALID_CODE');
+
+        // Exhaust remaining attempts (4 more)
+        for ($i = 0; $i < 4; $i++) {
+            $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+                'challenge_token' => $cToken,
+                'code' => '000000'
+            ]));
+        }
+        $exhausted = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $cToken,
+            'code' => $correctOtp
+        ]));
+        $expect($exhausted['status'] === 429, 'Exhausted attempts must return 429');
+        $expect($exhausted['body']['error']['code'] === 'MAX_ATTEMPTS_EXCEEDED');
+
+        // 7. Expired OTP rejected: create a challenge and simulate expiration
+        $expiredAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Expired User',
+            'email' => 'expired@example.com',
+            'password' => 'expired-pass-1234',
+            'confirm_password' => 'expired-pass-1234',
+            'phone' => '+447911123456'
+        ]));
+        $expToken = $expiredAttempt['body']['data']['challenge_token'];
+        $expOtp = $expiredAttempt['body']['data']['dev_code'];
+        // Backdate expires_at
+        $pdo->prepare("UPDATE registration_challenges SET expires_at = '2020-01-01 00:00:00' WHERE challenge_token = ?")->execute([$expToken]);
+        $expiredVerify = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $expToken,
+            'code' => $expOtp
+        ]));
+        $expect($expiredVerify['status'] === 429, 'Expired OTP must return 429');
+        $expect($expiredVerify['body']['error']['code'] === 'CHALLENGE_EXPIRED');
+
+        // 5. Correct OTP verifies phone, creates/activates user, records verification timestamp
+        $freshAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'David Winner',
+            'email' => 'david@example.com',
+            'password' => 'david-pass-1234',
+            'confirm_password' => 'david-pass-1234',
+            'phone' => '+14155552671'
+        ]));
+        $freshToken = $freshAttempt['body']['data']['challenge_token'];
+        $freshOtp = $freshAttempt['body']['data']['dev_code'];
+        $verifiedResult = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $freshToken,
+            'code' => $freshOtp
+        ]));
+        $expect($verifiedResult['status'] === 201, 'Correct verification must return 201 Created');
+        $createdUserId = $verifiedResult['body']['data']['user']['id'] ?? $verifiedResult['body']['data']['user_id'];
+        $createdAccount = $users->findById((int) $createdUserId);
+        $expect($createdAccount !== null, 'User account must exist in database');
+        $expect($createdAccount->isActive(), 'User account must be active');
+        $expect($createdAccount->mobileNumberVerifiedAt !== null, 'Verification timestamp must be recorded');
+        $expect($createdAccount->mobileNumberHash !== null, 'Mobile blind hash must be stored');
+
+        // 8. OTP cannot be reused after verification
+        $reused = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $freshToken,
+            'code' => $freshOtp
+        ]));
+        $expect($reused['status'] === 404, 'Replay of verified OTP must be rejected');
+        $expect($reused['body']['error']['code'] === 'CHALLENGE_ALREADY_USED');
+
+        // 9. Verified user logs in with password only (no OTP challenge)
+        $sessions->clearAuthentication();
+        $csrf = $sessions->csrfToken();
+        $loginRes = $authController->login(Request::fromValues('POST', '/auth/login', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'identifier' => 'david@example.com',
+            'password' => 'david-pass-1234'
+        ]));
+        $expect($loginRes['status'] === 200, 'Login must succeed with 200');
+        $expect(empty($loginRes['body']['data']['challenge_required']), 'Phone verification is registration-only; login must not challenge OTP');
+        $expect($sessions->currentUserId() === $createdAccount->id, 'Session must be immediately established on login');
+
+        // Existing admin without phone can also log in without OTP challenge
+        $sessions->clearAuthentication();
+        $csrf = $sessions->csrfToken();
+        $adminLogin = $authController->login(Request::fromValues('POST', '/auth/login', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'identifier' => 'admin one',
+            'password' => 'admin-pass-1234'
+        ]));
+        $expect($adminLogin['status'] === 200, 'Existing admin must log in successfully without phone OTP');
+        $expect(empty($adminLogin['body']['data']['challenge_required']), 'Admin login must not challenge phone OTP');
+
+        // 10. SMS service returns BLOCKED when unconfigured
+        $unconfiguredSmsService = new \InfinityBlog\Sms\SmsService(null);
+        $blockedResult = $unconfiguredSmsService->sendRegistrationOtp('+919876543210', '123456');
+        $expect($blockedResult['delivered'] === false, 'Unconfigured SMS delivery must not succeed');
+        $expect($blockedResult['status'] === 'BLOCKED', 'Unconfigured SMS status must be BLOCKED');
+        $expect(!empty($blockedResult['reason']), 'Unconfigured SMS must include actionable instructions');
+    });
+});
+
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
 $runDatabaseTests = $databaseTestFlag === '1';
 $testDatabaseValues = [
@@ -5471,6 +5679,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130021_add_secure_mobile_fields_to_users', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130022_create_auth_challenges', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610130023_create_post_reports', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610140024_create_registration_challenges', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

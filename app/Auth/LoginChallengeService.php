@@ -143,7 +143,7 @@ final class LoginChallengeService
             'masked_email' => $maskedEmail,
             'expires_in' => 600,
             'delivery_status' => $mailResult['status'],
-            'dev_code' => ($isDev && $mailResult['status'] === 'BLOCKED') ? $otp : null,
+            'dev_code' => $isDev ? $otp : null,
         ];
     }
 

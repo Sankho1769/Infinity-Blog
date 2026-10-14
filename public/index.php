@@ -376,19 +376,22 @@ try {
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {
+        $smsService = new \InfinityBlog\Sms\SmsService();
+        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $smsService, null, $users);
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
             $guard,
             $sessions,
             $users,
-            new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer)
+            new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer),
+            $regChallengeService
         );
     }
 
     $result = $controller->handle($request);
     $isBrowserForm = !str_contains((string) $request->header('Accept'), 'application/json') && !$request->isJson();
     if ($isBrowserForm) {
-        if ($result['status'] === 201 && ($request->path === '/register' || $request->path === '/auth/register')) {
+        if ($result['status'] === 201 && in_array($request->path, ['/register', '/auth/register', '/register/verify', '/auth/register/verify'], true)) {
             header('Location: /login?registered=1');
             return;
         }
@@ -399,6 +402,11 @@ try {
                 return;
             }
             header('Location: /dashboard');
+            return;
+        }
+        if ($result['status'] === 200 && ($request->path === '/register' || $request->path === '/auth/register') && !empty($result['body']['data']['challenge_required'])) {
+            $token = urlencode((string) ($result['body']['data']['challenge_token'] ?? ''));
+            header('Location: /register?step=verify&token=' . $token);
             return;
         }
         if ($result['status'] !== 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
@@ -414,6 +422,11 @@ try {
         if ($result['status'] !== 201 && ($request->path === '/register' || $request->path === '/auth/register')) {
             $errMsg = urlencode($result['body']['error']['message'] ?? 'Registration failed.');
             header('Location: /register?error=' . $errMsg);
+            return;
+        }
+        if ($result['status'] !== 201 && ($request->path === '/register/verify' || $request->path === '/auth/register/verify')) {
+            $errMsg = urlencode($result['body']['error']['message'] ?? 'Verification failed.');
+            header('Location: /register?step=verify&error=' . $errMsg);
             return;
         }
     }
