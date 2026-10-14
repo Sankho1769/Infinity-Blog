@@ -8,7 +8,7 @@
 </div>
 
 <?php if (empty($categories)): ?>
-  <div class="glass-panel empty-state" style="margin-top: 30px; padding: 60px 24px; text-align: center;">
+  <div class="glass-panel empty-state" style="margin-top: 20px; padding: 28px 20px; text-align: center;">
     <div style="font-size: 2.5rem; margin-bottom: 12px;">📁</div>
     <h2 class="empty-title">No Categories Established Yet</h2>
     <p class="empty-desc">Check back soon as new topics and articles are published.</p>

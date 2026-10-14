@@ -194,7 +194,7 @@
 <!-- Tab Panel: Followers -->
 <div id="author-panel-followers" role="tabpanel" aria-labelledby="author-tab-followers" style="display: none;">
   <?php if (empty($followers)): ?>
-    <div class="glass-panel empty-state" style="padding: 48px 24px; text-align: center;">
+    <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center;">
       <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
       <h3 class="empty-title">No followers yet</h3>
       <p class="empty-desc">Be the first to follow <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?> to stay notified about new stories.</p>
@@ -221,7 +221,7 @@
 <!-- Tab Panel: Following -->
 <div id="author-panel-following" role="tabpanel" aria-labelledby="author-tab-following" style="display: none;">
   <?php if (empty($following)): ?>
-    <div class="glass-panel empty-state" style="padding: 48px 24px; text-align: center;">
+    <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center;">
       <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
       <h3 class="empty-title">Not following any authors yet</h3>
       <p class="empty-desc"><?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?> is not currently following other writers.</p>

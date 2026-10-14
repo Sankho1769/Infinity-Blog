@@ -51,7 +51,7 @@
     </div>
 
     <?php if (empty($bookmarks)): ?>
-      <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+      <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center; border-radius: 16px;">
         <div style="font-size: 3rem; margin-bottom: 12px;">🔖</div>
         <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">No saved articles yet</h3>
         <p style="color: var(--text-muted); max-width: 460px; margin: 0 auto 20px;">When reading an article, click "Save to Library" to keep it organized here for quick future reference.</p>
@@ -108,7 +108,7 @@
   <!-- TAB 2: CONTINUE READING (HISTORY) -->
   <?php if (($activeTab ?? '') === 'history'): ?>
     <?php if (empty($history)): ?>
-      <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+      <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center; border-radius: 16px;">
         <div style="font-size: 3rem; margin-bottom: 12px;">⏱️</div>
         <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">No reading history yet</h3>
         <p style="color: var(--text-muted); max-width: 460px; margin: 0 auto 20px;">As you read articles on Infinity Blog, your progress is tracked automatically so you can resume anytime.</p>
@@ -169,7 +169,7 @@
     </div>
 
     <?php if (empty($collections)): ?>
-      <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+      <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center; border-radius: 16px;">
         <div style="font-size: 3rem; margin-bottom: 12px;">📁</div>
         <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">No collections yet</h3>
         <p style="color: var(--text-muted); max-width: 460px; margin: 0 auto 20px;">Organize related articles into thematic reading lists (e.g. "AI Research", "Web Architecture").</p>
@@ -215,7 +215,7 @@
   <!-- TAB 4: NOTES & HIGHLIGHTS -->
   <?php if (($activeTab ?? '') === 'notes'): ?>
     <?php if (empty($notes)): ?>
-      <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+      <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center; border-radius: 16px;">
         <div style="font-size: 3rem; margin-bottom: 12px;">✍️</div>
         <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">No notes or highlights yet</h3>
         <p style="color: var(--text-muted); max-width: 460px; margin: 0 auto 20px;">Highlight text and capture personal reflections while reading published articles.</p>

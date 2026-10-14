@@ -331,7 +331,7 @@
   </main>
 
   <!-- Footer with Clean Multi-Column Layout -->
-  <footer class="container site-footer glass-panel" style="margin-top: 60px; margin-bottom: 24px; padding: 36px 32px; border-radius: 20px;">
+  <footer class="container site-footer glass-panel">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px; margin-bottom: 24px;">
       <div style="max-width: 320px;">
         <a href="/" class="brand-logo" aria-label="Infinity Blog Home" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;">

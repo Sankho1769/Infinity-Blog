@@ -14,15 +14,15 @@ $ticketId = $ticketId ?? (!empty($_GET['ticket']) ? (int) $_GET['ticket'] : null
 $errors = $errors ?? [];
 $formData = $formData ?? [];
 ?>
-<section class="page-container" style="max-width: 860px; margin: 40px auto; padding: 0 16px;">
-  <div class="glass-card" style="padding: 40px 36px; border-radius: var(--radius-xl);">
-    <div style="display: inline-block; padding: 4px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: var(--primary-600, #4f46e5); font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;">
+<section class="page-container" style="max-width: 860px; margin: 24px auto; padding: 0 16px;">
+  <div class="glass-card" style="padding: 28px 24px; border-radius: var(--radius-xl);">
+    <div style="display: inline-block; padding: 4px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: var(--primary-600, #4f46e5); font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px;">
       Get In Touch
     </div>
-    <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-heading); margin-bottom: 12px; letter-spacing: -0.02em;">
+    <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-heading); margin-bottom: 10px; letter-spacing: -0.02em;">
       Contact Infinity Blog
     </h1>
-    <p style="color: var(--text-muted); font-size: 1.05rem; line-height: 1.6; margin-bottom: 32px;">
+    <p style="color: var(--text-muted); font-size: 1.02rem; line-height: 1.6; margin-bottom: 22px;">
       Have a question about our publishing platform, need editorial assistance, or wish to report a bug? Send us a message below and our support team will get back to you.
     </p>
 
@@ -59,8 +59,8 @@ $formData = $formData ?? [];
       <?php endif; ?>
 
       <!-- Direct Contact Channels -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 36px;">
-        <div class="glass-card" style="padding: 22px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="glass-card" style="padding: 18px 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
           <div style="font-size: 1.3rem; margin-bottom: 6px;">✍️</div>
           <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; color: var(--text-heading);">Editorial Inquiries</h3>
           <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Article pitches, publishing feedback &amp; remix permissions.</p>
@@ -71,7 +71,7 @@ $formData = $formData ?? [];
           <?php endif; ?>
         </div>
 
-        <div class="glass-card" style="padding: 22px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
+        <div class="glass-card" style="padding: 18px 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.6);">
           <div style="font-size: 1.3rem; margin-bottom: 6px;">🛠️</div>
           <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 4px; color: var(--text-heading);">Technical Support</h3>
           <p style="font-size: 0.86rem; color: var(--text-muted); margin-bottom: 8px;">Account access, security, bug reports &amp; data requests.</p>
@@ -84,9 +84,9 @@ $formData = $formData ?? [];
       </div>
 
       <!-- Functional Glassmorphism Contact Form -->
-      <div style="background: rgba(255, 255, 255, 0.5); padding: 32px; border-radius: var(--radius-lg); border: 1px solid var(--glass-border);">
-        <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--text-heading); margin-bottom: 8px;">Send a Direct Message</h2>
-        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 24px;">All fields marked with an asterisk are required.</p>
+      <div style="background: rgba(255, 255, 255, 0.5); padding: 24px 20px; border-radius: var(--radius-lg); border: 1px solid var(--glass-border);">
+        <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-heading); margin-bottom: 6px;">Send a Direct Message</h2>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 20px;">All fields marked with an asterisk are required.</p>
 
         <form method="POST" action="/contact" id="contactForm" novalidate>
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
@@ -97,7 +97,7 @@ $formData = $formData ?? [];
             <input type="text" name="website_hp" id="contact_website_hp" tabindex="-1" autocomplete="off">
           </div>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; margin-bottom: 16px;">
             <div class="form-group" style="margin-bottom: 0;">
               <label for="contact-name" class="form-label">Your Full Name <span style="color: var(--danger-color);">*</span></label>
               <input type="text" id="contact-name" name="name" class="form-input <?= !empty($errors['name']) ? 'has-error' : '' ?>" placeholder="e.g. Cristine Palmer" value="<?= htmlspecialchars($formData['name'] ?? ($currentUser['display_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" required maxlength="100">

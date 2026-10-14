@@ -8,7 +8,7 @@
 </div>
 
 <!-- Mission Hero Card -->
-<div class="glass-panel" style="padding: 40px 32px; border-radius: var(--radius-xl); margin-bottom: 36px; position: relative; overflow: hidden;">
+<div class="glass-panel" style="padding: 28px 24px; border-radius: var(--radius-xl); margin-bottom: 24px; position: relative; overflow: hidden;">
   <div style="max-width: 760px; margin: 0 auto; text-align: center;">
     <h2 style="font-size: 1.65rem; font-weight: 800; color: var(--text-dark); margin-bottom: 16px;">
       Empowering Clear Ideas & Deep Perspectives

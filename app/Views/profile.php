@@ -312,7 +312,7 @@ declare(strict_types=1);
   <!-- Tab Panel 3: Followers -->
   <section id="profile-panel-followers" role="tabpanel" aria-labelledby="profile-tab-followers" class="user-followers-section" style="display: none;">
     <?php if (empty($followers)): ?>
-      <div class="glass-card empty-state" style="padding: 48px 24px; text-align: center;">
+      <div class="glass-card empty-state" style="padding: 28px 20px; text-align: center;">
         <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
         <h3 class="empty-title">No followers yet</h3>
         <p class="empty-desc">When readers or fellow authors follow you, they'll appear here.</p>
@@ -340,7 +340,7 @@ declare(strict_types=1);
   <!-- Tab Panel 4: Following -->
   <section id="profile-panel-following" role="tabpanel" aria-labelledby="profile-tab-following" class="user-following-section" style="display: none;">
     <?php if (empty($following)): ?>
-      <div class="glass-card empty-state" style="padding: 48px 24px; text-align: center;">
+      <div class="glass-card empty-state" style="padding: 28px 20px; text-align: center;">
         <div style="font-size: 2.4rem; margin-bottom: 10px;">👥</div>
         <h3 class="empty-title">Not following anyone yet</h3>
         <p class="empty-desc">Explore authors on Infinity Blog and follow them to see their latest work in your feed.</p>

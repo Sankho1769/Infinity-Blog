@@ -105,7 +105,7 @@
   <?php if (($viewMode ?? 'grouped') === 'grouped'): ?>
     <!-- ==================== VIEW 1: GROUPED BY POST ==================== -->
     <?php if (empty($groupedPosts)): ?>
-      <div class="empty-state" style="padding: 48px 24px; text-align: center;">
+      <div class="empty-state" style="padding: 28px 20px; text-align: center;">
         <div style="font-size: 3rem; margin-bottom: 12px;">🛡️</div>
         <h3 class="empty-title">No reported posts found</h3>
         <p class="empty-desc">
@@ -220,7 +220,7 @@
   <?php else: ?>
     <!-- ==================== VIEW 2: ALL REPORTS LIST ==================== -->
     <?php if (empty($reportsList)): ?>
-      <div class="empty-state" style="padding: 48px 24px; text-align: center;">
+      <div class="empty-state" style="padding: 28px 20px; text-align: center;">
         <div style="font-size: 3rem; margin-bottom: 12px;">📋</div>
         <h3 class="empty-title">No individual reports found</h3>
         <p class="empty-desc">There are no reports matching your active filters.</p>

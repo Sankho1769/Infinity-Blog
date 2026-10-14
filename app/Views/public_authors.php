@@ -29,7 +29,7 @@
 <?php endif; ?>
 
 <?php if (empty($authors)): ?>
-  <div class="glass-panel empty-state" style="margin-top: 30px; padding: 60px 24px; text-align: center;">
+  <div class="glass-panel empty-state" style="margin-top: 20px; padding: 28px 20px; text-align: center;">
     <div style="font-size: 2.5rem; margin-bottom: 12px;">✍️</div>
     <h2 class="empty-title">No Active Authors Found</h2>
     <p class="empty-desc">
@@ -38,22 +38,22 @@
     <a href="/authors" class="btn btn-primary btn-pill">Browse All Authors</a>
   </div>
 <?php else: ?>
-  <div class="authors-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 24px; margin-top: 16px;">
+  <div class="authors-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 20px; margin-top: 16px;">
     <?php foreach ($authors as $author): ?>
       <?php
         $avatarSrc = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
         $displayName = $author['display_name'] ?? $author['username'];
       ?>
-      <div class="glass-panel glass-panel-hover" style="display: flex; flex-direction: column; justify-content: space-between; padding: 26px; border-radius: var(--radius-xl); transition: all 0.2s ease;">
+      <div class="glass-panel glass-panel-hover author-card" style="display: flex; flex-direction: column; justify-content: space-between; padding: clamp(16px, 3.5vw, 24px); border-radius: var(--radius-xl); transition: all 0.2s ease;">
         <div>
-          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
             <?php if (!empty($avatarSrc)): ?>
-              <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 54px; height: 54px; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25); border: 2px solid #fff; flex-shrink: 0;" onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
-              <div style="display: none; width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; flex-shrink: 0;">
+              <img src="<?= htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25); border: 2px solid #fff; flex-shrink: 0;" onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+              <div style="display: none; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; flex-shrink: 0;">
                 <?= strtoupper(substr($displayName, 0, 1)) ?>
               </div>
             <?php else: ?>
-              <div style="width: 54px; height: 54px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3); flex-shrink: 0;">
+              <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.25rem; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3); flex-shrink: 0;">
                 <?= strtoupper(substr($displayName, 0, 1)) ?>
               </div>
             <?php endif; ?>
@@ -64,12 +64,12 @@
                   <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>
                 </a>
               </h3>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.82rem; color: var(--text-muted);">
+              <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                <span style="font-size: 0.82rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; display: inline-block;">
                   @<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?>
                 </span>
                 <?php if (!empty($author['is_self'])): ?>
-                  <span class="badge" style="background: rgba(99, 102, 241, 0.1); color: var(--primary-color); font-size: 0.72rem; padding: 1px 8px;">You</span>
+                  <span class="badge" style="background: rgba(99, 102, 241, 0.1); color: var(--primary-color); font-size: 0.72rem; padding: 1px 8px; flex-shrink: 0;">You</span>
                 <?php endif; ?>
               </div>
             </div>

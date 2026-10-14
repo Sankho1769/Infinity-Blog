@@ -5,9 +5,9 @@ declare(strict_types=1);
  * @var string $csrfToken
  */
 ?>
-<section class="page-container" style="max-width: 860px; margin: 40px auto; padding: 0 16px;">
-  <div class="glass-card" style="padding: 40px 36px; border-radius: var(--radius-xl);">
-    <div style="display: inline-block; padding: 4px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: var(--primary-600, #4f46e5); font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;">
+<section class="page-container" style="max-width: 860px; margin: 24px auto; padding: 0 16px;">
+  <div class="glass-card" style="padding: 28px 24px; border-radius: var(--radius-xl);">
+    <div style="display: inline-block; padding: 4px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: var(--primary-600, #4f46e5); font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 14px;">
       Privacy & Trust
     </div>
     <h1 style="font-size: 2.2rem; font-weight: 800; color: var(--text-heading); margin-bottom: 8px; letter-spacing: -0.02em;">

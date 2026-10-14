@@ -11,7 +11,7 @@
   </div>
 
   <?php if (empty($posts)): ?>
-    <div class="glass-panel" style="padding: 48px; text-align: center; border-radius: 16px;">
+    <div class="glass-panel empty-state" style="padding: 28px 20px; text-align: center; border-radius: 16px;">
       <div style="font-size: 3rem; margin-bottom: 12px;">👥</div>
       <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">Your following feed is quiet</h3>
       <p style="color: var(--text-muted); max-width: 480px; margin: 0 auto 20px;">

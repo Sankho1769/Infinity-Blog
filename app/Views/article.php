@@ -81,7 +81,7 @@
           </div>
         </div>
 
-        <div style="margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div class="article-meta-actions">
           <?php
             $remixUrl = !empty($currentUser)
               ? '/posts/new?remix=' . (int) $post['id']
@@ -123,7 +123,7 @@
     </div>
 
     <!-- Reader Experience Toolbar (Reader Mode, Audio, Focus, Bookmark, AI) -->
-    <div class="article-reader-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div class="article-reader-toolbar">
       <div class="reader-mode-tabs" role="tablist" aria-label="Reading Experience Options">
         <button type="button" class="reader-tab-btn active" id="tab-read-full" data-mode="read-full" role="tab" aria-selected="true">
           <span>📖</span> Read Full
@@ -439,46 +439,6 @@
       </div>
     </section>
 
-    <!-- Resume Reading Toast Notification -->
-    <div id="resumeReadingToast" style="display: none; position: fixed; bottom: 24px; left: 24px; z-index: 9999; padding: 14px 20px; border-radius: 16px; background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); align-items: center; gap: 14px; border: 1px solid var(--primary-color);">
-      <span style="font-size: 1.2rem;">⏱️</span>
-      <div>
-        <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Resume reading?</div>
-        <div style="font-size: 0.78rem; color: var(--text-muted);">You previously left off at <span id="savedProgressPct">0%</span></div>
-      </div>
-      <button type="button" onclick="resumeSavedScroll()" class="btn btn-primary btn-sm btn-pill">Resume</button>
-      <button type="button" onclick="dismissResumeToast()" style="border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-weight: 700;">✕</button>
-    </div>
-
-    <!-- Article-Specific AI Assistant Drawer -->
-    <aside class="article-assistant-drawer" id="articleAssistantDrawer">
-      <div style="padding: 18px 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.5);">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.3rem;">🤖</span>
-          <div>
-            <h4 style="font-size: 1.05rem; font-weight: 800; margin: 0; color: var(--text-dark);">Article AI Assistant</h4>
-            <span style="font-size: 0.72rem; color: var(--text-muted);">Contextual Q&A strictly from this article</span>
-          </div>
-        </div>
-        <button type="button" onclick="toggleAssistantDrawer()" style="border: none; background: transparent; font-size: 1.3rem; cursor: pointer; color: var(--text-dark);">✕</button>
-      </div>
-
-      <div id="assistantChatStream" style="flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
-        <div style="padding: 12px 14px; border-radius: 12px; background: rgba(37, 99, 235, 0.08); font-size: 0.85rem; color: var(--text-dark); line-height: 1.45;">
-          👋 Hi! Ask any question about <strong>"<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"</strong>. I will answer concisely using only facts from this article and provide passage citations.
-        </div>
-      </div>
-
-      <div style="padding: 14px 18px; border-top: 1px solid var(--glass-border); background: rgba(255,255,255,0.85);">
-        <form id="assistantAskForm" onsubmit="handleAskAssistant(event)" style="display: flex; gap: 8px;">
-          <input type="text" id="assistantQuestionInput" class="form-input" placeholder="Ask about this article..." required autocomplete="off" style="flex: 1; font-size: 0.88rem; border-radius: 20px; padding: 8px 14px;">
-          <button type="submit" id="assistantAskBtn" class="btn btn-primary btn-sm btn-pill" style="padding: 8px 16px;">
-            Ask
-          </button>
-        </form>
-      </div>
-    </aside>
-
     <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid rgba(226, 232, 240, 0.7); display: flex; justify-content: space-between; align-items: center;">
       <a href="/" class="btn btn-secondary btn-pill">
         ← Back to All Articles
@@ -602,6 +562,46 @@
     </div>
   </aside>
 </div>
+
+<!-- Resume Reading Toast Notification -->
+<div id="resumeReadingToast" style="display: none; position: fixed; bottom: 24px; left: 24px; z-index: 9999; padding: 14px 20px; border-radius: 16px; background: rgba(255,255,255,0.96); backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); align-items: center; gap: 14px; border: 1px solid var(--primary-color);">
+  <span style="font-size: 1.2rem;">⏱️</span>
+  <div>
+    <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Resume reading?</div>
+    <div style="font-size: 0.78rem; color: var(--text-muted);">You previously left off at <span id="savedProgressPct">0%</span></div>
+  </div>
+  <button type="button" onclick="resumeSavedScroll()" class="btn btn-primary btn-sm btn-pill">Resume</button>
+  <button type="button" onclick="dismissResumeToast()" style="border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-weight: 700;">✕</button>
+</div>
+
+<!-- Article-Specific AI Assistant Drawer -->
+<aside class="article-assistant-drawer" id="articleAssistantDrawer">
+  <div style="padding: 18px 20px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.5);">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 1.3rem;">🤖</span>
+      <div>
+        <h4 style="font-size: 1.05rem; font-weight: 800; margin: 0; color: var(--text-dark);">Article AI Assistant</h4>
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Contextual Q&A strictly from this article</span>
+      </div>
+    </div>
+    <button type="button" onclick="toggleAssistantDrawer()" style="border: none; background: transparent; font-size: 1.3rem; cursor: pointer; color: var(--text-dark);">✕</button>
+  </div>
+
+  <div id="assistantChatStream" style="flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 14px;">
+    <div style="padding: 12px 14px; border-radius: 12px; background: rgba(37, 99, 235, 0.08); font-size: 0.85rem; color: var(--text-dark); line-height: 1.45;">
+      👋 Hi! Ask any question about <strong>"<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"</strong>. I will answer concisely using only facts from this article and provide passage citations.
+    </div>
+  </div>
+
+  <div style="padding: 14px 18px; border-top: 1px solid var(--glass-border); background: rgba(255,255,255,0.85);">
+    <form id="assistantAskForm" onsubmit="handleAskAssistant(event)" style="display: flex; gap: 8px;">
+      <input type="text" id="assistantQuestionInput" class="form-input" placeholder="Ask about this article..." required autocomplete="off" style="flex: 1; font-size: 0.88rem; border-radius: 20px; padding: 8px 14px;">
+      <button type="submit" id="assistantAskBtn" class="btn btn-primary btn-sm btn-pill" style="padding: 8px 16px;">
+        Ask
+      </button>
+    </form>
+  </div>
+</aside>
 
 <!-- Share Article Modal -->
 <div class="modal-backdrop" id="share-article-modal">
