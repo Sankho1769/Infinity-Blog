@@ -385,12 +385,33 @@ final class RegistrationChallengeService
         $profile['mobile_number_hash'] = (string) $row['phone_hash'];
         $profile['mobile_number_verified_at'] = $now;
 
-        $userId = $this->userRepo->createUser(
-            (string) $row['display_name'],
-            (string) $row['email'],
-            (string) $row['password_hash'],
-            $profile
-        );
+        try {
+            $userId = $this->userRepo->createUser(
+                (string) $row['display_name'],
+                (string) $row['email'],
+                (string) $row['password_hash'],
+                $profile
+            );
+        } catch (\InfinityBlog\Auth\ProfileValidationException $e) {
+            $errs = $e->errors();
+            $msg = $errs['phone'] ?? $errs['email'] ?? $errs['username'] ?? 'Registration could not be completed.';
+            return [
+                'success' => false,
+                'error' => 'PHONE_ALREADY_REGISTERED',
+                'message' => $msg,
+            ];
+        } catch (\PDOException $e) {
+            $msg = $e->getMessage();
+            $code = (string) $e->getCode();
+            if ($code === '23000' || str_contains($msg, '1062') || str_contains($msg, 'UNIQUE') || str_contains($msg, 'uq_users_mobile_hash')) {
+                return [
+                    'success' => false,
+                    'error' => 'PHONE_ALREADY_REGISTERED',
+                    'message' => 'This mobile phone number is already registered to an account.',
+                ];
+            }
+            throw $e;
+        }
 
         unset($_SESSION['pending_registration']);
 

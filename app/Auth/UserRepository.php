@@ -128,41 +128,57 @@ final class UserRepository
     /** @param array<string, mixed> $profile */
     public function createUser(string $displayName, string $email, string $passwordHash, array $profile = []): int
     {
-        $normalized = self::normalizeIdentifier($email);
-        $statement = $this->pdo->prepare(
-            'INSERT INTO users (username, email, display_name, password_hash, role, status, auth_version, must_change_password) ' .
-            "VALUES (:username, :email, :display_name, :password_hash, 'user', 'active', 1, 0)"
-        );
-        $statement->execute([
-            'username' => $normalized,
-            'email' => $normalized,
-            'display_name' => trim($displayName),
-            'password_hash' => $passwordHash,
-        ]);
-
-        $id = (int) $this->pdo->lastInsertId();
+        $inTx = $this->pdo->inTransaction();
+        if (!$inTx) {
+            $this->pdo->beginTransaction();
+        }
 
         try {
-            $audit = $this->pdo->prepare(
-                'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
-                'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+            $normalized = self::normalizeIdentifier($email);
+            $statement = $this->pdo->prepare(
+                'INSERT INTO users (username, email, display_name, password_hash, role, status, auth_version, must_change_password) ' .
+                "VALUES (:username, :email, :display_name, :password_hash, 'user', 'active', 1, 0)"
             );
-            $audit->execute([
-                'actor_user_id' => $id,
-                'action' => 'auth.registered',
-                'entity_type' => 'user',
-                'entity_id' => $id,
-                'created_at' => gmdate('Y-m-d H:i:s'),
+            $statement->execute([
+                'username' => $normalized,
+                'email' => $normalized,
+                'display_name' => trim($displayName),
+                'password_hash' => $passwordHash,
             ]);
-        } catch (Throwable) {
-            // Tolerate test environments where audit_logs table is omitted
-        }
 
-        if ($profile !== []) {
-            $this->updateProfile($id, $profile);
-        }
+            $id = (int) $this->pdo->lastInsertId();
 
-        return $id;
+            try {
+                $audit = $this->pdo->prepare(
+                    'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, metadata, created_at) ' .
+                    'VALUES (:actor_user_id, :action, :entity_type, :entity_id, NULL, :created_at)'
+                );
+                $audit->execute([
+                    'actor_user_id' => $id,
+                    'action' => 'auth.registered',
+                    'entity_type' => 'user',
+                    'entity_id' => $id,
+                    'created_at' => gmdate('Y-m-d H:i:s'),
+                ]);
+            } catch (Throwable) {
+                // Tolerate test environments where audit_logs table is omitted
+            }
+
+            if ($profile !== []) {
+                $this->updateProfile($id, $profile);
+            }
+
+            if (!$inTx) {
+                $this->pdo->commit();
+            }
+
+            return $id;
+        } catch (Throwable $e) {
+            if (!$inTx && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     public function emailExists(string $email): bool

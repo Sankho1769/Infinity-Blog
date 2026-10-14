@@ -527,6 +527,7 @@ $createUserDatabase = static function (): PDO {
         'last_login_at TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, ' .
         'mobile_number_ciphertext TEXT NULL, mobile_number_hash TEXT NULL, mobile_number_verified_at TEXT NULL)'
     );
+    $pdo->exec('CREATE UNIQUE INDEX IF NOT EXISTS uq_users_mobile_hash ON users (mobile_number_hash)');
     $insert = $pdo->prepare(
         'INSERT INTO users (username, display_name, password_hash, role, status) VALUES (?, ?, ?, ?, ?)'
     );
@@ -4737,6 +4738,66 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         $expect($reused['status'] === 404, 'Replay of verified OTP must be rejected');
         $expect($reused['body']['error']['code'] === 'CHALLENGE_ALREADY_USED');
 
+        // 8b. Concurrent registration attempt for the same phone
+        $sharedPhone = '+919876500111';
+        $userCReg = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Concurrent User C',
+            'email' => 'user_c@example.com',
+            'password' => 'password123!',
+            'confirm_password' => 'password123!',
+            'phone' => $sharedPhone,
+        ]));
+        $expect($userCReg['status'] === 200);
+        $tokenC = $userCReg['body']['data']['challenge_token'];
+        $otpC = $userCReg['body']['data']['dev_code'];
+
+        // User D initiates concurrently before User C verifies
+        $userDReg = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.101', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Concurrent User D',
+            'email' => 'user_d@example.com',
+            'password' => 'password123!',
+            'confirm_password' => 'password123!',
+            'phone' => $sharedPhone,
+        ]));
+        $expect($userDReg['status'] === 200);
+        $tokenD = $userDReg['body']['data']['challenge_token'];
+        $otpD = $userDReg['body']['data']['dev_code'];
+
+        // User C verifies first
+        $verifyC = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $tokenC,
+            'code' => $otpC,
+        ]));
+        $expect($verifyC['status'] === 201, 'User C verification must succeed with 201');
+
+        // User D attempts to verify after User C succeeded -> rejected by application check
+        $verifyD = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.101', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $tokenD,
+            'code' => $otpD,
+        ]));
+        $expect($verifyD['status'] === 409, 'Concurrent verification for same phone must be rejected with 409 Conflict');
+        $expect($verifyD['body']['error']['code'] === 'PHONE_ALREADY_REGISTERED');
+
+        // 8c. Database-level unique constraint enforcement & transaction rollback
+        $normPhone = $mobileService->normalize($sharedPhone);
+        $hashPhone = $mobileService->hash($normPhone);
+        $cipherPhone = $mobileService->encrypt($normPhone);
+
+        $initialUserCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        $dbConstraintCaught = false;
+        try {
+            $users->createUser('Direct Insert Attacker', 'direct_attacker@example.com', password_hash('pass1234', PASSWORD_DEFAULT), [
+                'phone' => $normPhone,
+                'mobile_number_ciphertext' => $cipherPhone,
+                'mobile_number_hash' => $hashPhone,
+            ]);
+        } catch (\Throwable $e) {
+            $dbConstraintCaught = true;
+        }
+        $expect($dbConstraintCaught, 'Database-level UNIQUE constraint on mobile_number_hash must reject duplicate');
+        $finalUserCount = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        $expect($finalUserCount === $initialUserCount, 'Failed duplicate creation must roll back with zero orphaned rows');
+
         // 9. Verified user logs in with password only (no OTP challenge)
         $sessions->clearAuthentication();
         $csrf = $sessions->csrfToken();
@@ -5590,6 +5651,8 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
             try {
                 $migrationRunner->rollbackLast(false);
             } catch (InvalidArgumentException $exception) {
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610140024_create_registration_challenges');
                 $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610130023_create_post_reports');
                 $rolledBack = $migrationRunner->rollbackLast(true);
