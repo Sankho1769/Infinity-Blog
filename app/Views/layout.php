@@ -55,71 +55,82 @@
   </div>
 
   <!-- Sticky Glass Navigation Header -->
-  <header class="site-header container container-wide">
+  <header class="site-header container container-wide<?= !empty($currentUser) ? ' is-authenticated' : ' is-guest' ?>">
     <nav class="nav-bar glass-panel" aria-label="Main Navigation">
-      <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
-        <span class="brand-logo-icon">✦</span>
-        <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
-      </a>
+      <!-- Left Section: Brand Logo & Title -->
+      <div class="nav-section-left">
+        <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
+          <span class="brand-logo-icon">✦</span>
+          <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
+        </a>
+      </div>
 
-      <!-- Desktop Navigation Links -->
-      <ul class="nav-links">
-        <li><a href="/" class="nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
-        <li><a href="/categories" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
-        <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
-        <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
-        <li><a href="/chat" class="nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Community Chat</a></li>
-        <li><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
-        <?php if (!empty($currentUser)): ?>
-          <!-- More / Workspace Dropdown -->
-          <li class="nav-dropdown" id="more-nav-dropdown">
-            <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['library', 'following', 'dashboard', 'posts']) ? 'active' : '' ?>" id="more-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="More destinations">
-              More <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
-            </button>
-            <div class="nav-dropdown-menu glass-panel" id="more-nav-dropdown-menu" role="menu" aria-label="More Navigation">
-              <a href="/library" class="nav-dropdown-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>" role="menuitem">
-                <span class="dropdown-item-icon">📚</span> Library
-              </a>
-              <a href="/following" class="nav-dropdown-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>" role="menuitem">
-                <span class="dropdown-item-icon">👥</span> Following Feed
-              </a>
-              <a href="/dashboard" class="nav-dropdown-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>" role="menuitem">
-                <span class="dropdown-item-icon">📊</span> Dashboard
-              </a>
-              <a href="/posts/manage" class="nav-dropdown-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>" role="menuitem">
-                <span class="dropdown-item-icon">📝</span> All Posts
-              </a>
-            </div>
-          </li>
-          <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-            <li class="nav-dropdown" id="admin-nav-dropdown">
-              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages', 'reported_posts']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Administration">
-                Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+      <!-- Middle Section: Navigation Links -->
+      <div class="nav-section-middle">
+        <ul class="nav-links">
+          <li><a href="/" class="nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
+          <li><a href="/categories" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
+          <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
+          <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
+          <li class="nav-item-collapsible"><a href="/chat" class="nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Community Chat</a></li>
+          <li class="nav-item-collapsible"><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
+          <?php if (!empty($currentUser)): ?>
+            <!-- More / Workspace Dropdown -->
+            <li class="nav-dropdown" id="more-nav-dropdown">
+              <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['library', 'following', 'dashboard', 'posts', 'chat', 'messages']) ? 'active' : '' ?>" id="more-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="More destinations">
+                More <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
               </button>
-              <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
-                <a href="/admin/reported-posts-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>" role="menuitem">
-                  <span class="dropdown-item-icon">🚩</span> Reported Posts
+              <div class="nav-dropdown-menu glass-panel" id="more-nav-dropdown-menu" role="menu" aria-label="More Navigation">
+                <a href="/chat" class="nav-dropdown-link nav-overflow-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">💬</span> Community Chat
                 </a>
-                <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">
-                  <span class="dropdown-item-icon">📁</span> Categories Admin
+                <a href="/messages" class="nav-dropdown-link nav-overflow-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">✉️</span> Messages <span id="more-unread-badge" class="badge-unread-dot" style="display: none; margin-left: 6px;"></span>
                 </a>
-                <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">
-                  <span class="dropdown-item-icon">👤</span> Users Management
+                <a href="/library" class="nav-dropdown-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">📚</span> Library
                 </a>
-                <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">
-                  <span class="dropdown-item-icon">🛡️</span> Audit Logs
+                <a href="/following" class="nav-dropdown-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">👥</span> Following Feed
                 </a>
-                <a href="/admin/contact-messages-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>" role="menuitem">
-                  <span class="dropdown-item-icon">✉️</span> Contact Inquiries
+                <a href="/dashboard" class="nav-dropdown-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">📊</span> Dashboard
+                </a>
+                <a href="/posts/manage" class="nav-dropdown-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>" role="menuitem">
+                  <span class="dropdown-item-icon">📝</span> All Posts
                 </a>
               </div>
             </li>
+            <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+              <li class="nav-dropdown" id="admin-nav-dropdown">
+                <button type="button" class="nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages', 'reported_posts']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="Administration">
+                  Admin <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav-dropdown-menu glass-panel" id="admin-nav-dropdown-menu" role="menu" aria-label="Admin Navigation">
+                  <a href="/admin/reported-posts-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>" role="menuitem">
+                    <span class="dropdown-item-icon">🚩</span> Reported Posts
+                  </a>
+                  <a href="/admin/categories-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>" role="menuitem">
+                    <span class="dropdown-item-icon">📁</span> Categories Admin
+                  </a>
+                  <a href="/admin/users-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>" role="menuitem">
+                    <span class="dropdown-item-icon">👤</span> Users Management
+                  </a>
+                  <a href="/admin/audit-logs-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>" role="menuitem">
+                    <span class="dropdown-item-icon">🛡️</span> Audit Logs
+                  </a>
+                  <a href="/admin/contact-messages-page" class="nav-dropdown-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>" role="menuitem">
+                    <span class="dropdown-item-icon">✉️</span> Contact Inquiries
+                  </a>
+                </div>
+              </li>
+            <?php endif; ?>
           <?php endif; ?>
-        <?php endif; ?>
-      </ul>
+        </ul>
+      </div>
 
-      <!-- Desktop Header Actions -->
-      <div class="nav-actions">
+      <!-- Right Section: Desktop Header Actions -->
+      <div class="nav-actions nav-section-right">
         <!-- Search bar -->
         <form action="/" method="GET" class="nav-search-form" role="search">
           <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

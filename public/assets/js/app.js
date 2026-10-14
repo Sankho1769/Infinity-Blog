@@ -428,7 +428,8 @@
     async function updateUnreadCount() {
       const navBadge = document.getElementById('nav-unread-badge');
       const mobBadge = document.getElementById('mobile-unread-badge');
-      if (!navBadge && !mobBadge) return;
+      const moreBadge = document.getElementById('more-unread-badge');
+      if (!navBadge && !mobBadge && !moreBadge) return;
 
       try {
         const res = await fetch('/api/messages/unread-count', {
@@ -437,7 +438,7 @@
         if (res.ok) {
           const data = await res.json();
           const count = data.data?.unread_count || 0;
-          [navBadge, mobBadge].forEach(badge => {
+          [navBadge, mobBadge, moreBadge].forEach(badge => {
             if (badge) {
               if (count > 0) {
                 badge.textContent = count > 99 ? '99+' : count;
