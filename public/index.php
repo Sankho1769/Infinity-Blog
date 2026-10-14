@@ -377,12 +377,16 @@ try {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {
         $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $mailer, null, $users);
+        $loginEmailChallenge = getenv('LOGIN_EMAIL_CHALLENGE');
+        $loginChallengeService = ($loginEmailChallenge === '1' || $loginEmailChallenge === 'true')
+            ? new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer)
+            : null;
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
             $guard,
             $sessions,
             $users,
-            new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer),
+            $loginChallengeService,
             $regChallengeService
         );
     }

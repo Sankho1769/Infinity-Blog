@@ -8,6 +8,13 @@
     <h1 class="auth-title">Join Infinity Blog</h1>
     <p class="auth-subtitle">Create your account to read, write, and share perspectives on Infinity Blog.</p>
 
+    <?php
+    $pendingReg = $_SESSION['pending_registration'] ?? null;
+    $tokenParam = $_GET['token'] ?? ($pendingReg['challenge_token'] ?? '');
+    $isVerifyStep = (isset($_GET['step']) && $_GET['step'] === 'verify') || (!empty($_GET['token']) && !empty($tokenParam));
+    $initialMaskedEmail = $pendingReg['masked_email'] ?? '';
+    ?>
+
     <?php if (!empty($_GET['error'])): ?>
       <div class="alert-banner alert-error" style="display: flex; margin-bottom: 20px;">
         <span><?= htmlspecialchars(urldecode((string)$_GET['error']), ENT_QUOTES, 'UTF-8') ?></span>
@@ -17,7 +24,7 @@
     <div id="register-error-alert" class="alert-banner alert-error" style="display: none;"></div>
 
     <!-- Step 1: Initial Registration Form -->
-    <form id="register-form" method="POST" action="/register" novalidate>
+    <form id="register-form" method="POST" action="/register" style="<?= $isVerifyStep ? 'display: none;' : '' ?>" novalidate>
       <input type="hidden" name="csrf_token" id="reg-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
       <div class="form-group">
@@ -133,9 +140,9 @@
     </form>
 
     <!-- Step 2: Registration Email Verification Form -->
-    <form id="register-challenge-form" method="POST" action="/auth/register/verify" style="display: none;" novalidate>
+    <form id="register-challenge-form" method="POST" action="/auth/register/verify" style="<?= $isVerifyStep ? 'display: block;' : 'display: none;' ?>" novalidate>
       <input type="hidden" name="csrf_token" id="reg-challenge-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
-      <input type="hidden" id="reg_challenge_token" name="challenge_token" value="">
+      <input type="hidden" id="reg_challenge_token" name="challenge_token" value="<?= htmlspecialchars((string)$tokenParam, ENT_QUOTES, 'UTF-8') ?>">
 
       <div style="text-align: center; margin-bottom: 20px;">
         <div style="font-size: 2.2rem; margin-bottom: 8px;">✉️</div>
@@ -144,7 +151,7 @@
         </h2>
         <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.45;">
           We sent a 6-digit verification code to:
-          <strong id="reg-challenge-masked-email" style="display: block; color: var(--primary-color); margin-top: 4px; font-family: monospace; font-size: 0.95rem;"></strong>
+          <strong id="reg-challenge-masked-email" style="display: block; color: var(--primary-color); margin-top: 4px; font-family: monospace; font-size: 0.95rem;"><?= htmlspecialchars((string)$initialMaskedEmail, ENT_QUOTES, 'UTF-8') ?></strong>
         </p>
       </div>
 
@@ -438,6 +445,9 @@
       if (errorBox) {
         errorBox.textContent = msg;
         errorBox.style.display = 'flex';
+        try {
+          errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (e) {}
       }
     }
 

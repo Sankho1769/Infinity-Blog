@@ -293,8 +293,9 @@ final class SmtpTransport implements MailTransportInterface
             $raw .= $bodyText . "\r\n";
         }
 
-        // Normalize newlines to CRLF
-        $raw = str_replace(["\r\n", "\r", "\n"], "\r\n", $raw);
+        // Normalize newlines to CRLF safely
+        $raw = str_replace(["\r\n", "\r"], "\n", $raw);
+        $raw = str_replace("\n", "\r\n", $raw);
 
         // Dot-stuffing per RFC 5321 §4.5.2
         return preg_replace('/^\./m', '..', $raw) ?? $raw;
