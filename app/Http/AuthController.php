@@ -42,7 +42,7 @@ final class AuthController
         if ($this->registrationChallenges !== null) {
             return $this->registrationChallenges;
         }
-        $toggle = getenv('REGISTRATION_PHONE_VERIFICATION');
+        $toggle = getenv('REGISTRATION_EMAIL_VERIFICATION') ?: getenv('REGISTRATION_PHONE_VERIFICATION') ?: getenv('REGISTRATION_OTP_VERIFICATION');
         if ($toggle === '1' || $toggle === 'true') {
             if (method_exists($this->users, 'getPdo')) {
                 $this->registrationChallenges = new RegistrationChallengeService($this->users->getPdo(), null, null, $this->users);
@@ -413,13 +413,14 @@ final class AuthController
                     'data' => [
                         'challenge_required' => true,
                         'challenge_token' => $challengeResult['challenge_token'],
-                        'masked_phone' => $challengeResult['masked_phone'],
+                        'masked_email' => $challengeResult['masked_email'] ?? null,
+                        'masked_phone' => $challengeResult['masked_phone'] ?? null,
                         'expires_in' => $challengeResult['expires_in'] ?? 600,
                         'delivery_status' => $challengeResult['delivery_status'],
                         'delivery_reason' => $challengeResult['delivery_reason'] ?? null,
                         'dev_code' => $challengeResult['dev_code'] ?? null,
                         'csrf_token' => $this->sessions->csrfToken(),
-                        'message' => 'Verification code sent to your phone number.',
+                        'message' => 'Verification code sent to your email address.',
                     ],
                 ],
             ];
@@ -501,7 +502,7 @@ final class AuthController
             'status' => 201,
             'body' => [
                 'data' => [
-                    'message' => 'Registration and phone verification successful. You may now sign in.',
+                    'message' => 'Registration and email verification successful. You may now sign in.',
                     'user' => $user ? $user->toPublicArray() : ['id' => $userId],
                     'csrf_token' => $this->sessions->csrfToken(),
                 ],
@@ -539,7 +540,8 @@ final class AuthController
             'body' => [
                 'data' => [
                     'challenge_token' => $resend['challenge_token'],
-                    'masked_phone' => $resend['masked_phone'],
+                    'masked_email' => $resend['masked_email'] ?? null,
+                    'masked_phone' => $resend['masked_phone'] ?? null,
                     'expires_in' => $resend['expires_in'] ?? 600,
                     'delivery_status' => $resend['delivery_status'],
                     'delivery_reason' => $resend['delivery_reason'] ?? null,

@@ -116,7 +116,7 @@
       </details>
 
       <div style="margin-bottom: 20px; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
-        Password must be at least 8 characters long. An SMS OTP will be sent to your phone.
+        Password must be at least 8 characters long. A verification code will be sent to your email.
       </div>
 
       <button type="submit" id="register-submit-btn" class="btn btn-primary btn-full">
@@ -132,19 +132,19 @@
       </p>
     </form>
 
-    <!-- Step 2: Registration Phone Verification Form -->
+    <!-- Step 2: Registration Email Verification Form -->
     <form id="register-challenge-form" method="POST" action="/auth/register/verify" style="display: none;" novalidate>
       <input type="hidden" name="csrf_token" id="reg-challenge-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
       <input type="hidden" id="reg_challenge_token" name="challenge_token" value="">
 
       <div style="text-align: center; margin-bottom: 20px;">
-        <div style="font-size: 2.2rem; margin-bottom: 8px;">📱</div>
+        <div style="font-size: 2.2rem; margin-bottom: 8px;">✉️</div>
         <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-heading); margin-bottom: 6px;">
-          Verify Your Mobile Number
+          Verify Your Email Address
         </h2>
         <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.45;">
           We sent a 6-digit verification code to:
-          <strong id="reg-challenge-masked-phone" style="display: block; color: var(--primary-color); margin-top: 4px; font-family: monospace; font-size: 0.95rem;"></strong>
+          <strong id="reg-challenge-masked-email" style="display: block; color: var(--primary-color); margin-top: 4px; font-family: monospace; font-size: 0.95rem;"></strong>
         </p>
       </div>
 
@@ -154,13 +154,13 @@
 
       <div class="form-group" style="margin-bottom: 20px;">
         <label for="reg_challenge_code" class="form-label" style="text-align: center; display: block; font-weight: 600;">
-          SMS Verification Code
+          Email Verification Code
         </label>
         <input type="text" id="reg_challenge_code" name="code" class="form-input" style="font-size: 1.75rem; letter-spacing: 0.35em; text-align: center; font-weight: 700; font-family: monospace;" placeholder="••••••" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" required>
       </div>
 
       <button type="submit" id="reg-challenge-submit-btn" class="btn btn-primary btn-full">
-        Verify Phone & Complete Registration
+        Verify Email & Complete Registration
       </button>
 
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 18px; font-size: 0.85rem;">
@@ -185,7 +185,7 @@
     const challengeSubmitBtn = document.getElementById('reg-challenge-submit-btn');
     const challengeTokenInput = document.getElementById('reg_challenge_token');
     const challengeCodeInput = document.getElementById('reg_challenge_code');
-    const challengeMaskedPhone = document.getElementById('reg-challenge-masked-phone');
+    const challengeMaskedEmail = document.getElementById('reg-challenge-masked-email');
     const challengeDeliveryNotice = document.getElementById('reg-challenge-delivery-notice');
     const challengeDeliveryText = document.getElementById('reg-challenge-delivery-text');
     const challengeBackBtn = document.getElementById('reg-challenge-back-btn');
@@ -292,15 +292,17 @@
 
           if (data.data?.challenge_required) {
             challengeTokenInput.value = data.data.challenge_token;
-            challengeMaskedPhone.textContent = data.data.masked_phone;
+            if (challengeMaskedEmail) {
+              challengeMaskedEmail.textContent = data.data.masked_email || email;
+            }
 
             if (data.data.delivery_status === 'BLOCKED') {
               challengeDeliveryNotice.style.display = 'block';
               if (data.data.dev_code) {
-                challengeDeliveryText.innerHTML = '⚡ Local Dev Mode: SMS gateway is unconfigured. Your verification code is: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
+                challengeDeliveryText.innerHTML = '⚡ Local Dev Mode: SMTP is unconfigured. Your verification code is: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
                 challengeCodeInput.value = data.data.dev_code;
               } else {
-                challengeDeliveryText.textContent = 'Notice: SMS delivery is simulated in this environment.';
+                challengeDeliveryText.textContent = 'Notice: Email delivery is simulated or blocked in this environment.';
               }
             } else {
               challengeDeliveryNotice.style.display = 'none';
@@ -346,7 +348,7 @@
       }
 
       challengeSubmitBtn.disabled = true;
-      challengeSubmitBtn.textContent = 'Verifying phone...';
+      challengeSubmitBtn.textContent = 'Verifying email...';
 
       let csrf = '';
       try {
@@ -368,7 +370,7 @@
         } else {
           showError(data.error?.message || 'The verification code is incorrect or has expired.');
           challengeSubmitBtn.disabled = false;
-          challengeSubmitBtn.textContent = 'Verify Phone & Complete Registration';
+          challengeSubmitBtn.textContent = 'Verify Email & Complete Registration';
           challengeCodeInput.select();
         }
       } catch (err) {

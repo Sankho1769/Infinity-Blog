@@ -376,8 +376,7 @@ try {
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {
-        $smsService = new \InfinityBlog\Sms\SmsService();
-        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $smsService, null, $users);
+        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $mailer, null, $users);
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
             $guard,

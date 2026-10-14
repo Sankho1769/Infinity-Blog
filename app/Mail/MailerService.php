@@ -308,6 +308,73 @@ HTML;
     }
 
     /**
+     * Send account registration email verification OTP code to new user.
+     *
+     * @return array{delivered: bool, status: string, reason?: string}
+     */
+    public function sendRegistrationOtp(string $to, string $displayName, string $otp): array
+    {
+        $subject = 'Verify your Infinity Blog account';
+
+        $name = trim($displayName) !== '' ? trim($displayName) : 'New Member';
+
+        $bodyText = "Hello {$name},\n\n" .
+            "Thank you for joining Infinity Blog!\n\n" .
+            "To verify your email address and activate your account, please enter the following 6-digit verification code:\n\n" .
+            "  {$otp}\n\n" .
+            "This verification code will expire in 10 minutes (single use).\n" .
+            "Security Notice: Never share this code with anyone. Infinity Blog staff will never ask for your code.\n\n" .
+            "If you did not create an account on Infinity Blog, please disregard this email.\n\n" .
+            "— The Infinity Blog Team\n" .
+            "Automated system notification. Please do not reply directly to this address.";
+
+        $htmlEscapedName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+        $htmlEscapedOtp = htmlspecialchars($otp, ENT_QUOTES, 'UTF-8');
+
+        $bodyHtml = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Verify your Infinity Blog account</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">
+  <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; padding: 32px 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="display: inline-block; padding: 6px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: #4f46e5; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+        Account Verification
+      </span>
+      <h2 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 14px 0 6px 0;">Welcome to Infinity Blog!</h2>
+      <p style="font-size: 14px; color: #64748b; margin: 0;">Hello {$htmlEscapedName}, please verify your email address to activate your account.</p>
+    </div>
+
+    <div style="text-align: center; background: #f1f5f9; border-radius: 12px; padding: 24px 16px; margin-bottom: 24px; border: 1px dashed #cbd5e1;">
+      <div style="font-size: 36px; font-weight: 800; letter-spacing: 0.35em; color: #4338ca; font-family: monospace;">
+        {$htmlEscapedOtp}
+      </div>
+      <div style="font-size: 12px; color: #64748b; margin-top: 10px;">Expires in 10 minutes &bull; Single-use code</div>
+    </div>
+
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: #166534; line-height: 1.5;">
+      <strong>Security Notice:</strong> Never share this verification code with anyone. Infinity Blog staff will never ask for your code.
+    </div>
+
+    <p style="font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom: 20px;">
+      If you did not request this registration, you can safely ignore this email. No account will be created without this verification code.
+    </p>
+
+    <div style="border-top: 1px solid #e2e8f0; padding-top: 18px; text-align: center; font-size: 12px; color: #94a3b8;">
+      &mdash; The Infinity Blog Team &bull; Automated notification, please do not reply.
+    </div>
+  </div>
+</body>
+</html>
+HTML;
+
+        return $this->send($to, $subject, $bodyText, $bodyHtml);
+    }
+
+    /**
      * Dispatch contact form submission notification to administrator.
      *
      * @param array{

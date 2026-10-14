@@ -4560,7 +4560,7 @@ $run('Two-step login challenge flow validates authentic email dispatch, expirati
     });
 });
 
-$run('Registration phone verification enforces phone presence, E.164 normalization, uniqueness, OTP SMS delivery, verification, replay prevention, attempt limits, and single-step password login', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
+$run('Registration email verification enforces unique phone and email, OTP email delivery (no SMS sent), verification, replay prevention, attempt limits, previous challenge invalidation, and single-step password login', static function () use ($withSession, $validConfiguration, $createUserDatabase, $expect): void {
     $withSession(static function () use ($validConfiguration, $createUserDatabase, $expect): void {
         $pdo = $createUserDatabase();
         $pdo->exec(
@@ -4572,10 +4572,12 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         $sessions->start();
         $guard = new AuthGuard($sessions, $users);
 
+        $mailTransport = new \InfinityBlog\Mail\ArrayMailTransport();
+        $mailer = new \InfinityBlog\Mail\MailerService($mailTransport);
         $smsProvider = new \InfinityBlog\Sms\ArraySmsProvider();
         $smsService = new \InfinityBlog\Sms\SmsService($smsProvider);
         $mobileService = new \InfinityBlog\Security\MobileNumberService();
-        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $smsService, $mobileService, $users);
+        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $mailer, $mobileService, $users);
 
         $authController = new AuthController(
             new AuthenticationService($users, new TestLoginAttemptLimiter()),
@@ -4623,7 +4625,7 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         ]);
         $expect($seededUserId > 0);
 
-        // Duplicate email rejected
+        // Duplicate email rejected before sending OTP
         $dupEmail = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'display_name' => 'Duplicate Email User',
             'email' => 'existing@example.com',
@@ -4633,8 +4635,9 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         ]));
         $expect($dupEmail['status'] === 422, 'Duplicate email must be rejected with 422');
         $expect(isset($dupEmail['body']['error']['fields']['email']), 'Error fields must report email error');
+        $expect($mailTransport->count() === 0, 'No email should be dispatched on duplicate email rejection');
 
-        // Duplicate phone rejected
+        // Duplicate phone rejected before sending OTP
         $dupPhone = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'display_name' => 'Duplicate Phone User',
             'email' => 'unique-email@example.com',
@@ -4644,9 +4647,10 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         ]));
         $expect($dupPhone['status'] === 422, 'Duplicate phone number must be rejected with 422');
         $expect(isset($dupPhone['body']['error']['fields']['phone']), 'Error fields must report phone error');
+        $expect($mailTransport->count() === 0, 'No email should be dispatched on duplicate phone rejection');
 
-        // 4. Available phone generates OTP and invokes SMS service
-        $initialSmsCount = $smsProvider->count();
+        // 4. Available phone and email generates OTP and delivers via MailerService (never SMS)
+        $initialMailCount = $mailTransport->count();
         $regAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'display_name' => 'Charlie Reader',
             'email' => 'charlie@example.com',
@@ -4658,14 +4662,50 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         $expect(!empty($regAttempt['body']['data']['challenge_required']));
         $cToken = $regAttempt['body']['data']['challenge_token'];
         $expect(strlen($cToken) === 64, 'Challenge token must be 64-char hex');
+        $expect(!empty($regAttempt['body']['data']['masked_email']), 'Masked email must be returned');
         $expect($regAttempt['body']['data']['masked_phone'] === '+91 ••••• •6780', 'Phone must be masked correctly');
-        $expect($smsProvider->count() === $initialSmsCount + 1, 'SMS provider must have received 1 outgoing SMS');
 
-        $lastSms = $smsProvider->lastMessage();
-        $expect($lastSms !== null && $lastSms['to'] === '+919123456780', 'SMS must be sent to normalized E.164 phone');
-        preg_match('/code is: (\d{6})/', $lastSms['message'], $otpMatch);
-        $expect(!empty($otpMatch[1]), '6-digit OTP extracted from SMS');
+        // Verify email delivered and ZERO SMS triggered
+        $expect($mailTransport->count() === $initialMailCount + 1, 'MailerService must have sent 1 email OTP');
+        $expect($smsProvider->count() === 0, 'SMS provider must receive zero messages (registration uses email OTP)');
+
+        $lastMail = $mailTransport->lastMessage();
+        $expect($lastMail !== null, 'Sent email must be recorded in transport');
+        $expect($lastMail['to'] === 'charlie@example.com', 'OTP must be sent to the registering user email');
+        $expect($lastMail['to'] !== 'banerjeeshubham00@gmail.com', 'Registration OTP must never be sent to CONTACT_TO_EMAIL');
+        $expect($lastMail['subject'] === 'Verify your Infinity Blog account', 'Email subject must match');
+        $expect(str_contains($lastMail['bodyText'], 'verification code'), 'Plain text contains verification instructions');
+        $expect(str_contains((string) $lastMail['bodyHtml'], 'Single-use code') && str_contains((string) $lastMail['bodyHtml'], 'Expires in 10 minutes'), 'HTML body contains branded template');
+
+        preg_match('/(?:code is:\s*|\b)([0-9]{6})\b/', $lastMail['bodyText'], $otpMatch);
+        $expect(!empty($otpMatch[1]), '6-digit OTP extracted from email body');
         $correctOtp = $otpMatch[1];
+
+        // 4b. Invalidate previous unverified challenges when new OTP is issued
+        $reissueAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'display_name' => 'Charlie Reader',
+            'email' => 'charlie@example.com',
+            'password' => 'charlie-pass-1234',
+            'confirm_password' => 'charlie-pass-1234',
+            'phone' => '9123456780'
+        ]));
+        $expect($reissueAttempt['status'] === 200);
+        $newCToken = $reissueAttempt['body']['data']['challenge_token'];
+        $expect($newCToken !== $cToken, 'New challenge token issued');
+
+        // Old challenge is now invalidated (expired)
+        $oldVerify = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
+            'challenge_token' => $cToken,
+            'code' => $correctOtp
+        ]));
+        $expect($oldVerify['status'] === 429, 'Previous superseded challenge must be expired/invalidated');
+        $expect($oldVerify['body']['error']['code'] === 'CHALLENGE_EXPIRED');
+
+        // Use new challenge token and OTP for subsequent attempt exhaustion
+        $cToken = $newCToken;
+        $lastReissuedMail = $mailTransport->lastMessage();
+        preg_match('/(?:code is:\s*|\b)([0-9]{6})\b/', $lastReissuedMail['bodyText'], $newOtpMatch);
+        $correctOtp = $newOtpMatch[1];
 
         // 6. Incorrect OTP rejected with attempt count tracked
         $wrongVerify = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
@@ -4708,7 +4748,7 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         $expect($expiredVerify['status'] === 429, 'Expired OTP must return 429');
         $expect($expiredVerify['body']['error']['code'] === 'CHALLENGE_EXPIRED');
 
-        // 5. Correct OTP verifies phone, creates/activates user, records verification timestamp
+        // 5. Correct OTP verifies email, creates/activates user, records verification timestamp
         $freshAttempt = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'display_name' => 'David Winner',
             'email' => 'david@example.com',
@@ -4729,6 +4769,7 @@ $run('Registration phone verification enforces phone presence, E.164 normalizati
         $expect($createdAccount->isActive(), 'User account must be active');
         $expect($createdAccount->mobileNumberVerifiedAt !== null, 'Verification timestamp must be recorded');
         $expect($createdAccount->mobileNumberHash !== null, 'Mobile blind hash must be stored');
+        $expect($smsProvider->count() === 0, 'SMS provider must still have 0 messages sent');
 
         // 8. OTP cannot be reused after verification
         $reused = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [

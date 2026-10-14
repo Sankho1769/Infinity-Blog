@@ -5,6 +5,7 @@ namespace InfinityBlog\Security;
 
 use InfinityBlog\Auth\UserAccount;
 use InfinityBlog\Auth\UserRepository;
+use InfinityBlog\Mail\MailerService;
 use InfinityBlog\Sms\SmsService;
 use InvalidArgumentException;
 use PDO;
@@ -14,23 +15,41 @@ use Throwable;
 final class RegistrationChallengeService
 {
     private PDO $pdo;
-    private SmsService $smsService;
+    private MailerService $mailer;
     private MobileNumberService $mobileService;
     private UserRepository $userRepo;
     private string $secretKey;
+    private ?SmsService $smsService = null;
 
     public function __construct(
         PDO $pdo,
-        ?SmsService $smsService = null,
+        object|null $mailer = null,
         ?MobileNumberService $mobileService = null,
         ?UserRepository $userRepo = null,
         ?string $secretKey = null
     ) {
         $this->pdo = $pdo;
-        $this->smsService = $smsService ?? new SmsService();
+        if ($mailer instanceof MailerService) {
+            $this->mailer = $mailer;
+        } elseif ($mailer instanceof SmsService) {
+            $this->smsService = $mailer;
+            $this->mailer = new MailerService();
+        } else {
+            $this->mailer = new MailerService();
+        }
         $this->mobileService = $mobileService ?? new MobileNumberService();
         $this->userRepo = $userRepo ?? new UserRepository($pdo);
         $this->secretKey = $secretKey ?? self::resolveSecretKey();
+    }
+
+    public function setMailer(MailerService $mailer): void
+    {
+        $this->mailer = $mailer;
+    }
+
+    public function mailer(): MailerService
+    {
+        return $this->mailer;
     }
 
     private static function resolveSecretKey(): string
@@ -167,6 +186,20 @@ final class RegistrationChallengeService
             ];
         }
 
+        // Invalidate any previous unverified challenges for this email
+        try {
+            $past = date('Y-m-d H:i:s', time() - 5);
+            $invStmt = $this->pdo->prepare(
+                'UPDATE registration_challenges SET expires_at = :past WHERE email = :email AND verified_at IS NULL'
+            );
+            $invStmt->execute([
+                ':past' => $past,
+                ':email' => $email,
+            ]);
+        } catch (Throwable) {
+            // Tolerate errors in dynamic/test environments
+        }
+
         // Generate cryptographic OTP and challenge token
         $otp = sprintf('%06d', random_int(100000, 999999));
         $otpHash = hash_hmac('sha256', $otp, $this->secretKey);
@@ -227,12 +260,13 @@ final class RegistrationChallengeService
         // Also cache in session for fast UI hydration
         $_SESSION['pending_registration'] = [
             'challenge_token' => $challengeToken,
+            'masked_email' => MailerService::maskEmail($email),
             'masked_phone' => $this->mobileService->mask($normalizedPhone),
             'expires_at' => $expiresAt,
         ];
 
-        // Send OTP via configured SMS service
-        $smsResult = $this->smsService->sendRegistrationOtp($normalizedPhone, $otp);
+        // Send OTP via MailerService (never send registration OTP via SMS)
+        $mailResult = $this->mailer->sendRegistrationOtp($email, $displayName, $otp);
 
         $isDev = getenv('APP_ENV') !== 'production';
 
@@ -240,10 +274,11 @@ final class RegistrationChallengeService
             'success' => true,
             'challenge_required' => true,
             'challenge_token' => $challengeToken,
+            'masked_email' => MailerService::maskEmail($email),
             'masked_phone' => $this->mobileService->mask($normalizedPhone),
             'expires_in' => 600,
-            'delivery_status' => $smsResult['status'],
-            'delivery_reason' => $smsResult['reason'] ?? null,
+            'delivery_status' => $mailResult['status'],
+            'delivery_reason' => $mailResult['reason'] ?? null,
             'dev_code' => $isDev ? $otp : null,
         ];
     }
@@ -302,7 +337,7 @@ final class RegistrationChallengeService
         }
 
         $expiresTs = strtotime((string) ($row['expires_at'] ?? ''));
-        if ($expiresTs === false || $expiresTs < time()) {
+        if ($expiresTs === false || $expiresTs <= time()) {
             return [
                 'success' => false,
                 'error' => 'CHALLENGE_EXPIRED',
@@ -481,19 +516,21 @@ final class RegistrationChallengeService
             // Ignore
         }
 
-        $normalizedPhone = (string) $row['normalized_phone'];
-        $smsResult = $this->smsService->sendRegistrationOtp($normalizedPhone, $otp);
+        $email = (string) $row['email'];
+        $displayName = (string) $row['display_name'];
+        $mailResult = $this->mailer->sendRegistrationOtp($email, $displayName, $otp);
         $isDev = getenv('APP_ENV') !== 'production';
 
         return [
             'success' => true,
             'challenge_token' => $challengeToken,
-            'masked_phone' => $this->mobileService->mask($normalizedPhone),
+            'masked_email' => MailerService::maskEmail($email),
+            'masked_phone' => $this->mobileService->mask((string) $row['normalized_phone']),
             'expires_in' => 600,
-            'delivery_status' => $smsResult['status'],
-            'delivery_reason' => $smsResult['reason'] ?? null,
+            'delivery_status' => $mailResult['status'],
+            'delivery_reason' => $mailResult['reason'] ?? null,
             'dev_code' => $isDev ? $otp : null,
-            'message' => 'A new verification code has been sent.',
+            'message' => 'A new verification code has been sent to your email address.',
         ];
     }
 }
