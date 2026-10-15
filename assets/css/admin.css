@@ -38,15 +38,23 @@
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-card-title {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: var(--space-2);
+  letter-spacing: 0.6px;
+  margin-bottom: var(--space-3);
 }
 
 .stat-card-value {
@@ -54,6 +62,7 @@
   font-weight: 800;
   color: var(--color-text-main);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Dashboard Two-Column Content */
@@ -245,22 +254,23 @@
   border-bottom-color: var(--color-primary);
 }
 
-/* Login Card Layout */
+/* Login & Signup Card Layout */
 .login-page-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: calc(80vh - 120px);
+  padding: var(--space-4) 0;
 }
 
 .login-card {
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--space-8);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
 }
 
 .login-header {
@@ -269,13 +279,20 @@
 }
 
 .login-title {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 800;
-  margin-bottom: var(--space-1);
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-2);
 }
 
 .password-input-group {
   position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-group .form-control {
+  padding-right: 4.5rem;
 }
 
 .password-toggle-btn {
@@ -287,8 +304,22 @@
   border: none;
   cursor: pointer;
   color: var(--color-text-muted);
-  font-size: 0.85rem;
-  padding: 0.2rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.password-toggle-btn:hover {
+  color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.08);
+}
+
+.password-toggle-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
 }
 
 @media (max-width: 840px) {

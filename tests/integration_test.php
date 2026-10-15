@@ -147,6 +147,11 @@ class SecurityRegressionSuite {
         echo " Root URL: {$this->rootUrl}\n";
         echo "=======================================================\n\n";
 
+        RateLimiter::reset('login:ip', '::1');
+        RateLimiter::reset('login:ip', '127.0.0.1');
+        RateLimiter::reset('login:account', 'john_doe');
+        RateLimiter::reset('login:account', 'sounak sikdar');
+
         $this->testWebAndRepositoryProtections();
         $this->testHttpHeadersAndCors();
         $this->testAtomicRateLimiterAndFailClosed();
@@ -161,6 +166,8 @@ class SecurityRegressionSuite {
         $this->testAiSummarizerHardening();
         $this->testAuditLoggerSecurityAndRedaction();
         $this->testEndToEndBlogAndAdminLifecycle();
+        $this->testSrsComplianceAndAcceptanceCriteria();
+        $this->testUserRegistrationAndLifecycle();
 
         echo "\n=======================================================\n";
         echo " AUDIT SUMMARY: {$this->passed} Passed, {$this->failed} Failed\n";
@@ -699,6 +706,367 @@ class SecurityRegressionSuite {
 
         // Clean up
         $this->request('DELETE', "/author/posts/{$newPostId}", null, ["X-CSRF-Token: {$authorCsrf}"]);
+    }
+
+    private function testSrsComplianceAndAcceptanceCriteria(): void {
+        echo "\n15. SRS Document Compliance & Ten Acceptance Criteria Verification:\n";
+        $this->clearCookies();
+        RateLimiter::reset('login:ip', '::1');
+        RateLimiter::reset('login:account', 'john_doe');
+
+        // AC-01: Valid author credentials permit login and dashboard access (FR-01, FR-02, FR-03, FR-04)
+        $loginRes = $this->request('POST', '/auth/login', [
+            'identifier' => 'john_doe',
+            'password' => 'Author@Infinity2026!',
+        ]);
+        $this->assert($loginRes['status'] === 200, 'AC-01: Valid author credentials permit login (FR-01, FR-02)');
+        $authorCsrf = $loginRes['body']['data']['csrf_token'] ?? '';
+        $authorId = (int)($loginRes['body']['data']['user']['id'] ?? 0);
+        $meRes = $this->request('GET', '/auth/me');
+        $this->assert($meRes['status'] === 200 && ($meRes['body']['data']['user']['role'] ?? '') === 'author', 'AC-01: Authenticated session reaches dashboard info (FR-03)');
+
+        // AC-02: Authenticated author can create a post stored in MySQL without mandatory category (FR-05, FR-06, FR-15)
+        $uniqueTitle = 'SRS Baseline Test Post ' . time() . '_' . random_int(100, 999);
+        $createRes = $this->request('POST', '/author/posts', [
+            'title' => $uniqueTitle,
+            'content' => 'Full article body content verifying baseline SRS requirements without mandatory category.',
+            'status' => 'draft',
+            'category_id' => null,
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($createRes['status'] === 201, 'AC-02: Author can create post in MySQL without category (FR-05, FR-06)');
+        $srsPostId = (int)($createRes['body']['data']['id'] ?? 0);
+
+        // Verify in DB directly
+        $pdo = Database::getConnection();
+        $dbCheck = $pdo->prepare("SELECT `id`, `author_id`, `title`, `content`, `status`, `category_id` FROM `posts` WHERE `id` = :id");
+        $dbCheck->execute([':id' => $srsPostId]);
+        $row = $dbCheck->fetch();
+        $this->assert($row && (int)$row['author_id'] === $authorId && $row['title'] === $uniqueTitle, 'AC-02: Post author relationship verified in MySQL (FR-15, Section 6.3)');
+
+        // AC-03: Authenticated author can edit an existing post and changes are stored correctly (FR-07, FR-08)
+        $updatedTitle = $uniqueTitle . ' [Edited]';
+        $updatedContent = 'Updated article content persisted to MySQL without duplicate records.';
+        $editRes = $this->request('PATCH', "/author/posts/{$srsPostId}", [
+            'title' => $updatedTitle,
+            'content' => $updatedContent,
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($editRes['status'] === 200, 'AC-03: Author can edit post (FR-07, FR-08)');
+
+        $countCheck = $pdo->prepare("SELECT COUNT(*) FROM `posts` WHERE `title` LIKE :prefix");
+        $countCheck->execute([':prefix' => $uniqueTitle . '%']);
+        $totalCopies = (int)$countCheck->fetchColumn();
+        $this->assert($totalCopies === 1, 'AC-03: Editing post does not create an unrelated duplicate post (FR-08)');
+
+        // AC-04: Author can publish a post and public site displays it (FR-09, FR-10, FR-14)
+        $publishRes = $this->request('POST', "/author/posts/{$srsPostId}/publish", null, ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($publishRes['status'] === 200, 'AC-04: Author can publish post (FR-09)');
+
+        $publicView = $this->request('GET', "/posts/{$srsPostId}");
+        $this->assert($publicView['status'] === 200 && ($publicView['body']['data']['title'] ?? '') === $updatedTitle, 'AC-04: Published post displayed on public detail page (FR-10, FR-14)');
+
+        // AC-05: Unpublished post is NOT shown on the public site (FR-10)
+        $unpubRes = $this->request('POST', "/author/posts/{$srsPostId}/unpublish", null, ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($unpubRes['status'] === 200, 'AC-05: Author unpublishes post back to draft (FR-10)');
+
+        $publicDraftCheck = $this->request('GET', "/posts/{$srsPostId}");
+        $this->assert($publicDraftCheck['status'] === 404, 'AC-05: Unpublished draft is not accessible publicly (FR-10)');
+
+        // AC-06: Authorized author can delete a post after confirmation (FR-11, FR-12)
+        $delRes = $this->request('DELETE', "/author/posts/{$srsPostId}", null, ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($delRes['status'] === 200, 'AC-06: Authorized author can delete post (FR-11, FR-12)');
+
+        $delDbCheck = $pdo->prepare("SELECT COUNT(*) FROM `posts` WHERE `id` = :id");
+        $delDbCheck->execute([':id' => $srsPostId]);
+        $this->assert((int)$delDbCheck->fetchColumn() === 0, 'AC-06: Deleted post completely removed from MySQL (FR-11)');
+
+        // AC-07: Unauthenticated visitor cannot access author-only management pages/APIs (FR-16, NFR-03)
+        $this->clearCookies();
+        $unauthPost = $this->request('POST', '/author/posts', ['title' => 'Unauth', 'content' => 'Body']);
+        $this->assert($unauthPost['status'] === 401, 'AC-07: Unauthenticated visitor blocked from author APIs (FR-16, NFR-03)');
+
+        // AC-08: Public site displays published posts in structured, readable list ordered newest first (FR-13, FR-20)
+        $feedRes = $this->request('GET', '/posts?per_page=5');
+        $this->assert($feedRes['status'] === 200, 'AC-08: Public site displays published posts list (FR-13)');
+        $feedItems = $feedRes['body']['data'] ?? [];
+        $isOrdered = true;
+        for ($i = 0; $i < count($feedItems) - 1; $i++) {
+            $t1 = strtotime($feedItems[$i]['published_at'] ?? '0');
+            $t2 = strtotime($feedItems[$i + 1]['published_at'] ?? '0');
+            if ($t1 < $t2) {
+                $isOrdered = false;
+                break;
+            }
+        }
+        $this->assert($isOrdered, 'AC-08: Public posts ordered newest first with deterministic secondary ordering (FR-20)');
+
+        // AC-09: Invalid input and database failures produce understandable errors (FR-17, FR-19)
+        $loginRes2 = $this->request('POST', '/auth/login', [
+            'identifier' => 'john_doe',
+            'password' => 'Author@Infinity2026!',
+        ]);
+        $authorCsrf2 = $loginRes2['body']['data']['csrf_token'] ?? '';
+        $badInputRes = $this->request('POST', '/author/posts', [
+            'title' => '',
+            'content' => '',
+        ], ["X-CSRF-Token: {$authorCsrf2}"]);
+        $this->assert($badInputRes['status'] === 422 && !empty($badInputRes['body']['error']['fields']['title']), 'AC-09: Invalid input produces understandable field errors (FR-17, FR-19)');
+
+        // AC-10: Passwords not stored in plain text and database uses safe query handling (NFR-01, NFR-02, NFR-10)
+        $userCheck = $pdo->query("SELECT `password_hash` FROM `users` WHERE `username` = 'john_doe'")->fetch();
+        $isHash = password_get_info($userCheck['password_hash'])['algo'] !== 0;
+        $this->assert($isHash, 'AC-10: Passwords stored as secure cryptographic hashes (NFR-01)');
+
+        // Foreign key check
+        $fkCheck = $pdo->query("
+            SELECT COUNT(*) 
+            FROM information_schema.TABLE_CONSTRAINTS 
+            WHERE CONSTRAINT_SCHEMA = DATABASE() 
+              AND CONSTRAINT_NAME = 'fk_posts_author_id' 
+              AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+        ")->fetchColumn();
+        $this->assert((int)$fkCheck === 1, 'AC-10: Foreign key relationship between posts and users enforced (FR-15, NFR-10)');
+    }
+
+    private function testUserRegistrationAndLifecycle(): void {
+        echo "\n16. User Registration & Lifecycle Verification (20 Criteria):\n";
+        $this->clearCookies();
+        RateLimiter::reset('register:ip', '::1');
+        RateLimiter::reset('register:ip', '127.0.0.1');
+
+        $pdo = Database::getConnection();
+
+        // Baseline counts before test
+        $initialUserCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
+        $initialPostCount = (int)$pdo->query("SELECT COUNT(*) FROM `posts`")->fetchColumn();
+
+        // Obtain CSRF token
+        $csrfRes = $this->request('GET', '/auth/csrf');
+        $csrfToken = $csrfRes['body']['data']['csrf_token'] ?? '';
+        $this->assert(!empty($csrfToken), 'CSRF token retrieved for registration tests');
+
+        $rand = time() . '_' . random_int(1000, 9999);
+        $regUser = "author_{$rand}";
+        $regEmail = "author_{$rand}@example.com";
+        $regPass = "RegistrationPass2026!";
+
+        // 16.1 Successful registration creates exactly one user record with role 'author' and status 'active'
+        $regRes = $this->request('POST', '/auth/register', [
+            'username' => $regUser,
+            'email' => $regEmail,
+            'gender' => 'female',
+            'date_of_birth' => '1995-05-15',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+
+        $this->assert($regRes['status'] === 201, 'Criterion 1: Successful registration returns HTTP 201 Created');
+        $regUserId = (int)($regRes['body']['data']['id'] ?? $regRes['body']['data']['user']['id'] ?? 0);
+
+        $userStmt = $pdo->prepare("SELECT * FROM `users` WHERE `username` = :u");
+        $userStmt->execute([':u' => $regUser]);
+        $registeredRow = $userStmt->fetch();
+        $this->assert($registeredRow !== false && (int)$registeredRow['id'] === $regUserId, 'Criterion 1: Exactly one user record found in MySQL');
+        $this->assert($registeredRow['role'] === 'author', 'Criterion 1: Registered user role is strictly "author"');
+        $this->assert($registeredRow['status'] === 'active', 'Criterion 1: Registered user status is "active"');
+
+        // 16.2 The user can immediately log in using their username
+        $this->clearCookies();
+        RateLimiter::reset('login:account', $regUser);
+        $loginUserRes = $this->request('POST', '/auth/login', [
+            'identifier' => $regUser,
+            'password' => $regPass,
+        ]);
+        $this->assert($loginUserRes['status'] === 200 && ($loginUserRes['body']['data']['user']['username'] ?? '') === $regUser, 'Criterion 2: User can immediately log in using their username');
+
+        // 16.3 The user can immediately log in using their email address
+        $this->clearCookies();
+        RateLimiter::reset('login:account', $regEmail);
+        $loginEmailRes = $this->request('POST', '/auth/login', [
+            'identifier' => $regEmail,
+            'password' => $regPass,
+        ]);
+        $this->assert($loginEmailRes['status'] === 200 && ($loginEmailRes['body']['data']['user']['email'] ?? '') === $regEmail, 'Criterion 3: User can immediately log in using their email address');
+
+        // 16.4 Logging in with an incorrect password fails with HTTP 401
+        $this->clearCookies();
+        $badLoginRes = $this->request('POST', '/auth/login', [
+            'identifier' => $regUser,
+            'password' => 'WrongPassword123!',
+        ]);
+        $this->assert($badLoginRes['status'] === 401, 'Criterion 4: Login with incorrect password rejected with HTTP 401');
+
+        // Refresh CSRF token for subsequent registration tests
+        $this->clearCookies();
+        $csrfRes = $this->request('GET', '/auth/csrf');
+        $csrfToken = $csrfRes['body']['data']['csrf_token'] ?? '';
+
+        // 16.5 Registration without a username fails with validation error (HTTP 422)
+        $noUserRes = $this->request('POST', '/auth/register', [
+            'username' => '',
+            'email' => "unique_{$rand}@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($noUserRes['status'] === 422 && isset($noUserRes['body']['error']['fields']['username']), 'Criterion 5: Registration without username rejected with HTTP 422 and field error');
+
+        // 16.6 Registration with an existing username fails with validation error (case-insensitive)
+        $dupUserRes = $this->request('POST', '/auth/register', [
+            'username' => strtoupper($regUser),
+            'email' => "diff_{$rand}@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($dupUserRes['status'] === 422 && isset($dupUserRes['body']['error']['fields']['username']), 'Criterion 6: Registration with existing username (case-insensitive) rejected with HTTP 422');
+
+        // 16.7 Registration without an email fails with validation error
+        $noEmailRes = $this->request('POST', '/auth/register', [
+            'username' => "valid_{$rand}_user",
+            'email' => '',
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($noEmailRes['status'] === 422 && isset($noEmailRes['body']['error']['fields']['email']), 'Criterion 7: Registration without email rejected with HTTP 422');
+
+        // 16.8 Registration with an invalid email format fails with validation error
+        $badEmailRes = $this->request('POST', '/auth/register', [
+            'username' => "valid_{$rand}_user2",
+            'email' => 'not-an-email-at-all',
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($badEmailRes['status'] === 422 && isset($badEmailRes['body']['error']['fields']['email']), 'Criterion 8: Registration with invalid email rejected with HTTP 422');
+
+        // 16.9 Registration with an existing email fails with validation error (case-insensitive)
+        $dupEmailRes = $this->request('POST', '/auth/register', [
+            'username' => "new_user_{$rand}",
+            'email' => strtoupper($regEmail),
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($dupEmailRes['status'] === 422 && isset($dupEmailRes['body']['error']['fields']['email']), 'Criterion 9: Registration with existing email (case-insensitive) rejected with HTTP 422');
+
+        // 16.10 Registration without gender fails with validation error
+        $noGenderRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_g1",
+            'email' => "test_{$rand}_g1@example.com",
+            'gender' => '',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($noGenderRes['status'] === 422 && isset($noGenderRes['body']['error']['fields']['gender']), 'Criterion 10: Registration without gender rejected with HTTP 422');
+
+        // 16.11 Registration with an invalid gender value fails with validation error
+        $badGenderRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_g2",
+            'email' => "test_{$rand}_g2@example.com",
+            'gender' => 'unknown_alien',
+            'date_of_birth' => '1990-01-01',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($badGenderRes['status'] === 422 && isset($badGenderRes['body']['error']['fields']['gender']), 'Criterion 11: Registration with invalid gender rejected with HTTP 422');
+
+        // 16.12 Registration without date of birth fails with validation error
+        $noDobRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_d1",
+            'email' => "test_{$rand}_d1@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($noDobRes['status'] === 422 && isset($noDobRes['body']['error']['fields']['date_of_birth']), 'Criterion 12: Registration without DOB rejected with HTTP 422');
+
+        // 16.13 Registration with an invalid date fails with validation error
+        $badDobRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_d2",
+            'email' => "test_{$rand}_d2@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '2026-02-31',
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($badDobRes['status'] === 422 && isset($badDobRes['body']['error']['fields']['date_of_birth']), 'Criterion 13: Registration with invalid calendar date rejected with HTTP 422');
+
+        // 16.14 Registration with a future date of birth fails with validation error
+        $futureDob = date('Y-m-d', strtotime('+30 days'));
+        $futureDobRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_d3",
+            'email' => "test_{$rand}_d3@example.com",
+            'gender' => 'male',
+            'date_of_birth' => $futureDob,
+            'password' => $regPass,
+            'confirm_password' => $regPass,
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($futureDobRes['status'] === 422 && isset($futureDobRes['body']['error']['fields']['date_of_birth']), 'Criterion 14: Registration with future DOB rejected with HTTP 422');
+
+        // 16.15 Registration with a password shorter than 12 characters fails with validation error
+        $shortPassRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_p1",
+            'email' => "test_{$rand}_p1@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => 'Short99!',
+            'confirm_password' => 'Short99!',
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($shortPassRes['status'] === 422 && isset($shortPassRes['body']['error']['fields']['password']), 'Criterion 15: Registration with short password (< 12 chars) rejected with HTTP 422');
+
+        // 16.16 Registration with mismatched passwords fails with validation error
+        $mismatchPassRes = $this->request('POST', '/auth/register', [
+            'username' => "test_{$rand}_p2",
+            'email' => "test_{$rand}_p2@example.com",
+            'gender' => 'male',
+            'date_of_birth' => '1990-01-01',
+            'password' => 'SecurePassPhrase2026!',
+            'confirm_password' => 'DifferentPassPhrase2026!',
+        ], ["X-CSRF-Token: {$csrfToken}"]);
+        $this->assert($mismatchPassRes['status'] === 422 && isset($mismatchPassRes['body']['error']['fields']['confirm_password']), 'Criterion 16: Registration with mismatched passwords rejected with HTTP 422');
+
+        // 16.17 The password is stored as a secure hash and never in plaintext
+        $this->assert(password_verify($regPass, $registeredRow['password_hash']), 'Criterion 17: Password successfully verifies against database hash');
+        $this->assert($registeredRow['password_hash'] !== $regPass, 'Criterion 17: Password hash is not plaintext');
+        $hashInfo = password_get_info($registeredRow['password_hash']);
+        $this->assert($hashInfo['algo'] !== 0, 'Criterion 17: Password is encrypted with secure cryptographic algorithm (bcrypt)');
+
+        // 16.18 The confirm password value is never stored in the database
+        $colStmt = $pdo->query("SHOW COLUMNS FROM `users` LIKE '%confirm%'");
+        $confirmCols = $colStmt->fetchAll();
+        $this->assert(empty($confirmCols), 'Criterion 18: No confirm password column exists in the users table');
+
+        // 16.19 Gender and date of birth are stored accurately in the database
+        $this->assert($registeredRow['gender'] === 'female', 'Criterion 19: Gender stored accurately in MySQL ("female")');
+        $this->assert($registeredRow['date_of_birth'] === '1995-05-15', 'Criterion 19: Date of birth stored accurately in MySQL ("1995-05-15")');
+
+        // 16.20 Existing user accounts and posts remain unaffected
+        $adminStmt = $pdo->prepare("SELECT `id`, `role`, `status` FROM `users` WHERE `username` = 'Sounak Sikdar'");
+        $adminStmt->execute();
+        $adminRow = $adminStmt->fetch();
+        $this->assert($adminRow && $adminRow['role'] === 'admin' && $adminRow['status'] === 'active', 'Criterion 20: Pre-existing admin account is intact');
+
+        $johnStmt = $pdo->prepare("SELECT `id`, `role`, `status` FROM `users` WHERE `username` = 'john_doe'");
+        $johnStmt->execute();
+        $johnRow = $johnStmt->fetch();
+        $this->assert($johnRow && $johnRow['role'] === 'author' && $johnRow['status'] === 'active', 'Criterion 20: Pre-existing author account is intact');
+
+        $finalPostCount = (int)$pdo->query("SELECT COUNT(*) FROM `posts`")->fetchColumn();
+        $this->assert($finalPostCount === $initialPostCount, 'Criterion 20: Pre-existing post records remain unaffected');
+
+        // Clean up test user
+        $delUserStmt = $pdo->prepare("DELETE FROM `users` WHERE `id` = :id");
+        $delUserStmt->execute([':id' => $regUserId]);
+        $finalUserCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
+        $this->assert($finalUserCount === $initialUserCount, 'Criterion 20: Test registration cleaned up, restoring user count');
     }
 }
 

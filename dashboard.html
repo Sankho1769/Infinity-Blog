@@ -135,7 +135,7 @@
   <script type="module">
     import { authService } from './assets/js/auth.js';
     import { authorPostService } from './assets/js/author-posts.js';
-    import { escapeHtml, showToast } from './assets/js/main.js';
+    import { escapeHtml, showToast, showConfirmModal } from './assets/js/main.js';
 
     async function initDashboard() {
       const user = await authService.getCurrentUser();
@@ -191,10 +191,33 @@
               <div style="display:flex;gap:6px;">
                 <a href="edit-post.html?id=${p.id}" class="btn btn-secondary btn-sm" title="Edit Post">Edit</a>
                 ${isPublished ? `<a href="post.html?id=${p.id}" class="btn btn-outline btn-sm" title="View Public Post">View</a>` : ''}
+                <button type="button" class="btn btn-danger btn-sm dashboard-delete-btn" data-id="${p.id}" data-title="${escapeHtml(p.title)}" title="Delete Post">🗑️</button>
               </div>
             </td>
           `;
           tbody.appendChild(tr);
+        });
+
+        // Attach delete actions with confirmation dialog (SRS UC-04, FR-11, FR-12)
+        tbody.querySelectorAll('.dashboard-delete-btn').forEach(btn => {
+          btn.onclick = () => {
+            const id = btn.dataset.id;
+            const title = btn.dataset.title;
+            showConfirmModal(
+              'Delete Article?',
+              `Are you sure you want to permanently delete "${title}"? This action cannot be undone.`,
+              'Delete Permanently',
+              async () => {
+                try {
+                  await authorPostService.deletePost(id);
+                  showToast('Article deleted successfully.', 'success');
+                  await initDashboard();
+                } catch (err) {
+                  showToast('Failed to delete post: ' + err.message, 'danger');
+                }
+              }
+            );
+          };
         });
 
         document.getElementById('recent-posts-table-wrapper').style.display = 'block';

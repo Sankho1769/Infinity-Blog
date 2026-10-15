@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `username` VARCHAR(190) NOT NULL,
   `display_name` VARCHAR(190) NOT NULL,
   `email` VARCHAR(254) NULL,
+  `gender` ENUM('male', 'female', 'other', 'prefer_not_to_say') NULL,
+  `date_of_birth` DATE NULL,
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('admin', 'author') NOT NULL DEFAULT 'author',
   `status` ENUM('active', 'inactive') NOT NULL DEFAULT 'active',

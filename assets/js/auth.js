@@ -25,6 +25,14 @@ export const authService = {
         throw new Error('Unexpected response format from login endpoint.');
     },
 
+    async register(userData) {
+        const response = await apiRequest('/auth/register', {
+            method: 'POST',
+            body: userData,
+        });
+        return response?.data;
+    },
+
     async logout() {
         try {
             await apiRequest('/auth/logout', { method: 'POST' });

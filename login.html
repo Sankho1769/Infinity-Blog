@@ -61,7 +61,10 @@
           </button>
         </form>
 
-        <div style="margin-top:var(--space-6);padding-top:var(--space-4);border-top:1px solid var(--color-border);text-align:center;">
+        <div style="margin-top:var(--space-6);padding-top:var(--space-4);border-top:1px solid var(--color-border);text-align:center;display:flex;flex-direction:column;gap:var(--space-2);">
+          <p style="font-size:0.875rem;color:var(--color-text-muted);margin:0;">
+            Don't have an account? <a href="signup.html" style="color:var(--color-primary);font-weight:600;text-decoration:none;">Sign Up</a>
+          </p>
           <a href="index.html" style="color:var(--color-text-muted);font-size:0.875rem;text-decoration:none;">&larr; Back to Public Blog</a>
         </div>
       </div>
@@ -96,6 +99,13 @@
     const successAlert = document.getElementById('login-success-alert');
     const passwordInput = document.getElementById('password');
     const togglePasswordBtn = document.getElementById('toggle-password-btn');
+
+    // Display banner if redirected from successful sign-up
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('registered') === '1') {
+      successAlert.textContent = 'Account created successfully! Please sign in with your credentials.';
+      successAlert.style.display = 'block';
+    }
 
     togglePasswordBtn.onclick = () => {
       if (passwordInput.type === 'password') {

@@ -58,9 +58,9 @@
           <div class="form-group">
             <label for="post-category" class="form-label">Category</label>
             <select id="post-category" name="category_id" class="form-control">
-              <option value="">-- No Category --</option>
+              <option value="">-- No Category (Optional) --</option>
             </select>
-            <div class="form-help">An active category is mandatory for published articles.</div>
+            <div class="form-help">Assign to an active category (optional).</div>
             <div class="form-error" id="category-error"></div>
           </div>
 
@@ -381,10 +381,6 @@
       }
       if (!content) {
         document.getElementById('content-error').textContent = 'Content cannot be empty.';
-        clientErr = true;
-      }
-      if (status === 'published' && !categoryId) {
-        document.getElementById('category-error').textContent = 'An active category is required to publish.';
         clientErr = true;
       }
 

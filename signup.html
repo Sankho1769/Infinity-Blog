@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <div class="login-page-wrapper">
+      <div class="login-card" style="max-width: 480px;">
+        <div class="login-header">
+          <span class="badge badge-category" style="margin-bottom: var(--space-2);">User Registration</span>
+          <h1 class="login-title">Create your account</h1>
+          <p style="color:var(--color-text-muted);font-size:0.9rem;">Join Infinity Blog as an author to start writing and publishing articles.</p>
+        </div>
+
+        <!-- Error Feedback Banner -->
+        <div id="signup-error-alert" class="alert alert-danger" style="display:none;" role="alert"></div>
+
+        <!-- Success Feedback Banner -->
+        <div id="signup-success-alert" class="alert alert-success" style="display:none;" role="alert"></div>
+
+        <!-- Registration Form -->
+        <form id="signup-form" novalidate>
+          <!-- 1. Username -->
+          <div class="form-group">
+            <label for="username" class="form-label">Username <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" id="username" name="username" class="form-control" placeholder="e.g. alex_writer" required autofocus autocomplete="username">
+            <div class="form-error" id="username-error"></div>
+          </div>
+
+          <!-- 2. Email -->
+          <div class="form-group">
+            <label for="email" class="form-label">Email <span style="color:var(--color-danger);">*</span></label>
+            <input type="email" id="email" name="email" class="form-control" placeholder="name@example.com" required autocomplete="email">
+            <div class="form-error" id="email-error"></div>
+          </div>
+
+          <!-- 3. Gender -->
+          <div class="form-group">
+            <label for="gender" class="form-label">Gender <span style="color:var(--color-danger);">*</span></label>
+            <select id="gender" name="gender" class="form-control" required>
+              <option value="">Select Gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+              <option value="prefer_not_to_say">Prefer not to say</option>
+            </select>
+            <div class="form-error" id="gender-error"></div>
+          </div>
+
+          <!-- 4. Date of Birth -->
+          <div class="form-group">
+            <label for="date_of_birth" class="form-label">Date of Birth <span style="color:var(--color-danger);">*</span></label>
+            <input type="date" id="date_of_birth" name="date_of_birth" class="form-control" required>
+            <div class="form-error" id="date_of_birth-error"></div>
+          </div>
+
+          <!-- 5. New Password -->
+          <div class="form-group">
+            <label for="password" class="form-label">New Password <span style="color:var(--color-danger);">*</span></label>
+            <div class="password-input-group">
+              <input type="password" id="password" name="password" class="form-control" placeholder="At least 12 characters" minlength="12" maxlength="128" required autocomplete="new-password">
+              <button type="button" class="password-toggle-btn" id="toggle-password-btn" aria-label="Toggle password visibility">Show</button>
+            </div>
+            <div class="form-error" id="password-error"></div>
+            <p style="font-size:0.75rem;color:var(--color-text-muted);margin-top:0.25rem;">12 to 128 characters. Avoid common or easily guessable words.</p>
+          </div>
+
+          <!-- 6. Confirm Password -->
+          <div class="form-group">
+            <label for="confirm_password" class="form-label">Confirm Password <span style="color:var(--color-danger);">*</span></label>
+            <div class="password-input-group">
+              <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder="Re-enter password" minlength="12" maxlength="128" required autocomplete="new-password">
+              <button type="button" class="password-toggle-btn" id="toggle-confirm-password-btn" aria-label="Toggle confirm password visibility">Show</button>
+            </div>
+            <div class="form-error" id="confirm_password-error"></div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" id="signup-submit-btn" style="width:100%;margin-top:var(--space-4);">
+            <span id="btn-text">Create Account</span>
+            <span id="btn-spinner" class="spinner" style="display:none;width:1.2rem;height:1.2rem;border-width:2px;border-top-color:#ffffff;"></span>
+          </button>
+        </form>
+
+        <div style="margin-top:var(--space-6);padding-top:var(--space-4);border-top:1px solid var(--color-border);text-align:center;display:flex;flex-direction:column;gap:var(--space-2);">
+          <p style="font-size:0.875rem;color:var(--color-text-muted);margin:0;">
+            Already have an account? <a href="login.html" style="color:var(--color-primary);font-weight:600;text-decoration:none;">Sign In</a>
+          </p>
+          <a href="index.html" style="color:var(--color-text-muted);font-size:0.875rem;text-decoration:none;">&larr; Back to Public Blog</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Session-based PHP Security.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { authService } from './assets/js/auth.js';
+    import { showToast } from './assets/js/main.js';
+
+    // If already authenticated, redirect to appropriate destination
+    authService.getCurrentUser().then(user => {
+      if (user) {
+        window.location.href = user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+      }
+    });
+
+    const form = document.getElementById('signup-form');
+    const submitBtn = document.getElementById('signup-submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    const errorAlert = document.getElementById('signup-error-alert');
+    const successAlert = document.getElementById('signup-success-alert');
+
+    const passwordInput = document.getElementById('password');
+    const togglePasswordBtn = document.getElementById('toggle-password-btn');
+    const confirmPasswordInput = document.getElementById('confirm_password');
+    const toggleConfirmPasswordBtn = document.getElementById('toggle-confirm-password-btn');
+    const dobInput = document.getElementById('date_of_birth');
+
+    // Prevent selecting future dates in native date picker
+    const todayStr = new Date().toISOString().split('T')[0];
+    dobInput.setAttribute('max', todayStr);
+
+    // Password visibility toggles
+    togglePasswordBtn.onclick = () => {
+      if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        togglePasswordBtn.textContent = 'Hide';
+      } else {
+        passwordInput.type = 'password';
+        togglePasswordBtn.textContent = 'Show';
+      }
+    };
+
+    toggleConfirmPasswordBtn.onclick = () => {
+      if (confirmPasswordInput.type === 'password') {
+        confirmPasswordInput.type = 'text';
+        toggleConfirmPasswordBtn.textContent = 'Hide';
+      } else {
+        confirmPasswordInput.type = 'password';
+        toggleConfirmPasswordBtn.textContent = 'Show';
+      }
+    };
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+
+      // Reset feedback messages
+      errorAlert.style.display = 'none';
+      errorAlert.textContent = '';
+      successAlert.style.display = 'none';
+      successAlert.textContent = '';
+
+      const errorFieldIds = ['username-error', 'email-error', 'gender-error', 'date_of_birth-error', 'password-error', 'confirm_password-error'];
+      errorFieldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '';
+      });
+
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const gender = document.getElementById('gender').value;
+      const dateOfBirth = dobInput.value.trim();
+      const password = passwordInput.value;
+      const confirmPassword = confirmPasswordInput.value;
+
+      // Client-side validations
+      let hasError = false;
+
+      if (!username) {
+        document.getElementById('username-error').textContent = 'Username is required.';
+        hasError = true;
+      } else if (username.length < 3 || username.length > 50) {
+        document.getElementById('username-error').textContent = 'Username must be between 3 and 50 characters.';
+        hasError = true;
+      } else if (!/^[a-zA-Z0-9_\-\. ]+$/.test(username)) {
+        document.getElementById('username-error').textContent = 'Username contains invalid characters.';
+        hasError = true;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!email) {
+        document.getElementById('email-error').textContent = 'Email address is required.';
+        hasError = true;
+      } else if (!emailRegex.test(email) || email.length > 254) {
+        document.getElementById('email-error').textContent = 'Please enter a valid email address.';
+        hasError = true;
+      }
+
+      const validGenders = ['male', 'female', 'other', 'prefer_not_to_say'];
+      if (!gender || !validGenders.includes(gender)) {
+        document.getElementById('gender-error').textContent = 'Please select a valid gender option.';
+        hasError = true;
+      }
+
+      if (!dateOfBirth) {
+        document.getElementById('date_of_birth-error').textContent = 'Date of birth is required.';
+        hasError = true;
+      } else {
+        const chosenDate = new Date(dateOfBirth + 'T00:00:00');
+        const now = new Date();
+        now.setHours(23, 59, 59, 999);
+        if (isNaN(chosenDate.getTime())) {
+          document.getElementById('date_of_birth-error').textContent = 'Please enter a valid calendar date.';
+          hasError = true;
+        } else if (chosenDate > now) {
+          document.getElementById('date_of_birth-error').textContent = 'Date of birth cannot be in the future.';
+          hasError = true;
+        }
+      }
+
+      if (!password) {
+        document.getElementById('password-error').textContent = 'Password is required.';
+        hasError = true;
+      } else if (password.length < 12) {
+        document.getElementById('password-error').textContent = 'Password must be at least 12 characters long.';
+        hasError = true;
+      } else if (password.length > 128) {
+        document.getElementById('password-error').textContent = 'Password must not exceed 128 characters.';
+        hasError = true;
+      }
+
+      if (!confirmPassword) {
+        document.getElementById('confirm_password-error').textContent = 'Please confirm your password.';
+        hasError = true;
+      } else if (password !== confirmPassword) {
+        document.getElementById('confirm_password-error').textContent = 'Passwords do not match.';
+        hasError = true;
+      }
+
+      if (hasError) return;
+
+      // Loading state
+      submitBtn.disabled = true;
+      btnText.textContent = 'Creating account...';
+      btnSpinner.style.display = 'inline-block';
+
+      try {
+        await authService.register({
+          username,
+          email,
+          gender,
+          date_of_birth: dateOfBirth,
+          password,
+          confirm_password: confirmPassword
+        });
+
+        successAlert.textContent = 'Account created successfully! Redirecting to sign in...';
+        successAlert.style.display = 'block';
+        showToast('Registration successful! Please sign in.', 'success');
+
+        setTimeout(() => {
+          window.location.href = 'login.html?registered=1';
+        }, 1000);
+      } catch (err) {
+        submitBtn.disabled = false;
+        btnText.textContent = 'Create Account';
+        btnSpinner.style.display = 'none';
+
+        if (err.fields) {
+          if (err.fields.username) document.getElementById('username-error').textContent = err.fields.username;
+          if (err.fields.email) document.getElementById('email-error').textContent = err.fields.email;
+          if (err.fields.gender) document.getElementById('gender-error').textContent = err.fields.gender;
+          if (err.fields.date_of_birth) document.getElementById('date_of_birth-error').textContent = err.fields.date_of_birth;
+          if (err.fields.password) document.getElementById('password-error').textContent = err.fields.password;
+          if (err.fields.confirm_password) document.getElementById('confirm_password-error').textContent = err.fields.confirm_password;
+        }
+
+        errorAlert.textContent = err.message || 'Registration failed. Please review the highlighted errors.';
+        errorAlert.style.display = 'block';
+      }
+    };
+  </script>
+</body>
+</html>

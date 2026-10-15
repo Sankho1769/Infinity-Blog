@@ -51,9 +51,9 @@
           <div class="form-group">
             <label for="post-category" class="form-label">Category</label>
             <select id="post-category" name="category_id" class="form-control">
-              <option value="">-- Select Active Category --</option>
+              <option value="">-- No Category (Optional) --</option>
             </select>
-            <div class="form-help">An active category is required to publish the article.</div>
+            <div class="form-help">Select an active category to organize your post (optional).</div>
             <div class="form-error" id="category-error"></div>
           </div>
 
@@ -182,10 +182,6 @@
       }
       if (!content) {
         document.getElementById('content-error').textContent = 'Please write some content for the article.';
-        clientError = true;
-      }
-      if (targetStatus === 'published' && !categoryId) {
-        document.getElementById('category-error').textContent = 'An active category is required to publish.';
         clientError = true;
       }
 

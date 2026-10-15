@@ -137,6 +137,7 @@ export async function initAppShell() {
             }
         } else {
             headerActions.innerHTML = `
+                <a href="signup.html" class="btn btn-secondary btn-sm" style="margin-right:6px;">Sign Up</a>
                 <a href="login.html" class="btn btn-primary btn-sm">Sign In</a>
             `;
         }

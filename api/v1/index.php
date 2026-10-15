@@ -125,6 +125,178 @@ try {
     // 1. AUTHENTICATION & CSRF ROUTES
     // ==========================================
 
+    // POST /auth/register
+    if ($method === 'POST' && $route === '/auth/register') {
+        SessionManager::requireCsrf();
+
+        // Rate limiting on registration attempts by IP (30 attempts per hour)
+        try {
+            if (!RateLimiter::check('register:ip', $clientIp, 30, 3600, true)) {
+                Response::error('RATE_LIMITED', 'Too many registration attempts from this network. Please try again later.', null, 429);
+            }
+        } catch (RateLimiterException $re) {
+            Response::error('SERVICE_UNAVAILABLE', 'Registration service temporarily unavailable. Please retry later.', null, 503);
+        }
+
+        $username = trim((string)($inputData['username'] ?? ''));
+        $email = trim((string)($inputData['email'] ?? ''));
+        $gender = strtolower(trim((string)($inputData['gender'] ?? '')));
+        $dob = trim((string)($inputData['date_of_birth'] ?? $inputData['dob'] ?? ''));
+        $password = (string)($inputData['password'] ?? '');
+        $confirmPassword = (string)($inputData['confirm_password'] ?? $inputData['password_confirm'] ?? '');
+
+        $errors = [];
+
+        // Validate Username
+        if ($username === '') {
+            $errors['username'] = 'Username is required.';
+        } elseif (mb_strlen($username) < 3 || mb_strlen($username) > 50) {
+            $errors['username'] = 'Username must be between 3 and 50 characters.';
+        } elseif (!preg_match('/^[a-zA-Z0-9_\-\. ]+$/u', $username)) {
+            $errors['username'] = 'Username contains invalid characters.';
+        }
+
+        // Validate Email
+        if ($email === '') {
+            $errors['email'] = 'Email address is required.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 254) {
+            $errors['email'] = 'Please enter a valid email address.';
+        }
+
+        // Validate Gender
+        $validGenders = ['male', 'female', 'other', 'prefer_not_to_say'];
+        $normalizedGender = str_replace(['-', ' '], '_', $gender);
+        if ($gender === '' || !in_array($normalizedGender, $validGenders, true)) {
+            $errors['gender'] = 'Please select a valid gender option.';
+        }
+
+        // Validate Date of Birth
+        if ($dob === '') {
+            $errors['date_of_birth'] = 'Date of birth is required.';
+        } else {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dob)) {
+                $errors['date_of_birth'] = 'Date of birth must be in YYYY-MM-DD format.';
+            } else {
+                $parts = explode('-', $dob);
+                $year = (int)$parts[0];
+                $month = (int)$parts[1];
+                $day = (int)$parts[2];
+                if (!checkdate($month, $day, $year)) {
+                    $errors['date_of_birth'] = 'Please enter a valid calendar date.';
+                } else {
+                    $dobTime = strtotime($dob);
+                    $todayTime = strtotime(date('Y-m-d'));
+                    if ($dobTime > $todayTime) {
+                        $errors['date_of_birth'] = 'Date of birth cannot be in the future.';
+                    }
+                }
+            }
+        }
+
+        // Validate Password
+        if ($password === '') {
+            $errors['password'] = 'Password is required.';
+        } elseif (mb_strlen($password) < 12) {
+            $errors['password'] = 'Password must be at least 12 characters long (passphrases recommended).';
+        } elseif (strlen($password) > 128) {
+            $errors['password'] = 'Password must not exceed 128 characters.';
+        } else {
+            $commonPasswords = [
+                'password', 'password123', 'password1234', 'password12345', 'password123456',
+                '12345678', '123456789', '1234567890', '123456789012',
+                'admin123456', 'administrator', 'administrator123',
+                'qwertyuiop', 'qwertyuiop12', 'letmein12345', 'welcome12345',
+                'infinity2026', 'admin@infinity2026', 'iloveyou12345',
+            ];
+            $lowerPass = strtolower($password);
+            if (
+                in_array($lowerPass, $commonPasswords, true) ||
+                preg_match('/^(password|admin|letmein|welcome|qwerty)/i', $lowerPass) ||
+                $lowerPass === strtolower($username)
+            ) {
+                $errors['password'] = 'The chosen password is too common or easily guessable.';
+            }
+        }
+
+        // Validate Confirm Password
+        if ($confirmPassword === '') {
+            $errors['confirm_password'] = 'Please confirm your password.';
+        } elseif ($password !== $confirmPassword) {
+            $errors['confirm_password'] = 'Passwords do not match.';
+        }
+
+        // Uniqueness check for username & email
+        if (empty($errors['username'])) {
+            $uStmt = $pdo->prepare("SELECT `id` FROM `users` WHERE `username` = :u LIMIT 1");
+            $uStmt->execute([':u' => $username]);
+            if ($uStmt->fetch()) {
+                $errors['username'] = 'This username is already taken. Please choose another.';
+            }
+        }
+
+        if (empty($errors['email'])) {
+            $eStmt = $pdo->prepare("SELECT `id` FROM `users` WHERE `email` = :e LIMIT 1");
+            $eStmt->execute([':e' => $email]);
+            if ($eStmt->fetch()) {
+                $errors['email'] = 'An account with this email address already exists.';
+            }
+        }
+
+        if (!empty($errors)) {
+            Response::error('VALIDATION_ERROR', 'Validation failed. Please correct the highlighted errors.', $errors, 422);
+        }
+
+        // Secure password hashing
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+
+        // Insert record with default role 'author' and status 'active'
+        try {
+            $insertStmt = $pdo->prepare("
+                INSERT INTO `users` (`username`, `display_name`, `email`, `gender`, `date_of_birth`, `password_hash`, `role`, `status`)
+                VALUES (:u, :dn, :em, :g, :dob, :hash, 'author', 'active')
+            ");
+            $insertStmt->execute([
+                ':u' => $username,
+                ':dn' => $username,
+                ':em' => strtolower($email),
+                ':g' => $normalizedGender,
+                ':dob' => $dob,
+                ':hash' => $passwordHash,
+            ]);
+
+            $newUserId = (int)$pdo->lastInsertId();
+            AuditLogger::log('USER_REGISTER', 'user', $newUserId, ['username' => $username, 'role' => 'author']);
+
+            Response::success([
+                'id' => $newUserId,
+                'username' => $username,
+                'email' => strtolower($email),
+                'role' => 'author',
+                'status' => 'active',
+                'user' => [
+                    'id' => $newUserId,
+                    'username' => $username,
+                    'email' => strtolower($email),
+                    'role' => 'author',
+                    'status' => 'active',
+                ],
+                'message' => 'Registration successful! You can now sign in.',
+            ], null, 201);
+        } catch (\PDOException $pe) {
+            // Concurrent duplicate collision defense
+            if ($pe->getCode() === '23000' || strpos($pe->getMessage(), 'Duplicate entry') !== false) {
+                if (stripos($pe->getMessage(), 'username') !== false) {
+                    Response::error('VALIDATION_ERROR', 'This username is already taken.', ['username' => 'This username is already taken.'], 409);
+                } else {
+                    Response::error('VALIDATION_ERROR', 'An account with this email address already exists.', ['email' => 'An account with this email address already exists.'], 409);
+                }
+            }
+
+            error_log("Registration error: " . $pe->getMessage());
+            Response::error('DATABASE_ERROR', 'Could not complete registration due to a server error. Please retry later.', null, 500);
+        }
+    }
+
     // POST /auth/login
     if ($method === 'POST' && $route === '/auth/login') {
         $identifier = trim((string)($inputData['identifier'] ?? ''));
@@ -132,7 +304,7 @@ try {
 
         // Dual rate-limiting policy (IP-based and account-based) with FAIL-CLOSED guarantee
         try {
-            if (!RateLimiter::check('login:ip', $clientIp, 30, 300, true)) {
+            if (!RateLimiter::check('login:ip', $clientIp, 60, 300, true)) {
                 Response::error('RATE_LIMITED', 'Too many login attempts from this network. Please wait 5 minutes.', null, 429);
             }
             if ($identifier !== '') {
@@ -290,7 +462,7 @@ try {
             JOIN `users` u ON p.`author_id` = u.`id`
             LEFT JOIN `categories` c ON p.`category_id` = c.`id`
             WHERE {$whereClause}
-            ORDER BY p.`published_at` DESC
+            ORDER BY p.`published_at` DESC, p.`id` DESC
             LIMIT :offset, :limit
         ";
 
@@ -416,7 +588,7 @@ try {
             JOIN `users` u ON p.`author_id` = u.`id`
             LEFT JOIN `categories` c ON p.`category_id` = c.`id`
             {$whereClause}
-            ORDER BY p.`created_at` DESC
+            ORDER BY p.`created_at` DESC, p.`id` DESC
             LIMIT :offset, :limit
         ";
 
@@ -467,24 +639,15 @@ try {
             $errors['status'] = 'Status must be draft or published.';
         }
 
-        // If published, category is required and must be active
-        if ($status === 'published') {
-            if (!$categoryId) {
-                $errors['category_id'] = 'An active category is required to publish an article.';
-            } else {
-                $catStmt = $pdo->prepare("SELECT `id`, `is_active` FROM `categories` WHERE `id` = :id");
-                $catStmt->execute([':id' => $categoryId]);
-                $cat = $catStmt->fetch();
-                if (!$cat || !(int)$cat['is_active']) {
-                    $errors['category_id'] = 'The selected category is inactive or does not exist.';
-                }
-            }
-        } elseif ($categoryId !== null) {
-            // Draft category check
-            $catStmt = $pdo->prepare("SELECT `id` FROM `categories` WHERE `id` = :id");
+        // Category validation: optional, but if supplied must exist and (if published) be active
+        if ($categoryId !== null) {
+            $catStmt = $pdo->prepare("SELECT `id`, `is_active` FROM `categories` WHERE `id` = :id");
             $catStmt->execute([':id' => $categoryId]);
-            if (!$catStmt->fetch()) {
+            $cat = $catStmt->fetch();
+            if (!$cat) {
                 $errors['category_id'] = 'Selected category does not exist.';
+            } elseif ($status === 'published' && !(int)$cat['is_active']) {
+                $errors['category_id'] = 'The selected category is inactive. Please choose an active category.';
             }
         }
 
@@ -585,16 +748,14 @@ try {
             $errors['status'] = 'Invalid status value.';
         }
 
-        if ($status === 'published') {
-            if (!$categoryId) {
-                $errors['category_id'] = 'An active category is required to publish.';
-            } else {
-                $catStmt = $pdo->prepare("SELECT `is_active` FROM `categories` WHERE `id` = :id");
-                $catStmt->execute([':id' => $categoryId]);
-                $c = $catStmt->fetch();
-                if (!$c || !(int)$c['is_active']) {
-                    $errors['category_id'] = 'The selected category is inactive or does not exist.';
-                }
+        if ($categoryId !== null) {
+            $catStmt = $pdo->prepare("SELECT `is_active` FROM `categories` WHERE `id` = :id");
+            $catStmt->execute([':id' => $categoryId]);
+            $c = $catStmt->fetch();
+            if (!$c) {
+                $errors['category_id'] = 'The selected category does not exist.';
+            } elseif ($status === 'published' && !(int)$c['is_active']) {
+                $errors['category_id'] = 'The selected category is inactive. Please choose an active category.';
             }
         }
 
@@ -663,15 +824,13 @@ try {
             Response::error('FORBIDDEN', 'You are not authorized to publish this article.', null, 403);
         }
 
-        if (!$post['category_id']) {
-            Response::error('VALIDATION_ERROR', 'An active category is required to publish.', ['category_id' => 'Please select an active category.'], 422);
-        }
-
-        $catStmt = $pdo->prepare("SELECT `is_active` FROM `categories` WHERE `id` = :id");
-        $catStmt->execute([':id' => $post['category_id']]);
-        $cat = $catStmt->fetch();
-        if (!$cat || !(int)$cat['is_active']) {
-            Response::error('VALIDATION_ERROR', 'The assigned category is inactive. Please choose an active category.', ['category_id' => 'Category is inactive.'], 422);
+        if ($post['category_id']) {
+            $catStmt = $pdo->prepare("SELECT `is_active` FROM `categories` WHERE `id` = :id");
+            $catStmt->execute([':id' => $post['category_id']]);
+            $cat = $catStmt->fetch();
+            if (!$cat || !(int)$cat['is_active']) {
+                Response::error('VALIDATION_ERROR', 'The assigned category is inactive. Please choose an active category.', ['category_id' => 'Category is inactive.'], 422);
+            }
         }
 
         $pdo->prepare("UPDATE `posts` SET `status` = 'published', `published_at` = NOW() WHERE `id` = :id")->execute([':id' => $postId]);

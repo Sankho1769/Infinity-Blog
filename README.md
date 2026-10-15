@@ -13,7 +13,49 @@
 
 ---
 
-## 2. System Architecture & Tech Stack
+## 2. Software Requirements Specification (SRS) Compliance
+
+Infinity Blog fully implements the official **Content Management System (CMS) Software Requirements Specification (SRS Version 1.0)** for PHP and MySQL while preserving advanced production capabilities:
+
+### Functional Requirements Matrix (FR-01 to FR-20)
+| SRS ID | Requirement Name | Specification Description | Infinity Blog Implementation Status |
+|:---|:---|:---|:---|
+| **FR-01** | Author authentication | Provide a login form for registered authors | [`login.html`](login.html) & `POST /api/v1/auth/login` (supports username or email) — **Implemented** |
+| **FR-02** | Login validation | Validate credentials and deny invalid access | Secure `password_verify` comparison, dual rate limiting, generic error messages — **Implemented** |
+| **FR-03** | Session management | Maintain authenticated session until logout/expiry | Native PHP sessions with `HttpOnly`, `SameSite=Lax`, active status verification — **Implemented** |
+| **FR-04** | Logout | Terminate author session securely | `POST /api/v1/auth/logout` revokes session, unsets cookie, logs event — **Implemented** |
+| **FR-05** | Create post | Authenticated author creates new article | [`create-post.html`](create-post.html) & `POST /api/v1/author/posts` (title & content) — **Implemented** |
+| **FR-06** | Store post | Save post in MySQL associated with author | MySQL `posts` table with foreign key `fk_posts_author_id` — **Implemented** |
+| **FR-07** | Edit post | Author edits their own existing post | [`edit-post.html`](edit-post.html) & `PATCH /api/v1/author/posts/{id}` (ownership validated) — **Implemented** |
+| **FR-08** | Update post | Persist edits without creating duplicate posts | In-place atomic SQL `UPDATE` preserving record ID — **Implemented** |
+| **FR-09** | Publish post | Mark post as published | `POST /api/v1/author/posts/{id}/publish` sets `status = 'published'`, `published_at = NOW()` — **Implemented** |
+| **FR-10** | Public visibility | Only published posts shown publicly; drafts private | `GET /posts` & `GET /posts/{id}` strictly isolate drafts (404 for drafts) — **Implemented** |
+| **FR-11** | Delete post | Author deletes post they manage | `DELETE /api/v1/author/posts/{id}` checks ownership and removes record — **Implemented** |
+| **FR-12** | Deletion confirmation | Request confirmation before irreversible delete | Accessible confirmation modal (`showConfirmModal`) on dashboard and post views — **Implemented** |
+| **FR-13** | Public post listing | Display published posts in structured list | [`index.html`](index.html) responsive article cards with title, author, date, excerpt — **Implemented** |
+| **FR-14** | Article view | Public view for reading full article content | [`post.html`](post.html) reading layout rendering complete content safely — **Implemented** |
+| **FR-15** | Database relationship | Author-to-post relationship in MySQL | Relational foreign key `author_id` referencing `users.id` with cascade updates — **Implemented** |
+| **FR-16** | Access control | Prevent unauthenticated access to author pages/APIs | Server-side role middleware `SessionManager::requireRole('author', 'admin')` (HTTP 401/403) — **Implemented** |
+| **FR-17** | Validation | Validate required post fields before saving | Server-side validation of title (1-255 chars), content, status, with field error JSON — **Implemented** |
+| **FR-18** | Output safety | Safely render user-controlled text without XSS | Client-side DOM `textContent` injection and HTML entity encoding (`escapeHtml`) — **Implemented** |
+| **FR-19** | Error handling | Meaningful errors when operations cannot complete | Standardized JSON envelopes with clear error codes (`VALIDATION_ERROR`, etc.) — **Implemented** |
+| **FR-20** | Post ordering | Display recent published posts before older posts | Public feed sorted `ORDER BY p.published_at DESC, p.id DESC` (deterministic) — **Implemented** |
+
+### Acceptance Criteria Verification (10 / 10 Passing)
+1. **Author Login:** Given valid credentials, author logs in and accesses the dashboard (`/auth/me`).
+2. **Post Storage:** Author creates post with title and content; persisted in MySQL with author ID.
+3. **Post Editing:** Author updates post; MySQL updates the record in-place without duplicate entries.
+4. **Publishing:** Author publishes post; post becomes visible on public feed and detail view.
+5. **Draft Privacy:** Unpublished drafts are inaccessible to public requests (HTTP 404).
+6. **Confirmed Deletion:** Authorized author confirms deletion; post is permanently removed from MySQL.
+7. **Access Control:** Unauthenticated visitors cannot access author management APIs (HTTP 401).
+8. **Structured Listing:** Public site displays published posts in structured, readable cards.
+9. **Error Handling:** Invalid inputs return understandable field-level error messages (HTTP 422).
+10. **Safe Queries & Passwords:** Passwords hashed with `PASSWORD_DEFAULT` (bcrypt); all SQL queries use PDO prepared statements.
+
+---
+
+## 3. System Architecture & Tech Stack
 
 ```text
 ┌────────────────────────────────────────────────────────┐
@@ -43,7 +85,7 @@
 
 ---
 
-## 3. Directory Layout
+## 4. Directory Layout
 
 ```text
 infinity-blog/
@@ -66,7 +108,8 @@ infinity-blog/
 │       └── main.js                 # Global app shell (nav, auth state, toasts, modals)
 ├── backend/
 │   ├── config/
-│   │   └── Database.php            # PDO singleton database connection
+│   │   ├── Database.php            # PDO singleton database connection
+│   │   └── Env.php                 # Zero-dependency environment loader
 │   └── src/
 │       ├── Response.php            # Standard JSON success and error envelopes
 │       ├── SessionManager.php      # Session handling, cookie flags & CSRF checks
@@ -77,9 +120,10 @@ infinity-blog/
 │   ├── schema.sql                  # MySQL schema definition (5 tables)
 │   └── setup.php                   # Database setup & administrator provisioning CLI
 ├── tests/
-│   └── integration_test.php        # Automated 57-assertion end-to-end test suite
+│   └── integration_test.php        # Automated 124-assertion end-to-end test suite
 ├── index.html                      # Public homepage & article feed
 ├── post.html                       # Public single article reading view
+├── signup.html                     # Author self-registration portal
 ├── login.html                      # Author & Administrator login portal
 ├── dashboard.html                  # Author dashboard with publication metrics
 ├── posts.html                      # Author post management interface
@@ -93,7 +137,7 @@ infinity-blog/
 
 ---
 
-## 4. Quick Start & Local Setup
+## 5. Quick Start & Local Setup
 
 ### Step 1: Start Services in XAMPP
 Ensure **Apache** (Port 80) and **MySQL** (Port 3306) are running via the XAMPP Control Panel.
@@ -119,37 +163,45 @@ Default development accounts configured if not already present:
 ### Step 3: Access the Application
 Open your browser and navigate to:
 * **Public Blog:** [http://localhost/infinity-blog/index.html](http://localhost/infinity-blog/index.html)
+* **Sign Up Portal:** [http://localhost/infinity-blog/signup.html](http://localhost/infinity-blog/signup.html)
 * **Login Portal:** [http://localhost/infinity-blog/login.html](http://localhost/infinity-blog/login.html)
 * **Author Dashboard:** [http://localhost/infinity-blog/dashboard.html](http://localhost/infinity-blog/dashboard.html)
 * **Admin Console:** [http://localhost/infinity-blog/admin.html](http://localhost/infinity-blog/admin.html)
 
 ---
 
-## 5. Automated Integration Testing
+## 6. Automated Integration Testing
 
 Run the test suite directly from your terminal:
 ```bash
 php tests/integration_test.php
 ```
 
-### Test Coverage (75 Assertions — 100% Passing):
-1. **Web Access & File Protections:** Verifies that `.env`, `database/setup.php`, `backend/`, and `tests/` return HTTP 403 Forbidden when requested over HTTP.
-2. **Rate Limiting Engine:** Tests that request burst thresholds are strictly enforced and requests exceeding limits are rate-limited.
-3. **Authentication & Sessions:** Tests credential verification, session cookie attributes (`HttpOnly`, `SameSite=Lax`), `/auth/me` identity retrieval, CSRF issuance, and post-logout session destruction.
-4. **Account Lifecycle & Deactivation:** Tests administrative deactivation of user accounts and confirms that deactivated accounts cannot log in and have existing sessions immediately rejected.
-5. **Public Blog:** Published posts retrieval, draft isolation (drafts return 404 to public queries), keyword search, and category filtering.
-6. **Author Post Operations:** Post drafting, update lifecycle, validation requiring active categories before publishing, unpublishing, and confirmed deletion.
-7. **PATCH Partial Updates:** Verifies that updating a post's title or status without supplying `category_id` correctly preserves the existing category.
-8. **Authorization & IDOR:** Role escalation prevention, Insecure Direct Object Reference (IDOR) protection preventing cross-author post tampering, and CSRF token requirement on state mutations.
-9. **Administrative Capabilities:** System statistics, category creation, activation/deactivation, author user provisioning, and audit log generation.
-10. **AI Article Summarization:** Authorized generation, prompt injection isolation, HTML output sanitization, database storage, stale summary detection upon article modification, and omission of stale summaries from public views.
+### Test Coverage (124 Assertions across 16 Domains — 100% Passing):
+1. **Web Access Controls & File Protections:** Verifies that `.git/HEAD`, `.git/config`, `.env`, `database/setup.php`, `backend/`, and `tests/` return HTTP 403 Forbidden.
+2. **Security HTTP Headers & Transport Policies:** X-Content-Type-Options (`nosniff`), X-Frame-Options (`DENY`), Referrer-Policy, CSP, and CORS preflight.
+3. **Atomic Rate Limiting Engine:** Tests atomic sliding-window throttling and verified removal of test-runner bypass headers.
+4. **Payload Thresholds & JSON Safety:** Enforces 2MB maximum payload limit (HTTP 413) and JSON maximum recursion depth of 32 (HTTP 400).
+5. **Authentication Security:** Credential verification, session cookies (`HttpOnly`, `SameSite=Lax`), `/auth/me` identity retrieval, CSRF issuance, and post-logout session destruction.
+6. **Fail-Closed Authorization & Account Lifecycle:** Deactivated accounts cannot log in (HTTP 403 `ACCOUNT_INACTIVE`), and admin self-deactivation is strictly prohibited.
+7. **CSRF Token Verification:** Enforces anti-CSRF validation across all mutating methods (`POST`, `PATCH`, `DELETE`).
+8. **Password Policy Hardening:** 12–128 character policy, dictionary denylist, and malformed email format rejection.
+9. **Role Access & IDOR Defenses:** Prevents author privilege escalation to admin routes and prevents cross-author post tampering.
+10. **SQL Injection Resistance:** Prepared statements protect all search parameters and category filters.
+11. **XSS Output Sanitization:** User-controlled content rendered safely via DOM `textContent` and HTML escaping.
+12. **AI Summarizer Containment & Freshness:** Adversarial prompt injection isolation, HTML script removal, and automatic stale summary tracking upon article modification.
+13. **Audit Logger Secret Redaction:** Plaintext passwords, tokens, API keys, and session IDs recursively redacted from audit logs.
+14. **Full Blog & Administration End-to-End Regression:** Public feeds, category management, and administrative moderation lifecycle.
+15. **SRS Document Compliance & Acceptance Criteria:** Automated verification of all 10 SRS acceptance criteria (login, create, edit, publish, draft isolation, delete, access control, structured listing, error handling, password hashing, and foreign keys).
+16. **User Registration & Lifecycle Verification (20 Criteria):** Verification of `POST /auth/register`, username/email immediate login, invalid password rejection (401), missing/duplicate field validations (422), gender and date of birth validation, password hashing, unstored confirm password, and existing record preservation.
 
 ---
 
-## 6. API Reference (`/api/v1`)
+## 7. API Reference (`/api/v1`)
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
+| `POST` | `/auth/register` | Public (CSRF & Rate Limited) | Registers new author account with username, email, gender, DOB, password |
 | `POST` | `/auth/login` | Public | Authenticates credentials and starts PHP session |
 | `POST` | `/auth/logout` | Authenticated | Destroys session and clears session cookie |
 | `GET` | `/auth/me` | Authenticated | Returns current safe user identity & role |
@@ -161,7 +213,7 @@ php tests/integration_test.php
 | `POST` | `/author/posts` | Author / Admin | Creates a new post (draft or published) |
 | `GET` | `/author/posts/{id}` | Author / Admin | Retrieves post for editing (ownership checked) |
 | `PATCH` | `/author/posts/{id}` | Author / Admin | Updates post title, body, status, category |
-| `POST` | `/author/posts/{id}/publish` | Author / Admin | Publishes article (requires active category) |
+| `POST` | `/author/posts/{id}/publish` | Author / Admin | Publishes article (active category validated if assigned) |
 | `POST` | `/author/posts/{id}/unpublish` | Author / Admin | Moves article to draft |
 | `DELETE` | `/author/posts/{id}` | Author / Admin | Deletes article permanently |
 | `POST` | `/author/posts/{id}/summary` | Author / Admin | Generates/regenerates plain-text AI summary |
@@ -180,7 +232,7 @@ php tests/integration_test.php
 
 ---
 
-## 7. License & Credits
+## 8. License & Credits
 Developed as part of the **Infinity Blog CMS** initiative.
 * Architecture & Frontend Implementation: **Sounak Sikdar**
 * Baseline Specifications: **Sankho1769**

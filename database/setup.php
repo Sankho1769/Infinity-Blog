@@ -63,6 +63,17 @@ echo "Schema verified and executed successfully.\n";
 
 $pdo->exec("USE `{$dbName}`;");
 
+// 3.1 Apply non-destructive column migrations
+$userColumns = $pdo->query("SHOW COLUMNS FROM `users`")->fetchAll(PDO::FETCH_COLUMN);
+if (!in_array('gender', $userColumns, true)) {
+    echo "Migrating users table: Adding 'gender' column...\n";
+    $pdo->exec("ALTER TABLE `users` ADD COLUMN `gender` ENUM('male', 'female', 'other', 'prefer_not_to_say') NULL AFTER `email`;");
+}
+if (!in_array('date_of_birth', $userColumns, true)) {
+    echo "Migrating users table: Adding 'date_of_birth' column...\n";
+    $pdo->exec("ALTER TABLE `users` ADD COLUMN `date_of_birth` DATE NULL AFTER `gender`;");
+}
+
 // 4. Resolve administrator and author credentials
 $adminPassword = Env::get('ADMIN_DEFAULT_PASSWORD');
 $authorPassword = Env::get('AUTHOR_DEFAULT_PASSWORD');
