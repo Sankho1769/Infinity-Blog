@@ -201,6 +201,8 @@
           summaryBtn.textContent = 'Generate AI Summary';
         }
       });
+    }
+
     // Unified Search Experience: header search + hero search synchronization & keyboard shortcut
     function initUnifiedSearch() {
       const navInput = document.getElementById('nav-search-input');
@@ -294,6 +296,70 @@
       });
     }
 
+    // Specific Full Accessibility Support for User Profile Dropdown Menu
+    const userDropdown = document.getElementById('user-nav-dropdown');
+    const userBtn = document.getElementById('user-nav-dropdown-btn');
+    const userMenu = document.getElementById('user-nav-dropdown-menu');
+
+    if (userDropdown && userBtn && userMenu) {
+      const getMenuItems = () => Array.from(userMenu.querySelectorAll('a[role="menuitem"]'));
+
+      userBtn.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          closeAllNavDropdowns();
+          userDropdown.classList.add('open');
+          userBtn.setAttribute('aria-expanded', 'true');
+          const items = getMenuItems();
+          if (items.length > 0) items[0].focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          closeAllNavDropdowns();
+          userDropdown.classList.add('open');
+          userBtn.setAttribute('aria-expanded', 'true');
+          const items = getMenuItems();
+          if (items.length > 0) items[items.length - 1].focus();
+        }
+      });
+
+      userMenu.addEventListener('keydown', (e) => {
+        const items = getMenuItems();
+        const currentIndex = items.indexOf(document.activeElement);
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const nextIndex = (currentIndex + 1) % items.length;
+          items[nextIndex].focus();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const prevIndex = (currentIndex - 1 + items.length) % items.length;
+          items[prevIndex].focus();
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          if (items.length > 0) items[0].focus();
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          if (items.length > 0) items[items.length - 1].focus();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          userDropdown.classList.remove('open');
+          userBtn.setAttribute('aria-expanded', 'false');
+          userBtn.focus();
+        } else if (e.key === 'Tab') {
+          userDropdown.classList.remove('open');
+          userBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      // Close menu when any link inside is clicked
+      userMenu.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+          userDropdown.classList.remove('open');
+          userBtn.setAttribute('aria-expanded', 'false');
+        });
+      });
+    }
+
     // Mobile Navigation Drawer Controls
     const mobileToggle = document.getElementById('mobile-nav-toggle');
     const mobileDrawer = document.getElementById('mobile-nav-drawer');
@@ -303,6 +369,7 @@
         const hadFocusInside = mobileDrawer.contains(document.activeElement);
         mobileDrawer.classList.remove('open');
         mobileDrawer.style.display = 'none';
+        document.body.classList.remove('drawer-open');
         if (mobileToggle) {
           mobileToggle.setAttribute('aria-expanded', 'false');
           if (hadFocusInside) {
@@ -321,6 +388,7 @@
         } else {
           mobileDrawer.classList.add('open');
           mobileDrawer.style.display = 'block';
+          document.body.classList.add('drawer-open');
           mobileToggle.setAttribute('aria-expanded', 'true');
           const mobileSearch = mobileDrawer.querySelector('.mobile-search-input');
           if (mobileSearch) {
@@ -472,6 +540,70 @@
       });
     });
 
+    // Community Join AJAX Handler for Sidebar & Community Cards
+    document.querySelectorAll('.btn-community-join').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const slug = btn.getAttribute('data-slug');
+        if (!slug) return;
+
+        const isMember = btn.classList.contains('joined') || btn.getAttribute('data-is-member') === '1';
+        if (isMember) {
+          window.location.href = `/chat/${encodeURIComponent(slug)}`;
+          return;
+        }
+
+        const isLoggedIn = !!document.querySelector('.user-profile-link');
+        if (!isLoggedIn) {
+          window.location.href = `/login?redirect=${encodeURIComponent('/chat/' + slug)}`;
+          return;
+        }
+
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        btn.textContent = 'Joining...';
+
+        try {
+          const csrf = await ensureCsrfToken();
+          const res = await fetch(`/api/chat/rooms/${encodeURIComponent(slug)}/join`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-Token': csrf
+            }
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok && data?.data) {
+            btn.classList.add('joined');
+            btn.setAttribute('data-is-member', '1');
+            btn.innerHTML = '<span>✓</span> Joined';
+            btn.title = 'You have joined this community. Click to open chat room.';
+
+            document.querySelectorAll(`.community-member-count[data-slug="${slug}"]`).forEach(countEl => {
+              const newCount = data.data.member_count;
+              if (newCount !== undefined) {
+                countEl.textContent = `${newCount} ${newCount === 1 ? 'member' : 'members'}`;
+              } else {
+                let cur = parseInt(countEl.textContent, 10) || 0;
+                countEl.textContent = `${cur + 1} members`;
+              }
+            });
+            showAlert(`You have joined the #${slug} community!`, 'success');
+          } else {
+            const errorMsg = data?.error?.message || 'Could not join community.';
+            showAlert(errorMsg, 'error');
+            btn.innerHTML = originalText;
+          }
+        } catch (err) {
+          showAlert('Network error while joining community.', 'error');
+          btn.innerHTML = originalText;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+
     // Unread Direct Message Badge Poller
     async function updateUnreadCount() {
       const navBadge = document.getElementById('nav-unread-badge');
@@ -505,19 +637,260 @@
       setInterval(updateUnreadCount, 15000);
     }
 
-    // Share Modal & Copy Link
-    window.openShareModal = function (url, title) {
+    // =========================================================================
+    // Share Dialog (Followed Contacts DM + WhatsApp & Social Sharing)
+    // =========================================================================
+    let lastFocusedElement = null;
+    let selectedContactIds = new Set();
+    let followedContactsCache = null;
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, function(m) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m];
+      });
+    }
+
+    window.openShareModal = function (url, title, postId) {
       const modal = document.getElementById('share-article-modal');
       const input = document.getElementById('share-modal-url-input');
-      if (input && url) input.value = url;
-      if (modal) modal.classList.add('open');
+      const waBtn = document.getElementById('shareWhatsAppBtn');
+      const titlePreview = document.getElementById('shareModalArticleTitle');
+
+      const targetUrl = url || window.location.href;
+      const targetTitle = title || document.title;
+      window.currentSharePostId = postId || null;
+
+      if (input) input.value = targetUrl;
+      if (waBtn) {
+        waBtn.href = 'https://wa.me/?text=' + encodeURIComponent(targetTitle + '\n' + targetUrl);
+      }
+      if (titlePreview) {
+        titlePreview.textContent = targetTitle;
+      }
+      const sendBtn = document.getElementById('shareSendDmBtn');
+      if (sendBtn && postId) {
+        sendBtn.setAttribute('onclick', `sendArticleDirectMessage(${postId})`);
+      }
+
+      if (modal) {
+        lastFocusedElement = document.activeElement;
+        modal.style.display = 'flex';
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // Load followed contacts if user is authenticated and list container is present
+        const listEl = document.getElementById('shareFollowingList');
+        if (listEl) {
+          loadShareContacts();
+        }
+
+        // Accessibility: focus on close button
+        const closeBtn = modal.querySelector('.alert-close-btn');
+        if (closeBtn) closeBtn.focus();
+      }
     };
 
     window.closeShareModal = function () {
       const modal = document.getElementById('share-article-modal');
-      if (modal) modal.classList.remove('open');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
+      document.body.style.overflow = '';
       const tooltip = document.getElementById('share-copy-tooltip');
       if (tooltip) tooltip.style.display = 'none';
+      const feedback = document.getElementById('shareDmFeedback');
+      if (feedback) { feedback.textContent = ''; feedback.style.color = ''; }
+
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+        lastFocusedElement.focus();
+      }
+    };
+
+    // Close share modal on outside click
+    document.addEventListener('click', function (e) {
+      const modal = document.getElementById('share-article-modal');
+      if (modal && modal.classList.contains('open') && e.target === modal) {
+        closeShareModal();
+      }
+    });
+
+    async function loadShareContacts() {
+      const listEl = document.getElementById('shareFollowingList');
+      if (!listEl) return;
+
+      if (followedContactsCache === null) {
+        listEl.innerHTML = '<div style="text-align: center; padding: 14px; color: var(--text-muted); font-size: 0.85rem;">Loading contacts...</div>';
+        try {
+          const res = await fetch('/api/me/following', { headers: { 'Accept': 'application/json' } });
+          if (res.ok) {
+            const json = await res.json();
+            followedContactsCache = json.data?.following || [];
+          } else {
+            followedContactsCache = [];
+          }
+        } catch (e) {
+          followedContactsCache = [];
+        }
+      }
+
+      renderShareContacts(followedContactsCache);
+    }
+
+    function renderShareContacts(contacts) {
+      const listEl = document.getElementById('shareFollowingList');
+      if (!listEl) return;
+
+      if (!contacts || contacts.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; padding: 14px; color: var(--text-muted); font-size: 0.85rem;">You are not following any authors yet.</div>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+      contacts.forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'share-contact-item' + (selectedContactIds.has(user.id) ? ' selected' : '');
+        item.setAttribute('role', 'checkbox');
+        item.setAttribute('aria-checked', selectedContactIds.has(user.id) ? 'true' : 'false');
+        item.tabIndex = 0;
+
+        const avatarInitial = (user.display_name || user.username || 'A').charAt(0).toUpperCase();
+        const badgeHtml = user.has_author_badge ? '<span class="badge-author-earned" style="margin-left: 4px; font-size: 0.65rem; padding: 1px 6px;"><span class="badge-author-icon">✍</span> Author</span>' : '';
+
+        item.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+            <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #818cf8, #4f46e5); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
+              ${avatarInitial}
+            </div>
+            <div style="min-width: 0; overflow: hidden;">
+              <div style="font-size: 0.84rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <span>${escapeHtml(user.display_name || user.username)}</span>
+                ${badgeHtml}
+              </div>
+              <div style="font-size: 0.74rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                @${escapeHtml(user.username)}
+              </div>
+            </div>
+          </div>
+          <div class="share-contact-checkbox">
+            ${selectedContactIds.has(user.id) ? '✓' : ''}
+          </div>
+        `;
+
+        function toggleSelect() {
+          if (selectedContactIds.has(user.id)) {
+            selectedContactIds.delete(user.id);
+            item.classList.remove('selected');
+            item.setAttribute('aria-checked', 'false');
+            item.querySelector('.share-contact-checkbox').textContent = '';
+          } else {
+            selectedContactIds.add(user.id);
+            item.classList.add('selected');
+            item.setAttribute('aria-checked', 'true');
+            item.querySelector('.share-contact-checkbox').textContent = '✓';
+          }
+          updateShareSelectedCount();
+        }
+
+        item.addEventListener('click', toggleSelect);
+        item.addEventListener('keydown', (e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            toggleSelect();
+          }
+        });
+
+        listEl.appendChild(item);
+      });
+    }
+
+    function updateShareSelectedCount() {
+      const countEl = document.getElementById('shareSelectedCount');
+      const sendBtn = document.getElementById('shareSendDmBtn');
+      const count = selectedContactIds.size;
+      if (countEl) countEl.textContent = count + ' selected';
+      if (sendBtn) sendBtn.disabled = (count === 0);
+    }
+
+    // Filter contacts search
+    document.addEventListener('input', function (e) {
+      if (e.target && e.target.id === 'shareFollowingSearch') {
+        const query = e.target.value.trim().toLowerCase();
+        if (!followedContactsCache) return;
+        const filtered = followedContactsCache.filter(u =>
+          (u.username && u.username.toLowerCase().includes(query)) ||
+          (u.display_name && u.display_name.toLowerCase().includes(query))
+        );
+        renderShareContacts(filtered);
+      }
+    });
+
+    window.sendArticleDirectMessage = async function (postId) {
+      const sendBtn = document.getElementById('shareSendDmBtn');
+      const feedback = document.getElementById('shareDmFeedback');
+      const noteInput = document.getElementById('shareDmNote');
+      const urlInput = document.getElementById('share-modal-url-input');
+
+      let targetPostId = postId || window.currentSharePostId;
+      if (!targetPostId && urlInput && urlInput.value) {
+        const m = urlInput.value.match(/\/article\/(\d+)/);
+        if (m) targetPostId = parseInt(m[1], 10);
+      }
+
+      if (selectedContactIds.size === 0) return;
+
+      if (sendBtn) sendBtn.disabled = true;
+      if (feedback) {
+        feedback.textContent = 'Sending story...';
+        feedback.style.color = '#4f46e5';
+      }
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch('/api/share/direct-message', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf
+          },
+          body: JSON.stringify({
+            post_id: targetPostId,
+            recipient_ids: Array.from(selectedContactIds),
+            message: noteInput ? noteInput.value.trim() : '',
+            post_url: urlInput ? urlInput.value.trim() : ''
+          })
+        });
+
+        const json = await res.json();
+        if (res.ok && json.data?.success) {
+          const sentCount = json.data.sent_count || selectedContactIds.size;
+          if (feedback) {
+            feedback.textContent = `✓ Successfully sent to ${sentCount} contact(s)!`;
+            feedback.style.color = '#16a34a';
+          }
+          selectedContactIds.clear();
+          updateShareSelectedCount();
+          if (noteInput) noteInput.value = '';
+          setTimeout(() => {
+            closeShareModal();
+          }, 1500);
+        } else {
+          const msg = json.error?.message || 'Failed to send share message.';
+          if (feedback) {
+            feedback.textContent = msg;
+            feedback.style.color = '#ef4444';
+          }
+          if (sendBtn) sendBtn.disabled = false;
+        }
+      } catch (e) {
+        if (feedback) {
+          feedback.textContent = 'Network error while sending.';
+          feedback.style.color = '#ef4444';
+        }
+        if (sendBtn) sendBtn.disabled = false;
+      }
     };
 
     window.copyShareLink = async function () {
@@ -541,17 +914,181 @@
     };
 
     window.triggerNativeShare = async function (url, title, text) {
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: title || document.title, text: text || '', url: url || window.location.href });
-          return;
-        } catch (e) {
-          if (e.name !== 'AbortError') openShareModal(url, title);
-        }
-      } else {
-        openShareModal(url, title);
-      }
+      openShareModal(url, title);
     };
+
+    // =========================================================================
+    // Mention Autocomplete Controller (@username discovery)
+    // =========================================================================
+    function setupMentionAutocomplete(inputEl) {
+      if (!inputEl) return;
+
+      let dropdown = inputEl.parentElement ? inputEl.parentElement.querySelector('.mention-autocomplete-dropdown') : null;
+      if (!dropdown) {
+        dropdown = document.createElement('div');
+        dropdown.className = 'mention-autocomplete-dropdown';
+        if (inputEl.parentElement) {
+          inputEl.parentElement.appendChild(dropdown);
+        } else {
+          document.body.appendChild(dropdown);
+        }
+      }
+
+      let activeIndex = -1;
+      let currentUsers = [];
+      let mentionQuery = null;
+      let mentionStartIndex = -1;
+      let debounceTimer = null;
+
+      function closeDropdown() {
+        dropdown.style.display = 'none';
+        dropdown.innerHTML = '';
+        activeIndex = -1;
+        currentUsers = [];
+        mentionQuery = null;
+        mentionStartIndex = -1;
+      }
+
+      function insertMention(user) {
+        if (!user || mentionStartIndex < 0) return;
+        const val = inputEl.value;
+        const cursor = inputEl.selectionStart;
+        const before = val.slice(0, mentionStartIndex);
+        const after = val.slice(cursor);
+        const handle = user.username;
+        const replacement = '@' + handle + ' ';
+        inputEl.value = before + replacement + after;
+        const newCursor = before.length + replacement.length;
+        inputEl.setSelectionRange(newCursor, newCursor);
+        inputEl.focus();
+        closeDropdown();
+      }
+
+      async function fetchUsers(query) {
+        try {
+          const res = await fetch('/api/users/mention-search?q=' + encodeURIComponent(query), {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!res.ok) return [];
+          const json = await res.json();
+          return json.data?.users || [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function renderDropdown(users) {
+        currentUsers = users;
+        activeIndex = 0;
+        dropdown.innerHTML = '';
+
+        if (!users || users.length === 0) {
+          closeDropdown();
+          return;
+        }
+
+        users.forEach((user, idx) => {
+          const item = document.createElement('div');
+          item.className = 'mention-dropdown-item' + (idx === 0 ? ' active' : '');
+          const initial = (user.display_name || user.username || 'U').charAt(0).toUpperCase();
+          const badgeHtml = user.has_author_badge ? '<span class="badge-author-earned" style="font-size: 0.65rem; padding: 1px 6px;"><span class="badge-author-icon">✍</span> Author</span>' : '';
+
+          item.innerHTML = `
+            <div class="mention-item-avatar">${initial}</div>
+            <div class="mention-item-info">
+              <div class="mention-item-name">
+                <span>${escapeHtml(user.display_name || user.username)}</span>
+                ${badgeHtml}
+              </div>
+              <div class="mention-item-handle">@${escapeHtml(user.username)}</div>
+            </div>
+          `;
+
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            insertMention(user);
+          });
+
+          dropdown.appendChild(item);
+        });
+
+        // Position dropdown relative to input
+        dropdown.style.display = 'block';
+        dropdown.style.bottom = '100%';
+        dropdown.style.top = 'auto';
+        dropdown.style.left = '0';
+        dropdown.style.marginBottom = '6px';
+      }
+
+      function handleInput() {
+        const val = inputEl.value;
+        const cursor = inputEl.selectionStart;
+        const textBeforeCursor = val.slice(0, cursor);
+
+        const match = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_\.]*)$/);
+        if (!match) {
+          closeDropdown();
+          return;
+        }
+
+        mentionQuery = match[1];
+        mentionStartIndex = cursor - match[1].length - 1;
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          const users = await fetchUsers(mentionQuery);
+          renderDropdown(users);
+        }, 150);
+      }
+
+      inputEl.addEventListener('input', handleInput);
+
+      inputEl.addEventListener('keydown', function (e) {
+        if (dropdown.style.display === 'block' && currentUsers.length > 0) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = (activeIndex + 1) % currentUsers.length;
+            updateActiveItem();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = (activeIndex - 1 + currentUsers.length) % currentUsers.length;
+            updateActiveItem();
+          } else if (e.key === 'Enter' || e.key === 'Tab') {
+            if (activeIndex >= 0 && activeIndex < currentUsers.length) {
+              e.preventDefault();
+              insertMention(currentUsers[activeIndex]);
+            }
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeDropdown();
+          }
+        }
+      });
+
+      function updateActiveItem() {
+        const items = dropdown.querySelectorAll('.mention-dropdown-item');
+        items.forEach((it, idx) => {
+          if (idx === activeIndex) {
+            it.classList.add('active');
+            it.scrollIntoView({ block: 'nearest' });
+          } else {
+            it.classList.remove('active');
+          }
+        });
+      }
+
+      inputEl.addEventListener('blur', function () {
+        setTimeout(closeDropdown, 200);
+      });
+    }
+
+    function initMentions() {
+      const commentInput = document.getElementById('commentContentInput');
+      if (commentInput) setupMentionAutocomplete(commentInput);
+
+      const chatInput = document.getElementById('chatInputMessage');
+      if (chatInput) setupMentionAutocomplete(chatInput);
+    }
 
     // Notification Center Controls
     function initNotifications() {
@@ -562,8 +1099,10 @@
       const notifMarkAll = document.getElementById('nav-notif-mark-all');
       const mobileDrawerNotifLink = document.getElementById('mobile-drawer-notif-link');
       const mobileDrawerNotifBadge = document.getElementById('mobile-drawer-notif-badge');
+      const sidebarNotifBtn = document.getElementById('sidebar-notif-btn');
+      const sidebarNotifBadge = document.getElementById('sidebar-notif-badge');
 
-      if (!notifBtn && !mobileDrawerNotifLink) return;
+      if (!notifBtn && !mobileDrawerNotifLink && !sidebarNotifBtn) return;
 
       function updateBadges(count) {
         const text = count > 99 ? '99+' : String(count);
@@ -575,6 +1114,10 @@
         if (mobileDrawerNotifBadge) {
           mobileDrawerNotifBadge.textContent = text;
           mobileDrawerNotifBadge.style.display = show ? 'inline-flex' : 'none';
+        }
+        if (sidebarNotifBadge) {
+          sidebarNotifBadge.textContent = text;
+          sidebarNotifBadge.style.display = show ? 'inline-flex' : 'none';
         }
       }
 
@@ -705,6 +1248,8 @@
         notifDropdown.style.display = 'flex';
         notifBtn?.setAttribute('aria-expanded', 'true');
         notifBtn?.classList.add('active');
+        sidebarNotifBtn?.setAttribute('aria-expanded', 'true');
+        sidebarNotifBtn?.classList.add('active');
         loadNotifications();
       }
 
@@ -713,6 +1258,8 @@
         notifDropdown.style.display = 'none';
         notifBtn?.setAttribute('aria-expanded', 'false');
         notifBtn?.classList.remove('active');
+        sidebarNotifBtn?.setAttribute('aria-expanded', 'false');
+        sidebarNotifBtn?.classList.remove('active');
       }
 
       function toggleDropdown() {
@@ -726,6 +1273,13 @@
 
       if (notifBtn) {
         notifBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleDropdown();
+        });
+      }
+
+      if (sidebarNotifBtn) {
+        sidebarNotifBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           toggleDropdown();
         });
@@ -760,7 +1314,7 @@
 
       // Close notification dropdown when clicking outside
       document.addEventListener('click', (e) => {
-        if (notifDropdown && !notifDropdown.contains(e.target) && !notifBtn?.contains(e.target)) {
+        if (notifDropdown && !notifDropdown.contains(e.target) && !notifBtn?.contains(e.target) && !sidebarNotifBtn?.contains(e.target)) {
           closeDropdown();
         }
       });
@@ -778,6 +1332,470 @@
     }
     initNotifications();
 
+    // =========================================================================
+    // Community Feed Controller (Single Composer, Scores, Bookmarks, Menus, Reporting)
+    // =========================================================================
+    let attachedComposerImageUrl = null;
+
+    window.toggleFeedComposer = function (open) {
+      const card = document.getElementById('feed-composer-card');
+      const tray = document.getElementById('composer-expanded-tray');
+      const textInput = document.getElementById('composer-text-input');
+      if (!tray) return;
+
+      if (open) {
+        card?.classList.add('is-expanded');
+        tray.style.display = 'flex';
+        if (textInput) {
+          textInput.focus();
+        }
+      } else {
+        card?.classList.remove('is-expanded');
+        tray.style.display = 'none';
+        if (textInput) {
+          textInput.value = '';
+          textInput.style.height = '46px';
+        }
+        removeComposerAttachedImage();
+      }
+    };
+
+    window.handleComposerImageUpload = async function (input) {
+      if (!input || !input.files || input.files.length === 0) return;
+      const file = input.files[0];
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+      if (!validTypes.includes(file.type)) {
+        showAlert('Please upload a valid image file (JPEG, PNG, or WebP).', 'error');
+        input.value = '';
+        return;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        showAlert('Image file size must be less than 10MB.', 'error');
+        input.value = '';
+        return;
+      }
+
+      const attachBtn = document.getElementById('composer-attach-btn');
+      if (attachBtn) {
+        attachBtn.disabled = true;
+        attachBtn.innerHTML = `<span>⏳</span> Uploading...`;
+      }
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const res = await fetch('/upload/inline-image', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-Token': csrf,
+            'Accept': 'application/json'
+          },
+          body: formData
+        });
+
+        const json = await res.json();
+        if (res.ok && json.data?.url) {
+          attachedComposerImageUrl = json.data.url;
+          const previewImg = document.getElementById('composer-image-preview');
+          const previewTray = document.getElementById('composer-image-preview-tray');
+          if (previewImg && previewTray) {
+            previewImg.src = json.data.url;
+            previewTray.style.display = 'block';
+          }
+          toggleFeedComposer(true);
+        } else {
+          showAlert(json.error?.message || 'Failed to upload attached image.', 'error');
+          input.value = '';
+        }
+      } catch (err) {
+        showAlert('Network error occurred during image upload.', 'error');
+        input.value = '';
+      } finally {
+        if (attachBtn) {
+          attachBtn.disabled = false;
+          attachBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg> <span>Add Image</span>`;
+        }
+      }
+    };
+
+    window.removeComposerAttachedImage = function () {
+      attachedComposerImageUrl = null;
+      const previewImg = document.getElementById('composer-image-preview');
+      const previewTray = document.getElementById('composer-image-preview-tray');
+      const fileInput = document.getElementById('composer-image-file-input');
+      if (previewTray) previewTray.style.display = 'none';
+      if (previewImg) previewImg.src = '';
+      if (fileInput) fileInput.value = '';
+    };
+
+    window.submitQuickPost = async function (e) {
+      if (e) e.preventDefault();
+      const submitBtn = document.getElementById('composer-submit-btn');
+      const textInput = document.getElementById('composer-text-input');
+      const catSelect = document.getElementById('composer-category-select');
+
+      let rawText = textInput?.value?.trim() || '';
+      if (attachedComposerImageUrl) {
+        rawText = rawText ? `${rawText}\n\n![Embedded Image](${attachedComposerImageUrl})` : `![Embedded Image](${attachedComposerImageUrl})`;
+      }
+
+      const categoryId = catSelect ? parseInt(catSelect.value, 10) : 1;
+
+      if (!rawText) {
+        showAlert('Please enter your idea or attach an image.', 'error');
+        textInput?.focus();
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Publishing...';
+      }
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch('/api/feed/quick-post', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf
+          },
+          body: JSON.stringify({
+            content: rawText,
+            category_id: categoryId
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.data?.post_id) {
+          showAlert('Post published successfully!', 'success');
+          toggleFeedComposer(false);
+          setTimeout(() => {
+            window.location.href = '/?published=1';
+          }, 800);
+        } else {
+          showAlert(data.error?.message || 'Failed to publish post.', 'error');
+        }
+      } catch (err) {
+        showAlert('Network error occurred while publishing.', 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Publish Idea ✦';
+        }
+      }
+    };
+
+    // Global Report Post Handlers
+    window.openReportPostModal = function (postId, postTitle) {
+      const modal = document.getElementById('report-article-modal');
+      if (!modal) return;
+
+      const targetInput = document.getElementById('reportTargetPostId');
+      if (targetInput) {
+        targetInput.value = postId ? String(postId) : (window.__currentArticleId ? String(window.__currentArticleId) : '');
+      }
+
+      const titleEl = document.getElementById('reportModalTitle');
+      const subtitleEl = document.getElementById('reportModalSubtitle');
+      if (titleEl) {
+        titleEl.textContent = 'Report Content';
+      }
+      if (subtitleEl) {
+        subtitleEl.textContent = postTitle ? `Reporting: "${postTitle}"` : 'Help keep Infinity Blog safe, trustworthy, and constructive.';
+      }
+
+      const form = document.getElementById('reportPostForm');
+      if (form) form.reset();
+
+      const counter = document.getElementById('reportCharCounter');
+      if (counter) {
+        counter.textContent = '0 / 500';
+        counter.style.color = 'var(--text-muted)';
+      }
+
+      const feedback = document.getElementById('reportFormFeedback');
+      if (feedback) {
+        feedback.style.display = 'none';
+        feedback.textContent = '';
+      }
+
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+
+      const reasonSelect = document.getElementById('reportReasonSelect');
+      if (reasonSelect) {
+        reasonSelect.focus();
+      }
+    };
+
+    window.closeReportPostModal = function () {
+      const modal = document.getElementById('report-article-modal');
+      if (!modal) return;
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+      const form = document.getElementById('reportPostForm');
+      if (form) form.reset();
+      const feedback = document.getElementById('reportFormFeedback');
+      if (feedback) {
+        feedback.style.display = 'none';
+        feedback.textContent = '';
+      }
+    };
+
+    window.updateReportCharCount = function (textarea) {
+      const counter = document.getElementById('reportCharCounter');
+      if (counter && textarea) {
+        const len = textarea.value.length;
+        counter.textContent = `${len} / 500`;
+        if (len > 450) {
+          counter.style.color = '#ef4444';
+        } else {
+          counter.style.color = 'var(--text-muted)';
+        }
+      }
+    };
+
+    window.handleReportPostSubmit = async function (event) {
+      if (event) event.preventDefault();
+      const btn = document.getElementById('reportSubmitBtn');
+      const feedback = document.getElementById('reportFormFeedback');
+      const reason = document.getElementById('reportReasonSelect')?.value;
+      const explanation = document.getElementById('reportExplanationTextarea')?.value || '';
+      const targetInput = document.getElementById('reportTargetPostId');
+      const postId = targetInput?.value || window.__currentArticleId;
+
+      if (!reason) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.style.border = '1px solid #fecaca';
+          feedback.textContent = 'Please select a reason for reporting.';
+        }
+        return;
+      }
+
+      if (!postId) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.style.border = '1px solid #fecaca';
+          feedback.textContent = 'Unable to identify post ID to report.';
+        }
+        return;
+      }
+
+      if (explanation.length > 500) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.style.border = '1px solid #fecaca';
+          feedback.textContent = 'Explanation must not exceed 500 characters.';
+        }
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+      }
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch(`/api/posts/${postId}/report`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf || ''
+          },
+          body: JSON.stringify({
+            reason: reason,
+            explanation: explanation
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          if (feedback) {
+            feedback.style.display = 'block';
+            feedback.style.background = '#ecfdf5';
+            feedback.style.color = '#065f46';
+            feedback.style.border = '1px solid #a7f3d0';
+            feedback.textContent = 'Thank you. Your report has been submitted for moderation review.';
+          }
+          setTimeout(() => {
+            closeReportPostModal();
+            showAlert('Thank you. The post has been flagged for moderation.', 'success');
+          }, 1200);
+        } else {
+          if (feedback) {
+            feedback.style.display = 'block';
+            feedback.style.background = '#fef2f2';
+            feedback.style.color = '#991b1b';
+            feedback.style.border = '1px solid #fecaca';
+            feedback.textContent = data.error?.message || 'Could not submit report.';
+          }
+        }
+      } catch (err) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.style.border = '1px solid #fecaca';
+          feedback.textContent = 'Network error occurred while submitting report.';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Submit Report';
+        }
+      }
+    };
+
+    window.handleFeedScore = async function (e, postId, scoreVal) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const card = document.querySelector(`.feed-card[data-post-id="${postId}"]`);
+      const likeBtn = card?.querySelector('.btn-feed-like');
+      const dislikeBtn = card?.querySelector('.btn-feed-dislike');
+      const countEl = card?.querySelector('.like-counter');
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch(`/posts/${postId}/score`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf
+          },
+          body: JSON.stringify({ score: scoreVal })
+        });
+
+        if (res.status === 401) {
+          window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok && data.data) {
+          const userScore = data.data.user_score;
+          if (likeBtn) {
+            if (userScore === 5) {
+              likeBtn.classList.add('active');
+              likeBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+            } else {
+              likeBtn.classList.remove('active');
+              likeBtn.querySelector('svg')?.setAttribute('fill', 'none');
+            }
+          }
+          if (dislikeBtn) {
+            if (userScore === 1) {
+              dislikeBtn.classList.add('active');
+              dislikeBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+            } else {
+              dislikeBtn.classList.remove('active');
+              dislikeBtn.querySelector('svg')?.setAttribute('fill', 'none');
+            }
+          }
+          if (countEl && typeof data.data.count !== 'undefined') {
+            countEl.textContent = data.data.count;
+          }
+        } else {
+          showAlert(data.error?.message || 'Could not update reaction.', 'error');
+        }
+      } catch (err) {
+        showAlert('Network error updating reaction.', 'error');
+      }
+    };
+
+    window.toggleFeedBookmark = async function (e, postId) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const card = document.querySelector(`.feed-card[data-post-id="${postId}"]`);
+      const bookmarkBtn = card?.querySelector('.btn-feed-bookmark');
+      const label = bookmarkBtn?.querySelector('.bookmark-label');
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch(`/api/library/bookmark/${postId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf
+          }
+        });
+
+        if (res.status === 401) {
+          window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+          return;
+        }
+
+        const data = await res.json();
+        if (res.ok && data.data) {
+          const isBookmarked = data.data.bookmarked;
+          if (bookmarkBtn) {
+            if (isBookmarked) {
+              bookmarkBtn.classList.add('active');
+              bookmarkBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+              if (label) label.textContent = 'Saved';
+            } else {
+              bookmarkBtn.classList.remove('active');
+              bookmarkBtn.querySelector('svg')?.setAttribute('fill', 'none');
+              if (label) label.textContent = 'Save';
+            }
+          }
+          showAlert(isBookmarked ? 'Article added to your reading library.' : 'Article removed from your library.', 'success');
+        } else {
+          showAlert(data.error?.message || 'Could not update bookmark.', 'error');
+        }
+      } catch (err) {
+        showAlert('Network error updating bookmark.', 'error');
+      }
+    };
+
+    window.toggleFeedCardMenu = function (e, postId) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const menu = document.getElementById(`feed-menu-${postId}`);
+      if (!menu) return;
+      const isOpen = menu.style.display === 'flex' || menu.style.display === 'block';
+
+      // Close all other open card menus
+      document.querySelectorAll('.feed-menu-dropdown').forEach(m => {
+        m.style.display = 'none';
+      });
+
+      if (!isOpen) {
+        menu.style.display = 'flex';
+      }
+    };
+
+    // Close any feed-card menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.feed-card-menu')) {
+        document.querySelectorAll('.feed-menu-dropdown').forEach(m => {
+          m.style.display = 'none';
+        });
+      }
+    });
+
     // Escape key closes modals, dropdowns, and mobile drawer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -787,10 +1805,16 @@
         if (typeof window.closeShareModal === 'function') {
           window.closeShareModal();
         }
+        document.querySelectorAll('.feed-menu-dropdown').forEach(m => {
+          m.style.display = 'none';
+        });
         closeAllNavDropdowns();
         closeMobileDrawer();
       }
     });
+
+    // Initialize @mention autocompletion for comments and chat
+    initMentions();
   });
 
   window.InfinityBlog = window.BlogCMS = {

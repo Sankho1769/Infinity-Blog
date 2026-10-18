@@ -91,12 +91,15 @@
                     <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">
                       <?= htmlspecialchars($msg['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?>
                     </span>
+                    <?php if (!empty($msg['has_author_badge'])): ?>
+                      <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                    <?php endif; ?>
                     <span style="font-size: 0.72rem; color: var(--text-muted);">
                       <?= date('g:i A', strtotime($msg['created_at'])) ?>
                     </span>
                   </div>
                   <div style="padding: 10px 16px; border-radius: 16px; font-size: 0.92rem; line-height: 1.4; <?= $isMe ? 'background: var(--primary-gradient); color: #fff; border-bottom-right-radius: 4px;' : 'background: #fff; color: var(--text-main); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px;' ?>">
-                    <?= nl2br(htmlspecialchars($msg['message'], ENT_QUOTES, 'UTF-8')) ?>
+                    <?= !empty($msg['rendered_message']) ? $msg['rendered_message'] : nl2br(htmlspecialchars($msg['message'], ENT_QUOTES, 'UTF-8')) ?>
                   </div>
                 </div>
               </div>
@@ -146,7 +149,9 @@
             <!-- Member Chat Message Composer -->
             <div id="chatComposerContainer" style="<?= !empty($isMember) ? 'display: block;' : 'display: none;' ?>">
               <form id="chatSendForm" onsubmit="handleSendChatMessage(event)" style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="flex: 1; border-radius: 24px; padding: 12px 18px;">
+                <div style="position: relative; flex: 1;">
+                  <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="width: 100%; border-radius: 24px; padding: 12px 18px;">
+                </div>
                 <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
                   <span id="chatSendBtnText">Send</span> <span id="chatSendBtnIcon">➔</span>
                 </button>

@@ -293,7 +293,7 @@ final class ArticleContentRenderer
         $captionHtml = $altClean !== '' ? '<figcaption class="article-image-caption">' . $altClean . '</figcaption>' : '';
 
         return '<figure class="article-inline-figure">'
-            . '<img src="' . htmlspecialchars($safeUrl, ENT_QUOTES, 'UTF-8') . '" alt="' . $altClean . '" class="article-inline-image" loading="lazy">'
+            . '<img src="' . htmlspecialchars($safeUrl, ENT_QUOTES, 'UTF-8') . '" alt="' . $altClean . '" class="article-inline-image" loading="lazy" onerror="this.closest(\'figure\').style.display=\'none\';">'
             . $captionHtml
             . '</figure>';
     }
@@ -450,7 +450,7 @@ final class ArticleContentRenderer
     /**
      * Sanitize and validate URL for security.
      */
-    private function sanitizeUrl(string $url): ?string
+    public function sanitizeUrl(string $url): ?string
     {
         $trimmed = trim($url);
         if ($trimmed === '') {
@@ -460,6 +460,11 @@ final class ArticleContentRenderer
         // Allow relative URLs starting with /
         if (str_starts_with($trimmed, '/') && !str_starts_with($trimmed, '//')) {
             return $trimmed;
+        }
+
+        // Support paths starting with uploads/
+        if (str_starts_with($trimmed, 'uploads/')) {
+            return '/' . $trimmed;
         }
 
         // Allow mailto:
@@ -476,6 +481,107 @@ final class ArticleContentRenderer
         }
 
         return null;
+    }
+
+    /**
+     * Extract the first valid image from Markdown/HTML content.
+     *
+     * @return array{url: string, alt: string}|null
+     */
+    public function extractFirstImage(string $content): ?array
+    {
+        // 1. Markdown image: ![alt](url)
+        if (preg_match('/!\[(.*?)\]\((.*?)\)/', $content, $m)) {
+            $safeUrl = $this->sanitizeUrl(html_entity_decode(trim($m[2]), ENT_QUOTES, 'UTF-8'));
+            if ($safeUrl !== null) {
+                return [
+                    'url' => $safeUrl,
+                    'alt' => trim($m[1]),
+                ];
+            }
+        }
+
+        // 2. HTML <img> tag fallback
+        if (preg_match('/<img[^>]+src=["\']([^"\']+)["\'][^>]*>/i', $content, $m)) {
+            $safeUrl = $this->sanitizeUrl(html_entity_decode(trim($m[1]), ENT_QUOTES, 'UTF-8'));
+            if ($safeUrl !== null) {
+                $alt = '';
+                if (preg_match('/alt=["\']([^"\']*)["\']/i', $m[0], $altM)) {
+                    $alt = trim($altM[1]);
+                }
+                return [
+                    'url' => $safeUrl,
+                    'alt' => $alt,
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Render a clean snippet for feed cards:
+     * - Strips raw Markdown image syntax `![alt](url)` so it doesn't leak into readable text.
+     * - Strips video directives `[video](url)`.
+     * - Strips code blocks, markdown headings, and horizontal rules.
+     * - Truncates cleanly at word boundaries.
+     * - Extracts the primary embedded image (if any) so the feed card can render it natively.
+     *
+     * @param string $content
+     * @param int $maxChars
+     * @return array{text: string, primary_image: ?array{url: string, alt: string}, has_more: bool}
+     */
+    public function renderFeedSnippet(string $content, int $maxChars = 200): array
+    {
+        $primaryImage = $this->extractFirstImage($content);
+
+        // Strip code fences: ``` ... ```
+        $clean = preg_replace('/```[a-zA-Z0-9_\-\+]*[\r\n]+.*?```/s', '', $content) ?? $content;
+
+        // Strip markdown images: ![alt](url)
+        $clean = preg_replace('/!\[.*?\]\(.*?\)/', '', $clean) ?? $clean;
+
+        // Strip video directives: [video](url) or [video:url]
+        $clean = preg_replace('/\[video\]\(.*?\) |\[video:.*?\]/i', '', $clean) ?? $clean;
+
+        // Strip headings: # ...
+        $clean = preg_replace('/^#{1,6}\s+/m', '', $clean) ?? $clean;
+
+        // Strip horizontal rules
+        $clean = preg_replace('/^(---|___|\*\*\*)$/m', '', $clean) ?? $clean;
+
+        // Strip raw HTML tags
+        $clean = strip_tags($clean);
+
+        // Strip blockquote markers
+        $clean = preg_replace('/^>\s?/m', '', $clean) ?? $clean;
+
+        // Normalize markdown link syntax [text](url) -> text
+        $clean = preg_replace('/\[(.*?)\]\(.*?\)/', '$1', $clean) ?? $clean;
+
+        // Strip bold, italic, code formatting chars: **, __, *, _, `, ~~
+        $clean = preg_replace('/(\*\*|__|\*|_|`|~~)/', '', $clean) ?? $clean;
+
+        // Collapse multiple whitespaces and newlines
+        $clean = preg_replace('/\s+/', ' ', trim($clean)) ?? trim($clean);
+
+        $hasMore = mb_strlen($clean) > $maxChars;
+        if ($hasMore) {
+            $truncated = mb_substr($clean, 0, $maxChars);
+            $lastSpace = mb_strrpos($truncated, ' ');
+            if ($lastSpace !== false && $lastSpace > ($maxChars / 2)) {
+                $truncated = mb_substr($truncated, 0, $lastSpace);
+            }
+            $text = rtrim($truncated, ".,!?:; \t\n\r\0\x0B") . '…';
+        } else {
+            $text = $clean;
+        }
+
+        return [
+            'text' => $text,
+            'primary_image' => $primaryImage,
+            'has_more' => $hasMore,
+        ];
     }
 
     /**

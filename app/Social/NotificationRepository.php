@@ -87,11 +87,41 @@ final class NotificationRepository
             $stmt->execute();
 
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            return array_map(function (array $r): array {
+
+            // Fetch any custom context URLs from content_mentions for mention-type notifications
+            $mentionUrls = [];
+            $mentionRefIds = [];
+            foreach ($rows as $r) {
+                if (($r['type'] ?? '') === 'mention' && !empty($r['reference_id'])) {
+                    $mentionRefIds[] = (int) $r['reference_id'];
+                }
+            }
+            if ($mentionRefIds !== []) {
+                try {
+                    $placeholders = implode(',', array_fill(0, count($mentionRefIds), '?'));
+                    $cmStmt = $this->pdo->prepare(
+                        "SELECT source_id, context_url FROM content_mentions WHERE mentioned_user_id = ? AND source_id IN ({$placeholders})"
+                    );
+                    $cmStmt->execute(array_merge([$userId], $mentionRefIds));
+                    foreach ($cmStmt->fetchAll(PDO::FETCH_ASSOC) as $cmRow) {
+                        if (!empty($cmRow['context_url'])) {
+                            $mentionUrls[(int) $cmRow['source_id']] = (string) $cmRow['context_url'];
+                        }
+                    }
+                } catch (Throwable) {
+                    // Ignore fallback if content_mentions does not exist
+                }
+            }
+
+            return array_map(function (array $r) use ($mentionUrls): array {
                 $type = (string) $r['type'];
                 $refId = $r['reference_id'] !== null ? (int) $r['reference_id'] : null;
                 $actorId = $r['actor_id'] !== null ? (int) $r['actor_id'] : null;
                 $actorUsername = $r['actor_username'] ?? null;
+
+                $targetUrl = ($type === 'mention' && $refId !== null && isset($mentionUrls[$refId]))
+                    ? $mentionUrls[$refId]
+                    : self::resolveTargetUrl($type, $refId, $actorId, $actorUsername);
 
                 return [
                     'id' => (int) $r['id'],
@@ -103,7 +133,7 @@ final class NotificationRepository
                     'type' => $type,
                     'reference_id' => $refId,
                     'message' => (string) $r['message'],
-                    'target_url' => self::resolveTargetUrl($type, $refId, $actorId, $actorUsername),
+                    'target_url' => $targetUrl,
                     'is_read' => (bool) $r['is_read'],
                     'created_at' => (string) $r['created_at'],
                 ];
@@ -117,7 +147,7 @@ final class NotificationRepository
     {
         return match ($type) {
             'follow' => $actorUsername !== null && $actorUsername !== '' ? '/authors/' . rawurlencode($actorUsername) : ($actorId !== null ? '/authors/' . $actorId : '/'),
-            'score', 'comment' => $refId !== null ? '/article/' . $refId : '/',
+            'score', 'comment', 'mention' => $refId !== null ? '/article/' . $refId : '/',
             'message' => $actorId !== null ? '/messages?user=' . $actorId : '/messages',
             default => '/',
         };

@@ -67,9 +67,14 @@
             <?= strtoupper(substr($post['author_name'] ?? 'Cristine Palmer', 0, 1)) ?>
           </a>
           <div>
-            <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none;" title="View Author Profile">
-              <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>
-            </a>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none;" title="View Author Profile">
+                <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>
+              </a>
+              <?php if (!empty($post['author_has_badge']) || !empty($authorHasBadge)): ?>
+                <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+              <?php endif; ?>
+            </div>
             <div style="font-size: 0.8rem; color: var(--text-muted);">
               <?= date('F j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?> ·
               <?php
@@ -393,6 +398,9 @@
                     <?= htmlspecialchars(mb_substr($comm['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
                   </div>
                   <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-dark);"><?= htmlspecialchars($comm['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
+                  <?php if (!empty($comm['has_author_badge'])): ?>
+                    <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                  <?php endif; ?>
                   <span style="font-size: 0.75rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($comm['created_at'])) ?></span>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -406,7 +414,7 @@
                 </div>
               </div>
               <div style="font-size: 0.92rem; color: var(--text-main); line-height: 1.5; padding-left: 42px;">
-                <?= nl2br(htmlspecialchars($comm['content'], ENT_QUOTES, 'UTF-8')) ?>
+                <?= !empty($comm['rendered_content']) ? $comm['rendered_content'] : \InfinityBlog\Social\MentionService::renderMentionsToHtml($comm['content']) ?>
               </div>
 
               <!-- Nested Replies -->
@@ -420,6 +428,9 @@
                             <?= htmlspecialchars(mb_substr($reply['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
                           </div>
                           <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-dark);"><?= htmlspecialchars($reply['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
+                          <?php if (!empty($reply['has_author_badge'])): ?>
+                            <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                          <?php endif; ?>
                           <span style="font-size: 0.72rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($reply['created_at'])) ?></span>
                         </div>
                         <?php if (!empty($currentUser) && ((int) $currentUser['id'] === (int) $reply['user_id'] || $currentUser['role'] === 'admin')): ?>
@@ -427,7 +438,7 @@
                         <?php endif; ?>
                       </div>
                       <div style="font-size: 0.9rem; color: var(--text-main); line-height: 1.45; padding-left: 36px;">
-                        <?= nl2br(htmlspecialchars($reply['content'], ENT_QUOTES, 'UTF-8')) ?>
+                        <?= !empty($reply['rendered_content']) ? $reply['rendered_content'] : \InfinityBlog\Social\MentionService::renderMentionsToHtml($reply['content']) ?>
                       </div>
                     </div>
                   <?php endforeach; ?>
@@ -604,37 +615,99 @@
 </aside>
 
 <!-- Share Article Modal -->
-<div class="modal-backdrop" id="share-article-modal">
-  <div class="modal-card share-modal-card">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark);">Share this Story</h3>
-      <button type="button" class="alert-close-btn" onclick="closeShareModal()" style="font-size: 1.4rem;">×</button>
+<!-- Share Article Modal -->
+<div class="modal-backdrop" id="share-article-modal" role="dialog" aria-modal="true" aria-labelledby="shareModalTitle" style="display: none;">
+  <div class="modal-card share-modal-card" style="max-width: 540px; width: 92%; max-height: 90vh; overflow-y: auto;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h3 id="shareModalTitle" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark); display: flex; align-items: center; gap: 8px;">
+        <span>🔗</span> Share this Story
+      </h3>
+      <button type="button" class="alert-close-btn" onclick="closeShareModal()" style="font-size: 1.4rem;" aria-label="Close dialog">×</button>
     </div>
-    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px;">
-      Spread the word with readers, colleagues, and your network.
-    </p>
 
+    <!-- Story Preview Snippet in Dialog -->
+    <div class="share-dialog-story-preview" style="padding: 12px 14px; background: rgba(241, 245, 249, 0.7); border-radius: 12px; margin-bottom: 16px; border: 1px solid rgba(226, 232, 240, 0.8);">
+      <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin-bottom: 2px;">Sharing Article</div>
+      <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-dark); line-height: 1.35;"><?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?></div>
+      <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 3px;">by <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?></div>
+    </div>
+
+    <!-- Section A: Send via Direct Message to Followed Contacts -->
+    <div class="share-dialog-section share-dialog-section-dm" style="margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <label style="font-size: 0.86rem; font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px;">
+          <span>✉️</span> Share with Followed Contacts
+        </label>
+        <span id="shareSelectedCount" style="font-size: 0.75rem; color: var(--primary-color); font-weight: 600;">0 selected</span>
+      </div>
+
+      <?php if (!empty($currentUser)): ?>
+        <div style="position: relative; margin-bottom: 10px;">
+          <input type="text" id="shareFollowingSearch" class="form-input" placeholder="Search contacts..." style="padding: 8px 12px 8px 32px; font-size: 0.85rem; border-radius: 20px; width: 100%;">
+          <span style="position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 0.82rem; color: var(--text-muted); pointer-events: none;">🔍</span>
+        </div>
+
+        <div id="shareFollowingList" class="share-following-list" style="max-height: 160px; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 12px; padding: 6px; background: rgba(255,255,255,0.6); display: flex; flex-direction: column; gap: 4px;">
+          <div id="shareFollowingLoading" style="text-align: center; padding: 16px; font-size: 0.85rem; color: var(--text-muted);">
+            Loading contacts...
+          </div>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <textarea id="shareDmNote" class="form-input" rows="2" placeholder="Add an optional personal note..." maxlength="500" style="font-size: 0.85rem; padding: 8px 12px; border-radius: 10px; resize: none;"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+          <div id="shareDmFeedback" style="font-size: 0.8rem; font-weight: 600;"></div>
+          <button type="button" id="shareSendDmBtn" class="btn btn-primary btn-sm btn-pill" onclick="sendArticleDirectMessage(<?= (int) $post['id'] ?>)" disabled>
+            <span>✉️</span> Send Story
+          </button>
+        </div>
+      <?php else: ?>
+        <div style="padding: 14px; background: rgba(248, 250, 252, 0.9); border: 1px dashed var(--glass-border); border-radius: 12px; text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 0.85rem; color: var(--text-muted);">
+            Sign in to share this story directly with writers and contacts you follow on Infinity Blog.
+          </p>
+          <a href="/login?redirect=<?= urlencode('/article/' . (int) $post['id']) ?>" class="btn btn-secondary btn-sm btn-pill">
+            Sign In to Share Privately
+          </a>
+        </div>
+      <?php endif; ?>
+    </div>
+
+    <!-- Divider -->
+    <div style="display: flex; align-items: center; gap: 12px; margin: 18px 0 16px;">
+      <div style="flex: 1; height: 1px; background: rgba(226, 232, 240, 0.9);"></div>
+      <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); letter-spacing: 0.05em;">Or share externally</span>
+      <div style="flex: 1; height: 1px; background: rgba(226, 232, 240, 0.9);"></div>
+    </div>
+
+    <!-- Section B: WhatsApp & External Social Platforms -->
     <?php
       $shareUrl = $canonicalUrl ?? (($baseUrl ?? '') . '/article/' . (int) $post['id']);
       $shareTitle = $post['title'];
+      // WhatsApp sharing link format: https://wa.me/?text=... with title + space + canonical url
+      $whatsappText = $shareTitle . "\n" . $shareUrl;
+      $whatsappUrl = 'https://wa.me/?text=' . rawurlencode($whatsappText);
     ?>
-    <div class="share-options-grid">
-      <a href="https://api.whatsapp.com/send?text=<?= urlencode($shareTitle . ' ' . $shareUrl) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
-        <span style="font-size: 1.2rem;">💬</span> WhatsApp
-      </a>
-      <a href="https://www.linkedin.com/sharing/share-offsite/?url=<?= urlencode($shareUrl) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
-        <span style="font-size: 1.2rem;">💼</span> LinkedIn
+    <div class="share-options-grid" style="margin: 0 0 16px;">
+      <a href="<?= htmlspecialchars($whatsappUrl, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn share-option-whatsapp" id="shareWhatsAppBtn" style="background: rgba(37, 211, 102, 0.1); border-color: rgba(37, 211, 102, 0.3); color: #15803d;">
+        <span style="font-size: 1.25rem;">💬</span> WhatsApp
       </a>
       <a href="https://twitter.com/intent/tweet?url=<?= urlencode($shareUrl) ?>&text=<?= urlencode($shareTitle) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
         <span style="font-size: 1.2rem;">🐦</span> Twitter / X
+      </a>
+      <a href="https://www.linkedin.com/sharing/share-offsite/?url=<?= urlencode($shareUrl) ?>" target="_blank" rel="noopener noreferrer" class="share-option-btn">
+        <span style="font-size: 1.2rem;">💼</span> LinkedIn
       </a>
       <a href="mailto:?subject=<?= urlencode('Thoughtful Article: ' . $shareTitle) ?>&body=<?= urlencode('Read this article on Infinity Blog: ' . $shareUrl) ?>" class="share-option-btn">
         <span style="font-size: 1.2rem;">✉️</span> Email
       </a>
     </div>
 
-    <div style="margin-top: 16px;">
-      <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Story Link</label>
+    <!-- Copy Link Bar -->
+    <div style="margin-top: 14px;">
+      <label style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 6px;">Story Canonical Link</label>
       <div class="share-copy-link-wrapper">
         <input type="text" id="share-modal-url-input" class="share-copy-input" value="<?= htmlspecialchars($shareUrl, ENT_QUOTES, 'UTF-8') ?>" readonly>
         <button type="button" class="btn btn-primary btn-sm btn-pill" onclick="copyShareLink()">
@@ -646,62 +719,8 @@
   </div>
 </div>
 
-<!-- Report Article Modal -->
-<div class="modal-backdrop" id="report-article-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
-  <div class="modal-card" style="max-width: 520px; width: 100%; border-radius: var(--radius-xl); background: #ffffff; padding: 28px; box-shadow: var(--glass-shadow-dropdown); position: relative;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 1.4rem;">🚩</span>
-        <div>
-          <h3 id="reportModalTitle" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark);">Report Article</h3>
-          <p style="margin: 2px 0 0; font-size: 0.84rem; color: var(--text-muted);">
-            Help keep Infinity Blog safe, trustworthy, and constructive.
-          </p>
-        </div>
-      </div>
-      <button type="button" class="alert-close-btn" onclick="closeReportPostModal()" aria-label="Close report dialog" style="font-size: 1.4rem; border: none; background: transparent; cursor: pointer; color: var(--text-muted); line-height: 1;">×</button>
-    </div>
-
-    <form id="reportPostForm" onsubmit="handleReportPostSubmit(event)">
-      <div id="reportFormFeedback" style="display: none; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.88rem; font-weight: 600;"></div>
-
-      <div style="margin-bottom: 16px;">
-        <label for="reportReasonSelect" style="display: block; font-size: 0.86rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px;">
-          Reason for reporting <span style="color: #ef4444;">*</span>
-        </label>
-        <select id="reportReasonSelect" class="form-input" required style="width: 100%; font-size: 0.9rem; padding: 9px 12px; border-radius: 8px;">
-          <option value="" disabled selected>Select a violation reason...</option>
-          <option value="Spam or misleading content">Spam or misleading content</option>
-          <option value="Harassment or bullying">Harassment or bullying</option>
-          <option value="Hate or abusive content">Hate or abusive content</option>
-          <option value="Sexual or inappropriate content">Sexual or inappropriate content</option>
-          <option value="Violence or dangerous content">Violence or dangerous content</option>
-          <option value="Copyright or intellectual-property concern">Copyright or intellectual-property concern</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-
-      <div style="margin-bottom: 18px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <label for="reportExplanationTextarea" style="font-size: 0.86rem; font-weight: 700; color: var(--text-dark);">
-            Additional details (Optional)
-          </label>
-          <span id="reportCharCounter" style="font-size: 0.76rem; color: var(--text-muted);">0 / 500</span>
-        </div>
-        <textarea id="reportExplanationTextarea" class="form-input" rows="3" maxlength="500" placeholder="Provide context or specific details for our moderation team (max 500 characters)..." oninput="updateReportCharCount(this)" style="width: 100%; resize: vertical; font-size: 0.88rem; padding: 8px 12px; border-radius: 8px;"></textarea>
-      </div>
-
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="closeReportPostModal()">Cancel</button>
-        <button type="submit" id="reportSubmitBtn" class="btn btn-danger btn-sm btn-pill" style="min-width: 130px;">
-          Submit Report
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <script>
+window.__currentArticleId = <?= (int) $post['id'] ?>;
 document.addEventListener('DOMContentLoaded', () => {
   const speechData = <?= json_encode($speechData ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
   const synth = window.speechSynthesis;

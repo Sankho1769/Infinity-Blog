@@ -37,6 +37,9 @@
           <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-dark); margin: 0; letter-spacing: -0.02em;">
             <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>
           </h1>
+          <?php if (!empty($author['has_author_badge'])): ?>
+            <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+          <?php endif; ?>
           <?php if (!empty($author['location'])): ?>
             <span style="font-size: 0.82rem; padding: 2px 10px; border-radius: 9999px; background: rgba(99, 102, 241, 0.1); color: var(--primary-color); font-weight: 500;">
               📍 <?= htmlspecialchars($author['location'], ENT_QUOTES, 'UTF-8') ?>

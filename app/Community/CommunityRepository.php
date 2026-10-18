@@ -50,12 +50,13 @@ final class CommunityRepository
             $pStmt->execute([':id' => $postId]);
             $pRow = $pStmt->fetch(PDO::FETCH_ASSOC);
             $authorId = (int) ($pRow['author_id'] ?? 0);
+            $postTitle = (string) ($pRow['title'] ?? 'your article');
             if ($authorId > 0 && $authorId !== $userId) {
                 $uStmt = $this->pdo->prepare('SELECT display_name, username FROM users WHERE id = :id LIMIT 1');
                 $uStmt->execute([':id' => $userId]);
                 $uRow = $uStmt->fetch(PDO::FETCH_ASSOC);
                 $commenterName = $uRow['display_name'] ?? $uRow['username'] ?? 'Someone';
-                $titlePreview = mb_substr((string) ($pRow['title'] ?? 'your article'), 0, 40);
+                $titlePreview = mb_substr($postTitle, 0, 40);
 
                 $notifs = new \InfinityBlog\Social\NotificationRepository($this->pdo);
                 $notifs->createNotification(
@@ -66,6 +67,17 @@ final class CommunityRepository
                     "{$commenterName} commented on \"{$titlePreview}\"."
                 );
             }
+
+            // Process @mentions in comment
+            $mentionService = new \InfinityBlog\Social\MentionService($this->pdo);
+            $mentionService->processMentionsAndNotify(
+                'comment',
+                $commentId,
+                $userId,
+                $content,
+                $postTitle,
+                "/article/{$postId}#comment-{$commentId}"
+            );
         } catch (\Throwable) {
             // Ignore notification failure
         }
@@ -95,6 +107,20 @@ final class CommunityRepository
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([':pid' => $postId]);
         $allComments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($allComments)) {
+            $userIds = array_map(static fn(array $c): int => (int) $c['user_id'], $allComments);
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->pdo);
+            $badgeMap = $badgeService->getBadgeStatusesForUsers($userIds);
+            $mentionService = new \InfinityBlog\Social\MentionService($this->pdo);
+
+            foreach ($allComments as &$comment) {
+                $uid = (int) $comment['user_id'];
+                $comment['has_author_badge'] = !empty($badgeMap[$uid]);
+                $comment['rendered_content'] = $mentionService->renderMentionsToHtml((string) $comment['content']);
+            }
+            unset($comment);
+        }
 
         // Build hierarchical tree
         $commentMap = [];
@@ -133,7 +159,32 @@ final class CommunityRepository
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        return $stmt->rowCount() > 0;
+        $updated = $stmt->rowCount() > 0;
+
+        if ($updated) {
+            try {
+                $cStmt = $this->pdo->prepare('SELECT c.post_id, c.user_id, p.title FROM article_comments c JOIN posts p ON p.id = c.post_id WHERE c.id = :id LIMIT 1');
+                $cStmt->execute([':id' => $commentId]);
+                $cRow = $cStmt->fetch(PDO::FETCH_ASSOC);
+                if ($cRow) {
+                    $postId = (int) $cRow['post_id'];
+                    $effectiveUserId = (int) $cRow['user_id'];
+                    $postTitle = (string) ($cRow['title'] ?? 'your article');
+                    $mentionService = new \InfinityBlog\Social\MentionService($this->pdo);
+                    $mentionService->processMentionsAndNotify(
+                        'comment',
+                        $commentId,
+                        $effectiveUserId,
+                        $content,
+                        $postTitle,
+                        "/article/{$postId}#comment-{$commentId}"
+                    );
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return $updated;
     }
 
     public function deleteComment(int $commentId, int $userId, bool $isAdmin = false): bool
@@ -290,7 +341,23 @@ final class CommunityRepository
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!empty($messages)) {
+            $userIds = array_map(static fn(array $m): int => (int) $m['user_id'], $messages);
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->pdo);
+            $badgeMap = $badgeService->getBadgeStatusesForUsers($userIds);
+            $mentionService = new \InfinityBlog\Social\MentionService($this->pdo);
+
+            foreach ($messages as &$msg) {
+                $uid = (int) $msg['user_id'];
+                $msg['has_author_badge'] = !empty($badgeMap[$uid]);
+                $msg['rendered_message'] = $mentionService->renderMentionsToHtml((string) $msg['message']);
+            }
+            unset($msg);
+        }
+
+        return $messages;
     }
 
     public function postChatMessage(int $roomId, int $userId, string $message): int
@@ -325,7 +392,29 @@ final class CommunityRepository
             ':uid' => $userId,
             ':msg' => $message,
         ]);
-        return (int) $this->pdo->lastInsertId();
+        $chatId = (int) $this->pdo->lastInsertId();
+
+        try {
+            $rStmt = $this->pdo->prepare('SELECT name, slug FROM chat_rooms WHERE id = :id LIMIT 1');
+            $rStmt->execute([':id' => $roomId]);
+            $rRow = $rStmt->fetch(PDO::FETCH_ASSOC);
+            $roomName = (string) ($rRow['name'] ?? 'Chat');
+            $roomSlug = (string) ($rRow['slug'] ?? '');
+            $contextUrl = '/chat' . ($roomSlug !== '' ? '/' . rawurlencode($roomSlug) : '');
+
+            $mentionService = new \InfinityBlog\Social\MentionService($this->pdo);
+            $mentionService->processMentionsAndNotify(
+                'chat',
+                $chatId,
+                $userId,
+                $message,
+                $roomName,
+                $contextUrl
+            );
+        } catch (\Throwable) {
+        }
+
+        return $chatId;
     }
 
     /**

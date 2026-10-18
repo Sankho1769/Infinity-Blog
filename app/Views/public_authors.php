@@ -59,10 +59,13 @@
             <?php endif; ?>
 
             <div style="flex: 1; min-width: 0;">
-              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-dark); margin: 0 0 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-dark); margin: 0 0 3px 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                 <a href="/author/<?= (int) $author['id'] ?>" style="color: inherit; text-decoration: none;">
                   <?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?>
                 </a>
+                <?php if (!empty($author['has_author_badge'])): ?>
+                  <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                <?php endif; ?>
               </h3>
               <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span style="font-size: 0.82rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; display: inline-block;">

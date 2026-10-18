@@ -118,12 +118,14 @@ final class WebController
     /** @return array{status: int, type: string, body: string} */
     public function home(Request $request): array
     {
-        $search = isset($_GET['search']) && is_string($_GET['search']) ? trim($_GET['search']) : null;
+        $searchParam = $request->query('search') ?? ($_GET['search'] ?? null);
+        $search = is_string($searchParam) ? trim($searchParam) : null;
         if ($search === '') {
             $search = null;
         }
 
-        $categorySlug = isset($_GET['category']) && is_string($_GET['category']) ? trim($_GET['category']) : null;
+        $catParam = $request->query('category') ?? ($_GET['category'] ?? null);
+        $categorySlug = is_string($catParam) ? trim($catParam) : null;
         if ($categorySlug === '') {
             $categorySlug = null;
         }
@@ -149,40 +151,184 @@ final class WebController
             $filters['q'] = $search;
         }
 
-        $postResult = $this->posts->listPublic($filters, 1, 24);
+        $account = $this->guard->currentAccount();
+
+        // Feed Tabs: for-you, following, latest, popular
+        $tabParam = $request->query('tab') ?? ($_GET['tab'] ?? null);
+        $activeTab = is_string($tabParam) ? strtolower(trim($tabParam)) : 'for-you';
+        if (!in_array($activeTab, ['for-you', 'following', 'latest', 'popular'], true)) {
+            $activeTab = 'for-you';
+        }
+
+        $emptyFollowing = false;
+        $guestFollowing = false;
+
+        if ($activeTab === 'following') {
+            if ($account === null) {
+                $guestFollowing = true;
+                $postResult = ['posts' => [], 'total' => 0];
+            } else {
+                $followingList = $this->follows !== null ? $this->follows->getFollowing($account->id) : [];
+                $followingIds = array_map(static fn(array $u): int => (int) $u['id'], $followingList);
+                if (empty($followingIds)) {
+                    $emptyFollowing = true;
+                    $postResult = ['posts' => [], 'total' => 0];
+                } else {
+                    $filters['author_ids'] = $followingIds;
+                    $postResult = $this->posts->listPublic($filters, 1, 24);
+                }
+            }
+        } elseif ($activeTab === 'latest') {
+            $filters['sort'] = 'newest';
+            $postResult = $this->posts->listPublic($filters, 1, 24);
+        } elseif ($activeTab === 'popular') {
+            $filters['sort'] = 'popular';
+            $postResult = $this->posts->listPublic($filters, 1, 24);
+        } else {
+            // 'for-you' default
+            $postResult = $this->posts->listPublic($filters, 1, 24);
+        }
+
+        $feedPosts = $postResult['posts'] ?? [];
+
+        // Enrich feed posts with author badge, avatar, bookmark status, user score, and relative time
+        if (!empty($feedPosts)) {
+            $feedAuthorIds = array_values(array_unique(array_map(static fn(array $p): int => (int) $p['author_id'], $feedPosts)));
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+            $authorBadgeMap = $badgeService->getBadgeStatusesForUsers($feedAuthorIds);
+
+            $authorDetails = [];
+            foreach ($feedAuthorIds as $aid) {
+                $u = $this->users->findById($aid);
+                if ($u !== null) {
+                    $authorDetails[$aid] = [
+                        'avatar_url' => $this->resolveAvatarUrl($u->avatarPath),
+                        'username' => $u->username,
+                        'display_name' => $u->displayName,
+                    ];
+                }
+            }
+
+            $bookmarkedPostIds = [];
+            if ($account !== null && $this->library !== null) {
+                try {
+                    $bookmarks = $this->library->getBookmarks($account->id);
+                    foreach ($bookmarks as $bm) {
+                        $bookmarkedPostIds[(int) $bm['id']] = true;
+                    }
+                } catch (\Throwable) {}
+            }
+
+            $userScores = [];
+            if ($account !== null && $this->scores !== null) {
+                try {
+                    foreach ($feedPosts as $p) {
+                        $pid = (int) $p['id'];
+                        $score = $this->scores->getUserScore($pid, $account->id);
+                        if ($score !== null) {
+                            $userScores[$pid] = $score;
+                        }
+                    }
+                } catch (\Throwable) {}
+            }
+
+            foreach ($feedPosts as &$fp) {
+                $aid = (int) $fp['author_id'];
+                $pid = (int) $fp['id'];
+                $fp['author_has_badge'] = !empty($authorBadgeMap[$aid]);
+                $fp['author_avatar_url'] = $authorDetails[$aid]['avatar_url'] ?? null;
+                $fp['author_username'] = $authorDetails[$aid]['username'] ?? 'author';
+                $fp['thumbnail_url'] = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($fp);
+                $fp['is_bookmarked'] = !empty($bookmarkedPostIds[$pid]);
+                $fp['user_score'] = $userScores[$pid] ?? null;
+                $fp['relative_time'] = self::formatRelativeTime($fp['published_at'] ?? $fp['created_at'] ?? null);
+            }
+            unset($fp);
+        }
+
+        // Time-based greeting
+        $hour = (int) date('G');
+        if ($hour < 12) {
+            $timeGreeting = 'morning';
+        } elseif ($hour < 17) {
+            $timeGreeting = 'afternoon';
+        } else {
+            $timeGreeting = 'evening';
+        }
 
         $trendingResult = $this->posts->listPublic(['sort' => 'popular'], 1, 3);
         $trendingPosts = $trendingResult['posts'] ?? [];
 
-        $featuredCommunities = [];
+        // 1. Sidebar: Authors You May Know (up to 5 eligible authors, excluding current signed-in user)
+        $sidebarAuthors = [];
+        try {
+            $allAuthors = $this->users->listPublicAuthors();
+            foreach ($allAuthors as $author) {
+                if ($account !== null && (int) $author['id'] === (int) $account->id) {
+                    continue;
+                }
+                $author['avatar_url'] = $this->resolveAvatarUrl($author['avatar_path'] ?? null);
+                $author['follower_count'] = $this->follows !== null ? $this->follows->getFollowerCount((int) $author['id']) : 0;
+                $author['is_following'] = ($this->follows !== null && $account !== null) ? $this->follows->isFollowing($account->id, (int) $author['id']) : false;
+                $sidebarAuthors[] = $author;
+                if (count($sidebarAuthors) >= 5) {
+                    break;
+                }
+            }
+
+            if (!empty($sidebarAuthors)) {
+                $authorIds = array_map(static fn(array $a): int => (int) $a['id'], $sidebarAuthors);
+                $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+                $badgeMap = $badgeService->getBadgeStatusesForUsers($authorIds);
+                foreach ($sidebarAuthors as &$author) {
+                    $author['has_author_badge'] = !empty($badgeMap[(int) $author['id']]);
+                }
+                unset($author);
+            }
+        } catch (\Throwable) {
+        }
+
+        // 2. Sidebar: Popular Communities (up to 5 active communities with member count & membership state)
+        $sidebarCommunities = [];
         if ($this->community !== null) {
             try {
                 $allRooms = $this->community->getChatRooms();
-                $featuredCommunities = array_slice($allRooms, 0, 4);
+                foreach ($allRooms as $room) {
+                    if (empty($room['is_active'])) {
+                        continue;
+                    }
+                    $room['is_member'] = ($account !== null) ? $this->community->isMember((int) $room['id'], $account->id) : false;
+                    $sidebarCommunities[] = $room;
+                    if (count($sidebarCommunities) >= 5) {
+                        break;
+                    }
+                }
             } catch (\Throwable) {
             }
         }
 
-        $featuredAuthors = [];
-        try {
-            $allAuthors = $this->users->listPublicAuthors();
-            $featuredAuthors = array_slice($allAuthors, 0, 4);
-        } catch (\Throwable) {
-        }
+        $featuredCommunities = array_slice($sidebarCommunities, 0, 4);
+        $featuredAuthors = array_slice($sidebarAuthors, 0, 4);
 
         return $this->render('home', [
             'pageTitle' => 'Ideas. Stories. Perspectives.',
             'metaDescription' => 'Discover insightful articles on web development, artificial intelligence, software engineering, and creative perspectives on Infinity Blog.',
             'activeNav' => 'home',
-            'posts' => $postResult['posts'],
-            'totalPosts' => (int) ($postResult['total'] ?? count($postResult['posts'])),
+            'posts' => $feedPosts,
+            'totalPosts' => (int) ($postResult['total'] ?? count($feedPosts)),
             'trendingPosts' => $trendingPosts,
             'featuredCommunities' => $featuredCommunities,
             'featuredAuthors' => $featuredAuthors,
+            'sidebarAuthors' => $sidebarAuthors,
+            'sidebarCommunities' => $sidebarCommunities,
             'categories' => $activeCategories,
             'activeCategorySlug' => $categorySlug,
             'activeCategoryName' => $activeCatName,
             'searchQuery' => $search,
+            'activeTab' => $activeTab,
+            'emptyFollowing' => $emptyFollowing,
+            'guestFollowing' => $guestFollowing,
+            'timeGreeting' => $timeGreeting,
         ]);
     }
 
@@ -257,12 +403,18 @@ final class WebController
             $comments = $this->community->getPostComments($id, $account?->id);
         }
 
+        $authorId = (int) ($post['author_id'] ?? 0);
+        $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+        $authorHasBadge = $authorId > 0 && $badgeService->qualifiesForAuthorBadge($authorId);
+        $post['author_has_badge'] = $authorHasBadge;
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'metaDescription' => $metaDescription,
             'canonicalPath' => $canonicalPath,
             'canonicalUrl' => $canonicalUrl,
             'articleUrl' => $canonicalUrl,
+            'authorHasBadge' => $authorHasBadge,
             'ogImage' => $articleThumbnail,
             'ogType' => 'article',
             'activeNav' => 'home',
@@ -498,11 +650,79 @@ final class WebController
             return $a;
         }, $authors);
 
+        if (!empty($authors)) {
+            $authorIds = array_map(static fn(array $a): int => (int) $a['id'], $authors);
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+            $badgeMap = $badgeService->getBadgeStatusesForUsers($authorIds);
+            foreach ($authors as &$author) {
+                $author['has_author_badge'] = !empty($badgeMap[(int) $author['id']]);
+            }
+            unset($author);
+        }
+
         return $this->render('public_authors', [
             'pageTitle' => 'Meet Our Authors',
             'metaDescription' => 'Discover the talented writers, engineers, and researchers publishing stories and tutorials on Infinity Blog.',
             'activeNav' => 'authors',
             'authors' => $authors,
+            'searchQuery' => $search,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function publicCommunities(Request $request): array
+    {
+        $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+        if (empty($rooms) && $this->community !== null) {
+            $adminId = $this->users->findFirstAdminId();
+            if ($adminId !== null) {
+                try {
+                    $this->community->createChatRoom('Web Development', 'web-development', 'Discussions about frontend, backend, APIs, and modern architecture.', null, $adminId);
+                    $this->community->createChatRoom('Artificial Intelligence', 'artificial-intelligence', 'Exchange thoughts on LLMs, neural networks, ethics, and AI workflows.', null, $adminId);
+                    $this->community->createChatRoom('General Lounge', 'general', 'Casual hangouts, writing inspiration, and community introductions.', null, $adminId);
+                    $rooms = $this->community->getChatRooms();
+                } catch (\Throwable) {
+                    $rooms = [];
+                }
+            }
+        }
+
+        $activeRooms = array_values(array_filter($rooms, fn($r) => !empty($r['is_active'])));
+
+        $search = isset($_GET['search']) && is_string($_GET['search']) ? trim($_GET['search']) : '';
+        if ($search === '' && isset($_GET['q']) && is_string($_GET['q'])) {
+            $search = trim($_GET['q']);
+        }
+
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+            $activeRooms = array_values(array_filter($activeRooms, function (array $r) use ($needle): bool {
+                $name = mb_strtolower((string) ($r['name'] ?? ''));
+                $desc = mb_strtolower((string) ($r['description'] ?? ''));
+                $cat = mb_strtolower((string) ($r['category_name'] ?? ''));
+                return str_contains($name, $needle) || str_contains($desc, $needle) || str_contains($cat, $needle);
+            }));
+        }
+
+        $account = $this->guard->currentAccount();
+        $enrichedRooms = [];
+        foreach ($activeRooms as $room) {
+            $roomId = (int) $room['id'];
+            $isMember = false;
+            if ($account !== null && $this->community !== null) {
+                $isMember = $this->community->isMember($roomId, $account->id);
+            }
+            $memberCount = isset($room['member_count']) ? (int) $room['member_count'] : ($this->community !== null ? $this->community->getRoomMemberCount($roomId) : 0);
+            $room['is_member'] = $isMember;
+            $room['member_count'] = $memberCount;
+            $enrichedRooms[] = $room;
+        }
+
+        return $this->render('public_communities', [
+            'pageTitle' => 'Discover Communities',
+            'metaDescription' => 'Explore topic-based community channels, connect with creators, and join live text discussions across Infinity Blog.',
+            'activeNav' => 'communities',
+            'communities' => $enrichedRooms,
             'searchQuery' => $search,
         ]);
     }
@@ -545,6 +765,8 @@ final class WebController
 
         $author['avatar_url'] = $this->resolveAvatarUrl($author['avatar_path'] ?? null);
         $author['banner_url'] = $this->resolveBannerUrl($author['banner_path'] ?? null);
+        $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+        $author['has_author_badge'] = $badgeService->qualifiesForAuthorBadge($id);
 
         $postsResult = $this->posts->listPublic(['author_id' => $id], 1, 20);
 
@@ -2131,6 +2353,7 @@ final class WebController
         $xml .= "  <url>\n    <loc>{$baseUrl}/explore</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.9</priority>\n  </url>\n";
         $xml .= "  <url>\n    <loc>{$baseUrl}/categories</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n";
         $xml .= "  <url>\n    <loc>{$baseUrl}/authors</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>\n";
+        $xml .= "  <url>\n    <loc>{$baseUrl}/communities</loc>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n";
 
         // Informational, Contact & Legal Pages
         $xml .= "  <url>\n    <loc>{$baseUrl}/about</loc>\n    <changefreq>monthly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
@@ -2218,6 +2441,94 @@ final class WebController
         } catch (Throwable $e) {
             return $this->jsonResponse(500, ['error' => ['code' => 'ASSISTANT_ERROR', 'message' => 'Could not process question.']]);
         }
+    }
+
+    public function quickPost(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to share a post.']]);
+        }
+
+        $input = $request->input();
+        $csrf = $request->header('X-CSRF-Token') ?? ($input['csrf_token'] ?? ($_POST['csrf_token'] ?? null));
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        $rawContent = isset($input['content']) && is_string($input['content']) ? trim($input['content']) : '';
+        $rawTitle = isset($input['title']) && is_string($input['title']) ? trim($input['title']) : '';
+
+        if ($rawContent === '' && $rawTitle === '') {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Post content cannot be empty.']]);
+        }
+
+        if ($rawTitle === '') {
+            $clean = strip_tags($rawContent);
+            $firstSentence = preg_split('/[.!?\n]/u', $clean)[0] ?? $clean;
+            $rawTitle = mb_substr(trim($firstSentence), 0, 80);
+            if ($rawTitle === '') {
+                $rawTitle = 'Community Discussion';
+            }
+        }
+
+        if ($rawContent === '') {
+            $rawContent = $rawTitle;
+        }
+
+        $categoryId = isset($input['category_id']) && is_numeric($input['category_id']) ? (int) $input['category_id'] : null;
+        if ($categoryId === null || $categoryId <= 0) {
+            $activeCats = $this->categories->listActive();
+            $categoryId = !empty($activeCats) ? (int) $activeCats[0]['id'] : null;
+        }
+
+        try {
+            $draft = $this->posts->createDraft($account->id, [
+                'title' => $rawTitle,
+                'content' => $rawContent,
+                'category_id' => $categoryId,
+            ]);
+
+            $published = $this->posts->publishForAuthor((int) $draft['id'], $account->id);
+
+            return $this->jsonResponse(201, [
+                'data' => [
+                    'post' => $published,
+                    'post_id' => (int) ($published['id'] ?? $draft['id']),
+                    'message' => 'Your post was successfully shared!',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->jsonResponse(400, ['error' => ['code' => 'POST_FAILED', 'message' => $e->getMessage()]]);
+        }
+    }
+
+    private static function formatRelativeTime(?string $datetime): string
+    {
+        if (empty($datetime)) {
+            return 'recently';
+        }
+        $timestamp = strtotime($datetime);
+        if ($timestamp === false) {
+            return 'recently';
+        }
+        $diff = time() - $timestamp;
+        if ($diff < 60) {
+            return 'just now';
+        }
+        if ($diff < 3600) {
+            $mins = max(1, (int) floor($diff / 60));
+            return $mins . 'm ago';
+        }
+        if ($diff < 86400) {
+            $hours = (int) floor($diff / 3600);
+            return $hours . 'h ago';
+        }
+        if ($diff < 604800) {
+            $days = (int) floor($diff / 86400);
+            return $days === 1 ? 'yesterday' : $days . 'd ago';
+        }
+        return date('M j, Y', $timestamp);
     }
 
     /**

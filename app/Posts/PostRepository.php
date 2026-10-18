@@ -88,6 +88,20 @@ final class PostRepository
             } catch (Throwable) {
                 // Ignore if score table is not present in isolated unit test
             }
+
+            try {
+                $placeholders = implode(',', array_fill(0, count($postIds), '?'));
+                $commentStmt = $this->pdo->prepare(
+                    "SELECT post_id, COUNT(*) AS total_comments FROM article_comments " .
+                    "WHERE post_id IN ({$placeholders}) AND status != 'deleted' GROUP BY post_id"
+                );
+                $commentStmt->execute($postIds);
+                foreach ($commentStmt->fetchAll(PDO::FETCH_ASSOC) as $cc) {
+                    $commentCounts[(int) $cc['post_id']] = (int) $cc['total_comments'];
+                }
+            } catch (Throwable) {
+                // Ignore if comments table is not present in isolated unit test
+            }
         }
 
         $posts = [];
@@ -117,6 +131,7 @@ final class PostRepository
                 'created_at' => (string) $row['created_at'],
                 'reading_time' => $readingMinutes,
                 'reader_score' => $scoreSummaries[$postId] ?? ['average' => 0.0, 'count' => 0],
+                'comment_count' => $commentCounts[$postId] ?? 0,
             ];
             $posts[] = $post;
         }
@@ -747,6 +762,20 @@ final class PostRepository
         if (isset($filters['author_id'])) {
             $conditions[] = 'p.author_id = :filter_author_id';
             $parameters['filter_author_id'] = (int) $filters['author_id'];
+        }
+        if (isset($filters['author_ids']) && is_array($filters['author_ids'])) {
+            $authorIds = array_values(array_filter(array_map('intval', $filters['author_ids']), static fn(int $id): bool => $id > 0));
+            if (!empty($authorIds)) {
+                $placeholders = [];
+                foreach ($authorIds as $idx => $aId) {
+                    $key = 'filter_author_ids_' . $idx;
+                    $placeholders[] = ':' . $key;
+                    $parameters[$key] = $aId;
+                }
+                $conditions[] = 'p.author_id IN (' . implode(',', $placeholders) . ')';
+            } else {
+                $conditions[] = '1 = 0';
+            }
         }
         if (isset($filters['q']) && trim((string) $filters['q']) !== '') {
             $conditions[] = '(INSTR(LOWER(p.title), LOWER(:query_title)) > 0 OR INSTR(LOWER(p.content), LOWER(:query_content)) > 0 OR INSTR(LOWER(COALESCE(p.summary, \'\')), LOWER(:query_summary)) > 0)';

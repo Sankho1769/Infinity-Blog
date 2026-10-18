@@ -217,6 +217,13 @@ try {
             echo $webResult['body'];
             return;
         }
+        if ($request->path === '/api/feed/quick-post') {
+            $webResult = $webController->quickPost($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
         if ($request->path === '/contact') {
             $webResult = $webController->submitContact($request);
             http_response_code($webResult['status']);
@@ -284,7 +291,8 @@ try {
             $request->path === '/explore' => $webController->explore($request),
             $request->path === '/library' => $webController->library($request),
             $request->path === '/following' => $webController->followingFeed($request),
-            $request->path === '/community' || $request->path === '/chat' => $webController->chat($request),
+            $request->path === '/communities' || $request->path === '/community' => $webController->publicCommunities($request),
+            $request->path === '/chat' => $webController->chat($request),
             (bool) preg_match('#^/(?:chat|community)/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
             $request->path === '/sitemap.xml' => $webController->sitemap($request),
             $request->path === '/robots.txt' => $webController->robots($request),
@@ -342,7 +350,7 @@ try {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions, $mediaService);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
-    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/') || str_starts_with($request->path, '/api/notifications')) {
+    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/') || str_starts_with($request->path, '/api/notifications') || $request->path === '/api/users/mention-search' || $request->path === '/api/me/following' || str_starts_with($request->path, '/api/share/')) {
         $controller = new SocialController($follows, $messages, $guard, $sessions, $users, new \InfinityBlog\Social\NotificationRepository($pdo));
     } elseif (preg_match('#^/(author|admin)/posts/[0-9]+/summary$#D', $request->path) === 1) {
         try {

@@ -81,6 +81,24 @@ final class SocialController
         if (preg_match('#^/api/authors/([0-9]+)/following$#D', $request->path, $m) === 1) {
             return $this->following((int) $m[1]);
         }
+        if (preg_match('#^/api/authors/([0-9]+)/badge$#D', $request->path, $m) === 1 && $request->method === 'GET') {
+            return $this->getAuthorBadge((int) $m[1]);
+        }
+
+        // Mention autocomplete endpoint
+        if ($request->path === '/api/users/mention-search' && $request->method === 'GET') {
+            return $this->mentionSearch($request);
+        }
+
+        // Authenticated user's following list (for Share modal & social)
+        if ($request->path === '/api/me/following' && $request->method === 'GET') {
+            return $this->getMyFollowing($request);
+        }
+
+        // Direct message sharing endpoint
+        if ($request->path === '/api/share/direct-message' && $request->method === 'POST') {
+            return $this->shareDirectMessage($request);
+        }
 
         // Direct message endpoints
         if ($request->path === '/api/messages/unread-count' && $request->method === 'GET') {
@@ -238,13 +256,8 @@ final class SocialController
             return $csrfError;
         }
 
-        $body = '';
-        if ($request->isJson()) {
-            $jsonData = $request->json();
-            $body = isset($jsonData['body']) && is_string($jsonData['body']) ? $jsonData['body'] : '';
-        } else {
-            $body = isset($_POST['body']) && is_string($_POST['body']) ? $_POST['body'] : '';
-        }
+        $input = $request->input();
+        $body = isset($input['body']) && is_string($input['body']) ? $input['body'] : '';
 
         try {
             $msg = $this->messages->sendMessage($account->id, $otherUserId, $body);
@@ -363,12 +376,160 @@ final class SocialController
         ]];
     }
 
+    private function getAuthorBadge(int $authorId): array
+    {
+        $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+        $status = $badgeService->getAuthorBadgeStatus($authorId);
+
+        return ['status' => 200, 'body' => ['data' => $status]];
+    }
+
+    private function mentionSearch(Request $request): array
+    {
+        $q = isset($_GET['q']) && is_string($_GET['q']) ? $_GET['q'] : '';
+        $viewer = $this->guard->currentAccount();
+        $mentionService = new \InfinityBlog\Social\MentionService($this->users->getPdo());
+        $users = $mentionService->searchUsers($q, 8, $viewer?->id);
+
+        return ['status' => 200, 'body' => ['data' => ['users' => $users]]];
+    }
+
+    private function getMyFollowing(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to view your followed contacts.']]];
+        }
+
+        $following = $this->follows->getFollowing($account->id);
+        if (!empty($following)) {
+            $userIds = array_map(static fn(array $u): int => (int) $u['id'], $following);
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+            $badgeMap = $badgeService->getBadgeStatusesForUsers($userIds);
+            foreach ($following as &$user) {
+                $uid = (int) $user['id'];
+                $user['has_author_badge'] = !empty($badgeMap[$uid]);
+                $user['avatar_url'] = \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($user['avatar_path'] ?? null);
+            }
+            unset($user);
+        }
+
+        return ['status' => 200, 'body' => ['data' => ['following' => $following, 'count' => count($following)]]];
+    }
+
+    private function shareDirectMessage(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to share stories with contacts.']]];
+        }
+
+        $csrfError = $this->requireCsrf($request);
+        if ($csrfError !== null) {
+            return $csrfError;
+        }
+
+        $input = $request->input();
+
+        $recipientIds = [];
+        if (isset($input['recipient_ids']) && is_array($input['recipient_ids'])) {
+            foreach ($input['recipient_ids'] as $rid) {
+                if (is_numeric($rid) && (int) $rid > 0) {
+                    $recipientIds[] = (int) $rid;
+                }
+            }
+        } elseif (isset($input['recipient_id']) && is_numeric($input['recipient_id'])) {
+            $rid = (int) $input['recipient_id'];
+            if ($rid > 0) {
+                $recipientIds[] = $rid;
+            }
+        }
+
+        // Exclude self and remove duplicates
+        $recipientIds = array_values(array_unique(array_filter($recipientIds, static fn(int $id): bool => $id !== (int) $account->id)));
+
+        if ($recipientIds === []) {
+            return ['status' => 422, 'body' => ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Please select at least one contact to share with.']]];
+        }
+
+        $postId = isset($input['post_id']) && is_numeric($input['post_id']) ? (int) $input['post_id'] : null;
+        $postTitle = '';
+        $postUrl = isset($input['post_url']) && is_string($input['post_url']) ? trim($input['post_url']) : '';
+        $customNote = isset($input['message']) && is_string($input['message']) ? trim($input['message']) : '';
+
+        if ($postId !== null && $postId > 0) {
+            $stmt = $this->users->getPdo()->prepare('SELECT id, title, status FROM posts WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $postId]);
+            $postRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$postRow) {
+                return ['status' => 404, 'body' => ['error' => ['code' => 'POST_NOT_FOUND', 'message' => 'The requested post was not found.']]];
+            }
+
+            if (($postRow['status'] ?? '') !== 'published') {
+                return ['status' => 422, 'body' => ['error' => ['code' => 'INVALID_POST', 'message' => 'Only published articles can be shared.']]];
+            }
+
+            $postTitle = (string) $postRow['title'];
+            if ($postUrl === '') {
+                $postUrl = '/article/' . $postId;
+            }
+        }
+
+        // Build share message body
+        if ($postTitle !== '') {
+            $shareBody = "I wanted to share this article with you: \"{$postTitle}\"\n{$postUrl}";
+            if ($customNote !== '') {
+                $shareBody .= "\n\n{$customNote}";
+            }
+        } elseif ($customNote !== '') {
+            $shareBody = $customNote;
+        } else {
+            return ['status' => 422, 'body' => ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'A story or message is required to share.']]];
+        }
+
+        $sentCount = 0;
+        $sentRecipients = [];
+        $lastException = null;
+
+        foreach ($recipientIds as $recipientId) {
+            try {
+                $msg = $this->messages->sendMessage($account->id, $recipientId, $shareBody);
+                $sentCount++;
+                $sentRecipients[] = [
+                    'recipient_id' => $recipientId,
+                    'message_id' => $msg['id'] ?? null,
+                ];
+            } catch (\InvalidArgumentException $e) {
+                $lastException = $e;
+            } catch (Throwable $e) {
+                $lastException = $e;
+            }
+        }
+
+        if ($sentCount === 0 && $lastException !== null) {
+            $isRateLimit = str_contains($lastException->getMessage(), 'Rate limit') || str_contains($lastException->getMessage(), 'slow down');
+            $status = $isRateLimit ? 429 : 422;
+            $code = $isRateLimit ? 'RATE_LIMITED' : (str_contains($lastException->getMessage(), 'blocked') ? 'USER_BLOCKED' : 'VALIDATION_ERROR');
+            return ['status' => $status, 'body' => ['error' => ['code' => $code, 'message' => $lastException->getMessage()]]];
+        }
+
+        return ['status' => 200, 'body' => [
+            'data' => [
+                'success' => true,
+                'sent_count' => $sentCount,
+                'recipients' => $sentRecipients,
+                'message' => "Successfully shared with {$sentCount} contact(s).",
+            ],
+        ]];
+    }
+
     private function requireCsrf(Request $request): ?array
     {
         $token = $request->header('X-CSRF-Token');
         if (!is_string($token) || $token === '') {
-            $jsonData = $request->isJson() ? $request->json() : [];
-            $token = $jsonData['csrf_token'] ?? ($_POST['csrf_token'] ?? ($_GET['csrf_token'] ?? null));
+            $inputData = $request->input();
+            $token = $inputData['csrf_token'] ?? ($_POST['csrf_token'] ?? ($_GET['csrf_token'] ?? null));
         }
 
         if (!is_string($token) || !$this->sessions->validateCsrfToken($token)) {
