@@ -6298,6 +6298,7 @@ figcaption {
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
   width: 100%;
+  text-align: left;
 }
 
 .app-left-sidebar .nav-link:hover,
@@ -6332,6 +6333,7 @@ figcaption {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: left;
 }
 
 .sidebar-divider {
@@ -6346,6 +6348,8 @@ figcaption {
   cursor: pointer;
   width: 100%;
   font-family: inherit;
+  font-size: inherit;
+  text-align: left;
 }
 
 .sidebar-create-highlight {
