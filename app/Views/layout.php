@@ -522,9 +522,11 @@
   <main class="container container-wide">
     <?= $content ?? '' ?>
   </main>
+  </div><!-- /#app-main-wrapper -->
+</div><!-- /#app-layout-shell -->
 
-  <!-- Footer with Clean Multi-Column Layout -->
-  <footer class="site-footer-wrapper container container-wide">
+  <!-- Page-Level Full-Width Footer -->
+  <footer class="site-footer-wrapper" id="site-footer-wrapper">
     <div class="site-footer glass-panel">
       <div class="footer-top-grid">
         <!-- Column 1: Brand & Concise Description -->
@@ -584,8 +586,6 @@
       </div>
     </div>
   </footer>
-  </div><!-- /#app-main-wrapper -->
-</div><!-- /#app-layout-shell -->
 
   <!-- Mobile Bottom Navigation (Claymorphism on Mobile) -->
   <nav class="mobile-bottom-nav" aria-label="Mobile Quick Navigation">

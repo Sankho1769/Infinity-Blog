@@ -131,6 +131,8 @@ body {
   background-position: center;
   color: var(--text-main);
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -2489,17 +2491,36 @@ body {
 
 .site-footer-wrapper {
   margin-top: 36px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1280px) {
+  .site-footer-wrapper {
+    padding: 0 20px;
+    margin-top: 40px;
+    margin-bottom: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-footer-wrapper {
+    padding: 0 14px;
+    margin-top: 24px;
+    margin-bottom: 20px;
+  }
 }
 
 .site-footer {
   margin-top: 0;
-  padding: 30px 32px 22px;
+  padding: 24px 28px 18px;
   text-align: left;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   border-radius: var(--radius-xl);
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: var(--glass-blur-lg);
@@ -2512,10 +2533,10 @@ body {
 
 .footer-top-grid {
   display: grid;
-  grid-template-columns: 2.2fr 1fr 1fr 1.2fr;
+  grid-template-columns: 2fr 1fr 1fr 1.2fr;
   gap: 32px;
   align-items: start;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .footer-brand-col {
@@ -2527,22 +2548,22 @@ body {
   align-items: center;
   gap: 8px;
   text-decoration: none;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .footer-tagline {
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   color: var(--text-muted);
-  line-height: 1.55;
+  line-height: 1.5;
   margin: 0;
 }
 
 .footer-col-heading {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
   text-transform: uppercase;
   color: var(--text-heading);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   letter-spacing: 0.06em;
 }
 
@@ -2552,8 +2573,8 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 0.88rem;
+  gap: 7px;
+  font-size: 0.86rem;
 }
 
 .footer-nav-link {
@@ -2568,7 +2589,7 @@ body {
 
 .footer-bottom-row {
   border-top: 1px solid var(--glass-border);
-  padding-top: 18px;
+  padding-top: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -6162,7 +6183,8 @@ figcaption {
    ========================================================================== */
 .app-layout-shell {
   display: flex;
-  min-height: 100vh;
+  flex: 1 0 auto;
+  min-height: calc(100vh - 200px);
   width: 100%;
   position: relative;
   align-items: flex-start;
@@ -6445,7 +6467,7 @@ figcaption {
   position: sticky;
   top: 10px;
   z-index: 100;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   overflow: visible !important;
 }
 
@@ -6454,8 +6476,16 @@ figcaption {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 18px;
+  height: 50px;
+  min-height: 48px;
+  max-height: 52px;
+  padding: 6px 18px;
   border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.03);
   overflow: visible !important;
   box-sizing: border-box;
 }
@@ -6463,8 +6493,9 @@ figcaption {
 .header-section-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
+  height: 100%;
 }
 
 .header-context {
@@ -6474,13 +6505,14 @@ figcaption {
 }
 
 .header-context-title {
-  font-size: 1.05rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-dark);
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.2;
 }
 
 .header-mobile-brand {
@@ -6497,10 +6529,92 @@ figcaption {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
   margin-left: auto;
+  height: 100%;
   overflow: visible !important;
+}
+
+/* Header Controls Unified Sizing (~36px height) */
+.header-section-left .mobile-nav-toggle {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.header-section-right .nav-search-form {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+}
+
+.header-section-right .nav-search-input {
+  height: 36px;
+  padding: 0 12px 0 32px;
+  font-size: 0.82rem;
+  border-radius: var(--radius-pill);
+  box-sizing: border-box;
+}
+
+.header-section-right .nav-create-btn {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.header-section-right .nav-notif-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.header-section-right .user-menu-pill {
+  height: 36px;
+  padding: 2px 10px 2px 3px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.header-section-right .user-menu-pill .user-avatar,
+.header-section-right .user-menu-pill .user-avatar-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.site-header .btn-sm:not(.nav-create-btn):not(.mobile-nav-toggle) {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 /* User Profile Menu Polish */
@@ -6558,8 +6672,8 @@ figcaption {
   }
   .homepage-sidebar {
     position: sticky !important;
-    top: 80px !important;
-    max-height: calc(100vh - 96px) !important;
+    top: 74px !important;
+    max-height: calc(100vh - 90px) !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     width: 100% !important;
@@ -6607,10 +6721,17 @@ figcaption {
   .site-header {
     top: 6px;
     padding: 0 14px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   .site-header-inner {
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
     padding: 6px 12px;
+  }
+  .header-section-left .mobile-nav-toggle {
+    width: 34px;
+    height: 34px;
   }
   .header-section-right .nav-search-form,
   .header-section-right .nav-create-btn {

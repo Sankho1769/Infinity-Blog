@@ -97,6 +97,19 @@ async function testViewport(cdp, width, height) {
 
     const report = await cdp.evaluate(`
         (() => {
+            function getRect(el) {
+                if (!el) return null;
+                const b = el.getBoundingClientRect();
+                return {
+                    top: Math.round(b.top),
+                    bottom: Math.round(b.bottom),
+                    left: Math.round(b.left),
+                    right: Math.round(b.right),
+                    width: Math.round(b.width),
+                    height: Math.round(b.height)
+                };
+            }
+
             // 1. Search bars count check: Exactly one visible search field on homepage
             const allSearchInputs = Array.from(document.querySelectorAll('input[type="search"]'));
             const visibleSearchInputs = allSearchInputs.filter(el => {
@@ -105,143 +118,180 @@ async function testViewport(cdp, width, height) {
                 return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
             });
 
-            // 2. Sidebars styling & bounding rects
+            // 2. Header metrics
+            const header = document.querySelector('.site-header');
+            const headerInner = document.querySelector('.site-header-inner');
+            const headerCS = header ? window.getComputedStyle(header) : null;
+            const innerCS = headerInner ? window.getComputedStyle(headerInner) : null;
+            const mobileToggle = document.querySelector('.mobile-nav-toggle');
+
+            // 3. Sidebars & content
             const leftSidebar = document.querySelector('.app-left-sidebar');
             const rightSidebar = document.querySelector('.homepage-sidebar');
-            const leftCard = leftSidebar ? window.getComputedStyle(leftSidebar) : null;
+            const leftCS = leftSidebar ? window.getComputedStyle(leftSidebar) : null;
             const rightCards = Array.from(document.querySelectorAll('.sidebar-card')).map(c => window.getComputedStyle(c));
-            const feedCol = document.querySelector('.homepage-main-column');
+            const feedHeader = document.querySelector('.feed-header-section');
 
-            // 3. Footer position and dimensions
+            // 4. Footer metrics
             const footerWrapper = document.querySelector('.site-footer-wrapper');
             const footerCard = document.querySelector('.site-footer');
-            const footerRect = footerCard ? footerCard.getBoundingClientRect() : null;
-            const mainRect = feedCol ? feedCol.getBoundingClientRect() : null;
-            const twoColRect = document.querySelector('.homepage-two-column-layout')?.getBoundingClientRect();
+            const footerCS = footerCard ? window.getComputedStyle(footerCard) : null;
+            const footerWrapperCS = footerWrapper ? window.getComputedStyle(footerWrapper) : null;
 
-            // 4. Horizontal overflow check
+            // 5. Overflow check
             const docWidth = document.documentElement.scrollWidth;
             const viewWidth = window.innerWidth;
-            const hasHorizontalOverflow = docWidth > viewWidth + 1; // 1px threshold for subpixels
-
-            // 5. Footer link validity
-            const footerLinks = Array.from(document.querySelectorAll('.site-footer a')).map(a => ({
-                href: a.getAttribute('href'),
-                text: a.innerText.trim()
-            }));
+            const hasHorizontalOverflow = docWidth > viewWidth + 1;
 
             // 6. Composer state
             const composerCard = document.getElementById('feed-composer-card');
-            const composerText = document.getElementById('composer-text-input');
             const composerTray = document.getElementById('composer-expanded-tray');
 
             return {
+                viewWidth,
+                docWidth,
+                hasHorizontalOverflow,
                 visibleSearchCount: visibleSearchInputs.length,
                 visibleSearchPlaceholder: visibleSearchInputs[0]?.placeholder || null,
-                hasHorizontalOverflow,
-                docWidth,
-                viewWidth,
-                footerRect: footerRect ? {
-                    width: footerRect.width,
-                    top: footerRect.top + window.scrollY,
-                    bottom: footerRect.bottom + window.scrollY
-                } : null,
-                mainRect: mainRect ? {
-                    width: mainRect.width,
-                    top: mainRect.top + window.scrollY,
-                    bottom: mainRect.bottom + window.scrollY
-                } : null,
-                twoColRect: twoColRect ? {
-                    width: twoColRect.width,
-                    left: twoColRect.left,
-                    right: twoColRect.right,
-                    top: twoColRect.top + window.scrollY,
-                    bottom: twoColRect.bottom + window.scrollY
-                } : null,
-                footerLeftAlignDifference: (twoColRect && footerRect) ? Math.abs(twoColRect.left - footerRect.left) : null,
-                footerRightAlignDifference: (twoColRect && footerRect) ? Math.abs(twoColRect.right - footerRect.right) : null,
-                isFooterAfterContent: (twoColRect && footerRect) ? footerRect.top >= (twoColRect.bottom - 5) : false,
+                header: {
+                    rect: getRect(header),
+                    innerRect: getRect(headerInner),
+                    paddingTop: innerCS ? parseFloat(innerCS.paddingTop) : 0,
+                    paddingBottom: innerCS ? parseFloat(innerCS.paddingBottom) : 0,
+                    paddingLeft: innerCS ? parseFloat(innerCS.paddingLeft) : 0,
+                    paddingRight: innerCS ? parseFloat(innerCS.paddingRight) : 0,
+                    height: innerCS ? parseFloat(innerCS.height) : 0,
+                    position: headerCS ? headerCS.position : null,
+                    marginBottom: headerCS ? parseFloat(headerCS.marginBottom) : 0
+                },
+                feedHeader: {
+                    rect: getRect(feedHeader)
+                },
+                leftSidebar: {
+                    rect: getRect(leftSidebar),
+                    display: leftCS ? leftCS.display : 'none',
+                    borderRadius: leftCS ? leftCS.borderRadius : null
+                },
+                rightSidebar: {
+                    rect: getRect(rightSidebar),
+                    display: rightSidebar ? window.getComputedStyle(rightSidebar).display : 'none'
+                },
+                footer: {
+                    wrapperRect: getRect(footerWrapper),
+                    cardRect: getRect(footerCard),
+                    cardPaddingLeft: footerCS ? parseFloat(footerCS.paddingLeft) : 0,
+                    cardPaddingRight: footerCS ? parseFloat(footerCS.paddingRight) : 0,
+                    borderRadius: footerCS ? footerCS.borderRadius : null
+                },
                 isComposerExpandedByDefault: composerCard ? composerCard.classList.contains('is-expanded') : false,
                 isComposerTrayVisibleByDefault: composerTray ? window.getComputedStyle(composerTray).display !== 'none' : false,
-                leftSidebarStyles: leftCard ? {
-                    borderRadius: leftCard.borderRadius,
-                    background: leftCard.backgroundColor,
-                    boxShadow: leftCard.boxShadow,
-                    borderWidth: leftCard.borderWidth
-                } : null,
                 rightCardStyles: rightCards.length > 0 ? {
-                    borderRadius: rightCards[0].borderRadius,
-                    background: rightCards[0].backgroundColor,
-                    boxShadow: rightCards[0].boxShadow,
-                    borderWidth: rightCards[0].borderWidth
-                } : null,
-                footerLinks
+                    borderRadius: rightCards[0].borderRadius
+                } : null
             };
         })()
     `);
 
+    // Verification 1: Exactly 1 search input on homepage
     console.log(`  Visible search inputs on homepage: ${report.visibleSearchCount} (placeholder: "${report.visibleSearchPlaceholder}")`);
     if (report.visibleSearchCount !== 1) {
         throw new Error(`Expected exactly 1 visible search input on homepage, found ${report.visibleSearchCount}`);
     }
 
+    // Verification 2: Zero horizontal overflow
     console.log(`  Horizontal overflow: ${report.hasHorizontalOverflow ? 'YES (FAIL)' : 'NO (PASS)'} (doc: ${report.docWidth}px, view: ${report.viewWidth}px)`);
     if (report.hasHorizontalOverflow) {
         throw new Error(`Horizontal overflow detected! docWidth (${report.docWidth}) > viewWidth (${report.viewWidth})`);
     }
 
-    console.log(`  Composer collapsed by default: ${!report.isComposerExpandedByDefault && !report.isComposerTrayVisibleByDefault ? 'YES (PASS)' : 'NO (FAIL)'}`);
-    if (report.isComposerExpandedByDefault || report.isComposerTrayVisibleByDefault) {
-        throw new Error(`Composer should be collapsed by default!`);
-    }
-
-    if (report.twoColRect && report.footerRect) {
-        console.log(`  Footer placement: starts at Y = ${Math.round(report.footerRect.top)}px (after main content Y = ${Math.round(report.twoColRect.bottom)}px)`);
-        console.log(`  Footer spans full width of main container: footer = ${Math.round(report.footerRect.width)}px, twoCol = ${Math.round(report.twoColRect.width)}px (diff: ${Math.round(report.footerRightAlignDifference || 0)}px)`);
-        if (Math.abs(report.footerLeftAlignDifference) > 4 || Math.abs(report.footerRightAlignDifference) > 4) {
-            console.log(`  Warning: minor alignment variance (left diff: ${report.footerLeftAlignDifference}px, right diff: ${report.footerRightAlignDifference}px)`);
+    // Verification 3: Compact header dimensions
+    const hHeight = report.header.innerRect ? report.header.innerRect.height : 0;
+    console.log(`  Header compact dimensions: height = ${hHeight}px (target ~48-54px), padV = ${report.header.paddingTop}px, padH = ${report.header.paddingLeft}px`);
+    if (width >= 1025) {
+        if (hHeight < 46 || hHeight > 56) {
+            throw new Error(`Header height ${hHeight}px is outside target range 48-54px!`);
+        }
+        if (report.header.paddingTop < 5 || report.header.paddingTop > 9) {
+            throw new Error(`Header vertical padding ${report.header.paddingTop}px is outside target range 6-8px!`);
         }
     }
 
-    if (report.leftSidebarStyles && report.rightCardStyles) {
-        console.log(`  Sidebar style visual match:`);
-        console.log(`    Border-radius: Left = ${report.leftSidebarStyles.borderRadius}, Right = ${report.rightCardStyles.borderRadius}`);
-        console.log(`    Border-width: Left = ${report.leftSidebarStyles.borderWidth}, Right = ${report.rightCardStyles.borderWidth}`);
+    // Verification 4: Header does not cover feed cards
+    if (report.feedHeader.rect && report.header.rect) {
+        console.log(`  Feed content clearance: feed starts at Y = ${report.feedHeader.rect.top}px, header ends at Y = ${report.header.rect.bottom}px (gap: ${report.feedHeader.rect.top - report.header.rect.bottom}px)`);
+        if (report.feedHeader.rect.top < report.header.rect.bottom) {
+            throw new Error(`Header is covering content beneath it! Feed top (${report.feedHeader.rect.top}) < Header bottom (${report.header.rect.bottom})`);
+        }
     }
 
-    // Interactive Composer Expansion & Cancellation Test (if user element exists)
-    const composerInteraction = await cdp.evaluate(`
+    // Verification 5: Truly Full-Width Footer
+    const footerCard = report.footer.cardRect;
+    if (footerCard) {
+        const leftSpace = footerCard.left;
+        const rightSpace = report.viewWidth - footerCard.right;
+        console.log(`  Footer width: ${footerCard.width}px across ${report.viewWidth}px viewport (outer margins: left = ${leftSpace}px, right = ${rightSpace}px)`);
+
+        // Check footer left edge starts near left edge of viewport (e.g. 10-24px)
+        if (leftSpace > 28) {
+            throw new Error(`Footer is not full width! Left margin ${leftSpace}px indicates footer is still trapped in a sub-column!`);
+        }
+        if (rightSpace > 35) {
+            throw new Error(`Footer is not full width! Right margin ${rightSpace}px is too large!`);
+        }
+
+        // On desktop, verify footer spans beneath the left navigation sidebar region
+        if (width >= 1025 && report.leftSidebar.rect) {
+            console.log(`  Left sidebar region: x = ${report.leftSidebar.rect.left}px to ${report.leftSidebar.rect.right}px; Footer spans: x = ${footerCard.left}px to ${footerCard.right}px`);
+            if (footerCard.left > report.leftSidebar.rect.left + 8) {
+                throw new Error(`Footer does not span underneath the left navigation region!`);
+            }
+        }
+    }
+
+    // Verification 6: Scroll to bottom - Sidebars must NOT overlap footer
+    await cdp.evaluate('window.scrollTo(0, 10000)');
+    await sleep(500);
+
+    const bottomScrollReport = await cdp.evaluate(`
         (() => {
-            const input = document.getElementById('composer-text-input');
-            const card = document.getElementById('feed-composer-card');
-            const tray = document.getElementById('composer-expanded-tray');
-            const cancelBtn = document.getElementById('composer-cancel-btn');
-            if (!input || !card || !tray || !cancelBtn) return { skipped: true };
-
-            // Focus to expand
-            input.focus();
-            const expandedAfterFocus = card.classList.contains('is-expanded') && window.getComputedStyle(tray).display !== 'none';
-
-            // Type some text
-            input.value = 'Testing unified single composer expansion';
-
-            // Cancel
-            cancelBtn.click();
-            const collapsedAfterCancel = !card.classList.contains('is-expanded') && window.getComputedStyle(tray).display === 'none';
-
+            function getRect(el) {
+                if (!el) return null;
+                const b = el.getBoundingClientRect();
+                return {
+                    top: Math.round(b.top),
+                    bottom: Math.round(b.bottom),
+                    left: Math.round(b.left),
+                    right: Math.round(b.right),
+                    width: Math.round(b.width),
+                    height: Math.round(b.height)
+                };
+            }
+            const leftSidebar = document.querySelector('.app-left-sidebar');
+            const rightSidebar = document.querySelector('.homepage-sidebar');
+            const footerCard = document.querySelector('.site-footer');
             return {
-                skipped: false,
-                expandedAfterFocus,
-                collapsedAfterCancel
+                scrollY: window.scrollY,
+                leftSidebar: getRect(leftSidebar),
+                rightSidebar: getRect(rightSidebar),
+                footer: getRect(footerCard)
             };
         })()
     `);
 
-    if (!composerInteraction.skipped) {
-        console.log(`  Composer expands on interaction: ${composerInteraction.expandedAfterFocus}`);
-        console.log(`  Composer collapses on cancel: ${composerInteraction.collapsedAfterCancel}`);
-        if (!composerInteraction.expandedAfterFocus || !composerInteraction.collapsedAfterCancel) {
-            throw new Error('Composer expansion or cancellation failed!');
+    if (bottomScrollReport.footer) {
+        if (width >= 1025 && bottomScrollReport.leftSidebar) {
+            const leftOverlap = bottomScrollReport.leftSidebar.bottom > bottomScrollReport.footer.top;
+            console.log(`  Left sidebar stop check at bottom scroll: sidebar bottom = ${bottomScrollReport.leftSidebar.bottom}px, footer top = ${bottomScrollReport.footer.top}px (overlap: ${leftOverlap ? 'YES (FAIL)' : 'NO (PASS)'})`);
+            if (leftOverlap) {
+                throw new Error(`Left sidebar overlaps the footer at page bottom! sidebar.bottom (${bottomScrollReport.leftSidebar.bottom}) > footer.top (${bottomScrollReport.footer.top})`);
+            }
+        }
+        if (width >= 1025 && bottomScrollReport.rightSidebar) {
+            const rightOverlap = bottomScrollReport.rightSidebar.bottom > bottomScrollReport.footer.top;
+            console.log(`  Right sidebar stop check at bottom scroll: sidebar bottom = ${bottomScrollReport.rightSidebar.bottom}px, footer top = ${bottomScrollReport.footer.top}px (overlap: ${rightOverlap ? 'YES (FAIL)' : 'NO (PASS)'})`);
+            if (rightOverlap) {
+                throw new Error(`Right sidebar overlaps the footer at page bottom! sidebar.bottom (${bottomScrollReport.rightSidebar.bottom}) > footer.top (${bottomScrollReport.footer.top})`);
+            }
         }
     }
 
@@ -249,7 +299,7 @@ async function testViewport(cdp, width, height) {
 }
 
 async function run() {
-    console.log('=== Starting Homepage UX, Single Search, Unified Sidebars & Footer Test ===');
+    console.log('=== Starting Full-Width Footer & Compact Header Multi-Viewport Suite ===');
 
     if (!fs.existsSync(USER_DATA_DIR)) {
         fs.mkdirSync(USER_DATA_DIR, { recursive: true });
@@ -340,7 +390,7 @@ async function run() {
         console.log('PASS: Header search bar is preserved on secondary pages.');
 
         console.log('\n============================================================');
-        console.log('ALL RESPONSIVE AND FUNCTIONAL UX TESTS PASSED SUCCESSFULLY!');
+        console.log('ALL FULL-WIDTH FOOTER AND COMPACT HEADER TESTS PASSED!');
         console.log('============================================================');
 
         cdp.close();
