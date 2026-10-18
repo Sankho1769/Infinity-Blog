@@ -13,12 +13,27 @@ final class LoginChallengeService
     private PDO $pdo;
     private MailerService $mailer;
     private string $secretKey;
+    private ?string $lastGeneratedOtpForTesting = null;
 
     public function __construct(PDO $pdo, ?MailerService $mailer = null, ?string $secretKey = null)
     {
         $this->pdo = $pdo;
         $this->mailer = $mailer ?? new MailerService();
         $this->secretKey = $secretKey ?? self::resolveSecretKey();
+    }
+
+    public function mailer(): MailerService
+    {
+        return $this->mailer;
+    }
+
+    /**
+     * Isolated test inspection mechanism: returns the last generated login OTP for automated testing.
+     * This allows test runners to verify OTP flows without exposing dev_code in HTTP API payloads.
+     */
+    public function getLastGeneratedOtpForTesting(): ?string
+    {
+        return $this->lastGeneratedOtpForTesting;
     }
 
     private static function resolveSecretKey(): string
@@ -41,8 +56,10 @@ final class LoginChallengeService
         }
         $env = strtolower(trim((string) $rawEnv));
 
-        $allowed = ['development', 'dev', 'local', 'test', 'testing'];
-        if (!in_array($env, $allowed, true)) {
+        // Real login OTP values must NEVER be returned in production, staging, preview,
+        // unknown, unset, or automated test/testing environments.
+        $allowedLocalDev = ['development', 'dev', 'local'];
+        if (!in_array($env, $allowedLocalDev, true)) {
             return false;
         }
 
@@ -50,11 +67,6 @@ final class LoginChallengeService
         if ($rawDebug === false || $rawDebug === '') {
             $rawDebug = $_ENV['APP_DEBUG'] ?? null;
         }
-
-        if ($env === 'test' || $env === 'testing') {
-            return $rawDebug !== 'false' && $rawDebug !== '0';
-        }
-
         if ($rawDebug === null || $rawDebug === false) {
             return false;
         }
@@ -132,6 +144,7 @@ final class LoginChallengeService
 
         // Generate cryptographically secure 6-digit numeric OTP
         $otp = sprintf('%06d', random_int(100000, 999999));
+        $this->lastGeneratedOtpForTesting = $otp;
         $otpHash = hash_hmac('sha256', $otp, $this->secretKey);
         $challengeToken = bin2hex(random_bytes(32));
         $expiresAt = date('Y-m-d H:i:s', time() + 600); // 10 minutes

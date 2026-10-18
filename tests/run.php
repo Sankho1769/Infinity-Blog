@@ -3820,8 +3820,9 @@ $run('Login email verification challenges users with email, enforces 5-attempt r
         $expect($challengeData['challenge_required'] === true);
         $expect(strlen($challengeData['challenge_token']) === 64);
         $expect($challengeData['masked_email'] === 'a***e@example.com');
-        $expect(isset($challengeData['dev_code']) && strlen($challengeData['dev_code']) === 6);
-        $correctOtp = $challengeData['dev_code'];
+        $expect(!isset($challengeData['dev_code']) || $challengeData['dev_code'] === null, 'Test environment must NEVER expose dev_code in HTTP payload');
+        $correctOtp = $challenges->getLastGeneratedOtpForTesting();
+        $expect(is_string($correctOtp) && strlen($correctOtp) === 6, 'Test OTP must be retrieved through isolated test mechanism');
 
         // Formatting rejection
         $badFormat = $challenges->verifyChallenge($challengeData['challenge_token'], '123');
@@ -3845,7 +3846,8 @@ $run('Login email verification challenges users with email, enforces 5-attempt r
         for ($i = 0; $i < 5; $i++) {
             $challenges->verifyChallenge($secondChallenge['challenge_token'], '000000');
         }
-        $lockedOut = $challenges->verifyChallenge($secondChallenge['challenge_token'], $secondChallenge['dev_code']);
+        $secondOtp = $challenges->getLastGeneratedOtpForTesting();
+        $lockedOut = $challenges->verifyChallenge($secondChallenge['challenge_token'], $secondOtp);
         $expect($lockedOut['success'] === false && $lockedOut['error'] === 'MAX_ATTEMPTS_EXCEEDED');
 
         // 4. AuthController integration: user with email receives challenge
@@ -3865,7 +3867,9 @@ $run('Login email verification challenges users with email, enforces 5-attempt r
         $expect($loginAttempt['status'] === 200);
         $expect(!empty($loginAttempt['body']['data']['challenge_required']));
         $cToken = $loginAttempt['body']['data']['challenge_token'];
-        $cCode = $loginAttempt['body']['data']['dev_code'];
+        $expect(!isset($loginAttempt['body']['data']['dev_code']) || $loginAttempt['body']['data']['dev_code'] === null, 'Login response must not expose OTP in test environment');
+        $cCode = $challenges->getLastGeneratedOtpForTesting();
+        $expect(is_string($cCode) && strlen($cCode) === 6);
         $expect($sessions->currentUserId() === null, 'Session must not be established before verifying challenge.');
 
         // Wrong code fails via endpoint
@@ -4906,7 +4910,8 @@ $run('Registration email verification enforces unique phone and email, OTP email
             'phone' => '+447911123456'
         ]));
         $expToken = $expiredAttempt['body']['data']['challenge_token'];
-        $expOtp = $expiredAttempt['body']['data']['dev_code'];
+        $expect(!isset($expiredAttempt['body']['data']['dev_code']) || $expiredAttempt['body']['data']['dev_code'] === null, 'Test env must not expose dev_code in registration payload');
+        $expOtp = $regChallengeService->getLastGeneratedOtpForTesting();
         // Backdate expires_at
         $pdo->prepare("UPDATE registration_challenges SET expires_at = '2020-01-01 00:00:00' WHERE challenge_token = ?")->execute([$expToken]);
         $expiredVerify = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
@@ -4925,7 +4930,8 @@ $run('Registration email verification enforces unique phone and email, OTP email
             'phone' => '+14155552671'
         ]));
         $freshToken = $freshAttempt['body']['data']['challenge_token'];
-        $freshOtp = $freshAttempt['body']['data']['dev_code'];
+        $expect(!isset($freshAttempt['body']['data']['dev_code']) || $freshAttempt['body']['data']['dev_code'] === null, 'Test env must not expose dev_code');
+        $freshOtp = $regChallengeService->getLastGeneratedOtpForTesting();
         $verifiedResult = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
             'challenge_token' => $freshToken,
             'code' => $freshOtp
@@ -4958,7 +4964,8 @@ $run('Registration email verification enforces unique phone and email, OTP email
         ]));
         $expect($userCReg['status'] === 200);
         $tokenC = $userCReg['body']['data']['challenge_token'];
-        $otpC = $userCReg['body']['data']['dev_code'];
+        $expect(!isset($userCReg['body']['data']['dev_code']) || $userCReg['body']['data']['dev_code'] === null);
+        $otpC = $regChallengeService->getLastGeneratedOtpForTesting();
 
         // User D initiates concurrently before User C verifies
         $userDReg = $authController->register(Request::fromValues('POST', '/auth/register', '192.0.2.101', ['X-CSRF-Token' => $csrf], [
@@ -4970,7 +4977,8 @@ $run('Registration email verification enforces unique phone and email, OTP email
         ]));
         $expect($userDReg['status'] === 200);
         $tokenD = $userDReg['body']['data']['challenge_token'];
-        $otpD = $userDReg['body']['data']['dev_code'];
+        $expect(!isset($userDReg['body']['data']['dev_code']) || $userDReg['body']['data']['dev_code'] === null);
+        $otpD = $regChallengeService->getLastGeneratedOtpForTesting();
 
         // User C verifies first
         $verifyC = $authController->verifyRegistration(Request::fromValues('POST', '/auth/register/verify', '192.0.2.100', ['X-CSRF-Token' => $csrf], [
@@ -5098,10 +5106,16 @@ $run('OTP dev_code exposure logic strictly blocks unknown or production environm
         ['', '', false, 'Empty APP_ENV, empty APP_DEBUG must return false'],
         ['unknown', 'true', false, 'Unknown environment must return false even if debug=true'],
         ['staging', 'true', false, 'Staging environment must return false even if debug=true'],
+        ['preview', 'true', false, 'Preview environment must return false even if debug=true'],
         ['production', 'true', false, 'Production environment must never return dev_code'],
         ['production', 'false', false, 'Production environment with debug=false must return false'],
         ['production', null, false, 'Production environment with debug unset must return false'],
         ['prod', 'true', false, 'Prod alias must never return dev_code'],
+        ['test', 'true', false, 'Test environment must NEVER expose dev_code in HTTP payload'],
+        ['test', null, false, 'Test environment with debug unset must return false'],
+        ['test', 'false', false, 'Test environment with debug=false must return false'],
+        ['testing', 'true', false, 'Testing environment must NEVER expose dev_code in HTTP payload'],
+        ['testing', null, false, 'Testing environment with debug unset must return false'],
         ['development', null, false, 'Development with debug unset must return false (not explicitly enabled)'],
         ['development', '', false, 'Development with debug empty must return false'],
         ['development', 'false', false, 'Development with debug=false must return false'],
@@ -5110,10 +5124,6 @@ $run('OTP dev_code exposure logic strictly blocks unknown or production environm
         ['development', '1', true, 'Development with debug=1 must return true'],
         ['dev', 'true', true, 'Dev alias with debug=true must return true'],
         ['local', 'true', true, 'Local alias with debug=true must return true'],
-        ['test', 'true', true, 'Test environment with debug=true must return true'],
-        ['test', null, true, 'Test environment with debug unset must return true'],
-        ['test', 'false', false, 'Test environment with debug=false must return false'],
-        ['testing', 'true', true, 'Testing environment with debug=true must return true'],
     ];
 
     try {
@@ -5160,6 +5170,77 @@ $run('OTP dev_code exposure logic strictly blocks unknown or production environm
             unset($_ENV['APP_DEBUG']);
         } else {
             $_ENV['APP_DEBUG'] = $origDebugGlobal;
+        }
+    }
+});
+
+$run('Registration and login challenge endpoints never expose dev_code in test or unknown environments', static function () use ($expect): void {
+    $pdo = new PDO('sqlite::memory:');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, display_name TEXT, email TEXT, password_hash TEXT, role TEXT DEFAULT 'author', profile_visibility TEXT DEFAULT 'public', auth_version INTEGER DEFAULT 1, status TEXT DEFAULT 'active', must_change_password INTEGER DEFAULT 0, mobile_number_ciphertext TEXT, mobile_number_hash TEXT, mobile_number_verified_at TEXT, created_at TEXT, updated_at TEXT)");
+
+    $users = new UserRepository($pdo);
+    $uId = $users->createUser('Test User', 'testotp@example.com', password_hash('pass1234', PASSWORD_DEFAULT));
+    $account = $users->findById($uId);
+
+    $origEnv = getenv('APP_ENV');
+    $origDebug = getenv('APP_DEBUG');
+
+    try {
+        // Under test environment:
+        putenv('APP_ENV=test');
+        putenv('APP_DEBUG=true');
+
+        $loginChallenges = new \InfinityBlog\Auth\LoginChallengeService($pdo);
+        $loginRes = $loginChallenges->createChallenge($account);
+        $expect(!isset($loginRes['dev_code']) || $loginRes['dev_code'] === null, 'Login challenge must NOT contain dev_code in test environment');
+        $expect(is_string($loginChallenges->getLastGeneratedOtpForTesting()) && strlen($loginChallenges->getLastGeneratedOtpForTesting()) === 6, 'OTP must be available via isolated test getter');
+
+        $mobileService = new \InfinityBlog\Security\MobileNumberService();
+        $regChallenges = new \InfinityBlog\Security\RegistrationChallengeService($pdo, null, $mobileService, $users);
+        $regChallenges->ensureTable();
+        $regRes = $regChallenges->createChallenge([
+            'email' => 'newuser@example.com',
+            'display_name' => 'New User',
+            'password' => 'Pass1234!',
+            'phone' => '+14155552671'
+        ]);
+        $expect(!isset($regRes['dev_code']) || $regRes['dev_code'] === null, 'Registration challenge must NOT contain dev_code in test environment');
+        $expect(is_string($regChallenges->getLastGeneratedOtpForTesting()) && strlen($regChallenges->getLastGeneratedOtpForTesting()) === 6, 'Registration OTP must be available via isolated test getter');
+
+        // Under unknown / unset environment:
+        putenv('APP_ENV');
+        putenv('APP_DEBUG');
+        unset($_ENV['APP_ENV'], $_ENV['APP_DEBUG']);
+
+        $loginResUnknown = $loginChallenges->createChallenge($account);
+        $expect(!isset($loginResUnknown['dev_code']) || $loginResUnknown['dev_code'] === null, 'Login challenge must NOT contain dev_code in unknown environment');
+
+        $regResUnknown = $regChallenges->createChallenge([
+            'email' => 'unknown@example.com',
+            'display_name' => 'Unknown Env User',
+            'password' => 'Pass1234!',
+            'phone' => '+14155552672'
+        ]);
+        $expect(!isset($regResUnknown['dev_code']) || $regResUnknown['dev_code'] === null, 'Registration challenge must NOT contain dev_code in unknown environment');
+
+        // Under explicit development configuration:
+        putenv('APP_ENV=development');
+        putenv('APP_DEBUG=true');
+        $_ENV['APP_ENV'] = 'development';
+        $_ENV['APP_DEBUG'] = 'true';
+        $loginResDev = $loginChallenges->createChallenge($account);
+        $expect(isset($loginResDev['dev_code']) && strlen($loginResDev['dev_code']) === 6, 'Login challenge must include dev_code in explicit development mode');
+    } finally {
+        if ($origEnv === false) {
+            putenv('APP_ENV');
+        } else {
+            putenv("APP_ENV=$origEnv");
+        }
+        if ($origDebug === false) {
+            putenv('APP_DEBUG');
+        } else {
+            putenv("APP_DEBUG=$origDebug");
         }
     }
 });
