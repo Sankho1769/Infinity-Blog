@@ -138,7 +138,7 @@
                 <span id="nav-unread-badge" class="badge-unread-dot" style="display: none; margin-left: auto;"></span>
               </a>
             </li>
-            <li>
+            <li style="position: relative;">
               <button type="button" class="nav-link sidebar-notif-btn" id="sidebar-notif-btn" title="Open Notifications">
                 <span class="sidebar-link-icon" aria-hidden="true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -146,6 +146,15 @@
                 <span class="sidebar-link-text">Notifications</span>
                 <span id="sidebar-notif-badge" class="badge-unread-count" style="display: none; margin-left: auto;">0</span>
               </button>
+              <div class="nav-notif-dropdown glass-panel sidebar-notif-dropdown" id="nav-notif-dropdown" role="menu" aria-label="Notifications Dropdown" style="display: none;">
+                <div class="nav-notif-header">
+                  <span class="nav-notif-header-title">Notifications</span>
+                  <button type="button" class="nav-notif-mark-all" id="nav-notif-mark-all">Mark all read</button>
+                </div>
+                <div class="nav-notif-list" id="nav-notif-list">
+                  <div class="nav-notif-empty">No notifications yet</div>
+                </div>
+              </div>
             </li>
           </ul>
         </div>
@@ -186,7 +195,7 @@
                 </a>
               </li>
               <li>
-                <a href="/posts/new" class="nav-link sidebar-create-highlight <?= ($activeNav ?? '') === 'post_editor' ? 'active' : '' ?>">
+                <a href="/posts/new" class="nav-link sidebar-create-highlight nav-create-btn <?= ($activeNav ?? '') === 'post_editor' ? 'active' : '' ?>">
                   <span class="sidebar-link-icon" aria-hidden="true">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="16"></line><line x1="8" x2="16" y1="12" y2="12"></line></svg>
                   </span>
@@ -226,7 +235,7 @@
             $navDisplayName = $currentUser['display_name'] ?? $currentUser['username'] ?? 'User';
             $navInitial = strtoupper(mb_substr($navDisplayName, 0, 1));
           ?>
-          <div class="sidebar-user-pill">
+          <div class="sidebar-user-pill user-menu-pill">
             <a href="/profile" class="sidebar-user-info" title="View profile for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
               <?php if (!empty($navAvatarUrl)): ?>
                 <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
@@ -242,11 +251,16 @@
                 </div>
               <?php endif; ?>
               <div class="sidebar-user-meta">
-                <span class="sidebar-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="sidebar-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+                  <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                    <span class="user-role-badge admin">Admin</span>
+                  <?php endif; ?>
+                </div>
                 <span class="sidebar-user-handle">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
               </div>
             </a>
-            <a href="/logout" class="sidebar-logout-btn" title="Sign out" aria-label="Sign Out">
+            <a href="/logout" class="sidebar-logout-btn" title="Sign out / Logout" aria-label="Sign Out">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" x2="9" y1="12" y2="12"></line></svg>
             </a>
           </div>
@@ -259,230 +273,9 @@
       </div>
     </aside>
 
-    <!-- Main Content Wrapper: Header + Page Body + Footer -->
+    <!-- Main Content Wrapper: Page Body + Footer (Top bar removed) -->
     <div class="app-main-wrapper" id="app-main-wrapper">
-      <!-- Compact Top Header -->
-      <header class="site-header container container-wide<?= !empty($currentUser) ? ' is-authenticated' : ' is-guest' ?>" id="site-header">
-        <div class="site-header-inner glass-panel">
-          <!-- Left: Mobile Menu Toggle & Breadcrumb / Page Title -->
-          <div class="header-section-left">
-            <button type="button" class="mobile-nav-toggle btn btn-secondary btn-sm" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="3" y1="12" x2="21" y2="12"></line>
-                <line x1="3" y1="6" x2="21" y2="6"></line>
-                <line x1="3" y1="18" x2="21" y2="18"></line>
-              </svg>
-            </button>
-            <a href="/" class="header-mobile-brand" aria-label="Infinity Blog Home">
-              <span class="brand-logo-icon">✦</span>
-              <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
-            </a>
-            <div class="header-context">
-              <span class="header-context-title"><?= htmlspecialchars(($activeNav ?? '') === 'home' ? 'Home' : ($pageTitle ?? 'Infinity Blog'), ENT_QUOTES, 'UTF-8') ?></span>
-            </div>
-          </div>
 
-          <!-- Right: Search, Notifications, Create, Profile Dropdown -->
-          <div class="nav-actions header-section-right">
-            <?php if (($activeNav ?? '') !== 'home'): ?>
-              <!-- Global search (shown on secondary pages, omitted on homepage) -->
-              <form action="/" method="GET" class="nav-search-form" role="search" id="nav-search-form">
-                <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <input type="search" name="search" id="nav-search-input" class="nav-search-input" placeholder="Search stories..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles" autocomplete="off">
-                <kbd class="nav-search-kbd" title="Press / to focus search">/</kbd>
-              </form>
-            <?php endif; ?>
-
-            <?php if (!empty($currentUser)): ?>
-              <?php
-                $navAvatarUrl = $currentUser['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($currentUser['avatar_path'] ?? null);
-                $navDisplayName = $currentUser['display_name'] ?? $currentUser['username'] ?? 'User';
-                $navInitial = strtoupper(mb_substr($navDisplayName, 0, 1));
-              ?>
-              <!-- Create Post Button -->
-              <a href="/posts/new" class="btn btn-primary btn-pill btn-sm nav-create-btn" title="Create a new article">+ Create Post</a>
-
-              <!-- Notification Bell Menu -->
-              <div class="nav-notif-container" id="nav-notif-container">
-                <button type="button" class="nav-notif-btn" id="nav-notif-btn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" title="Notifications">
-                  <svg class="nav-notif-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                  </svg>
-                  <span class="nav-notif-badge" id="nav-notif-badge" style="display: none;">0</span>
-                </button>
-                <div class="nav-notif-dropdown glass-panel" id="nav-notif-dropdown" role="menu" aria-label="Notifications Dropdown" style="display: none;">
-                  <div class="nav-notif-header">
-                    <span class="nav-notif-header-title">Notifications</span>
-                    <button type="button" class="nav-notif-mark-all" id="nav-notif-mark-all">Mark all read</button>
-                  </div>
-                  <div class="nav-notif-list" id="nav-notif-list">
-                    <div class="nav-notif-empty">No notifications yet</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Fully Functional User Profile Dropdown Menu -->
-              <div class="nav-dropdown user-nav-dropdown" id="user-nav-dropdown">
-                <button type="button"
-                        class="user-menu-pill user-profile-link nav-dropdown-btn"
-                        id="user-nav-dropdown-btn"
-                        aria-haspopup="true"
-                        aria-expanded="false"
-                        title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?> — Account Menu"
-                        aria-label="Account menu for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
-                  <?php if (!empty($navAvatarUrl)): ?>
-                    <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
-                         alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
-                         class="user-avatar-img"
-                         style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
-                         onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
-                    <div class="user-avatar nav-avatar-fallback" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; border-radius: 50%; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
-                      <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
-                    </div>
-                  <?php else: ?>
-                    <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
-                      <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
-                    </div>
-                  <?php endif; ?>
-                  <span class="user-display-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
-                  <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-                    <span class="user-role-badge admin">Admin</span>
-                  <?php endif; ?>
-                  <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
-                </button>
-                <div class="nav-dropdown-menu glass-panel user-dropdown-menu" id="user-nav-dropdown-menu" role="menu" aria-label="Account Menu">
-                  <div class="user-dropdown-header" style="padding: 10px 14px; border-bottom: 1px solid var(--glass-border); margin-bottom: 4px;">
-                    <div class="user-dropdown-name" style="font-weight: 700; color: var(--text-dark); font-size: 0.92rem;"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></div>
-                    <div class="user-dropdown-handle" style="font-size: 0.78rem; color: var(--text-muted);">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
-                  </div>
-                  <a href="/profile" class="nav-dropdown-link" role="menuitem">
-                    <span class="dropdown-item-icon" aria-hidden="true">👤</span> View Profile
-                  </a>
-                  <a href="/profile/edit" class="nav-dropdown-link" role="menuitem">
-                    <span class="dropdown-item-icon" aria-hidden="true">⚙️</span> Account Settings
-                  </a>
-                  <a href="/posts/manage" class="nav-dropdown-link" role="menuitem">
-                    <span class="dropdown-item-icon" aria-hidden="true">📝</span> My Articles
-                  </a>
-                  <a href="/library" class="nav-dropdown-link" role="menuitem">
-                    <span class="dropdown-item-icon" aria-hidden="true">📚</span> Reading Library
-                  </a>
-                  <a href="/dashboard" class="nav-dropdown-link" role="menuitem">
-                    <span class="dropdown-item-icon" aria-hidden="true">📊</span> Creator Dashboard
-                  </a>
-                  <div style="height: 1px; background: var(--glass-border); margin: 6px 0;"></div>
-                  <a href="/logout" class="nav-dropdown-link nav-logout-item" role="menuitem" title="Sign out of Infinity Blog" style="color: #ef4444;">
-                    <span class="dropdown-item-icon" aria-hidden="true">🚪</span> Logout
-                  </a>
-                </div>
-              </div>
-            <?php else: ?>
-              <!-- Guest Action Buttons -->
-              <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Sign In</a>
-              <a href="/register" class="btn btn-secondary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Create Account</a>
-            <?php endif; ?>
-          </div>
-        </div>
-
-        <!-- Accessible Slide-Out Mobile Navigation Drawer -->
-        <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" role="dialog" aria-modal="true" aria-label="Mobile Navigation" style="display: none;">
-          <!-- Mobile Search Form -->
-          <form action="/" method="GET" class="mobile-search-form" role="search">
-            <svg class="mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input type="search" name="search" class="mobile-search-input" placeholder="Search articles..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
-          </form>
-
-          <!-- Section: Discover -->
-          <div class="mobile-nav-section">
-            <div class="mobile-nav-section-title">Discover</div>
-            <ul class="mobile-nav-list">
-              <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>"><span class="mobile-link-icon">🏠</span> Home</a></li>
-              <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>"><span class="mobile-link-icon">🧭</span> Explore Stories</a></li>
-              <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories</a></li>
-              <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>"><span class="mobile-link-icon">✍️</span> Authors</a></li>
-              <li><a href="/communities" class="mobile-nav-link <?= ($activeNav ?? '') === 'communities' ? 'active' : '' ?>"><span class="mobile-link-icon">🌐</span> Discover Communities</a></li>
-              <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>"><span class="mobile-link-icon">💬</span> Community Chat</a></li>
-              <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
-              <?php if (!empty($currentUser)): ?>
-                <li><a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link"><span class="mobile-link-icon">🔔</span> Notifications <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none;">0</span></a></li>
-              <?php endif; ?>
-            </ul>
-          </div>
-
-          <?php if (!empty($currentUser)): ?>
-            <!-- Section: My Workspace -->
-            <div class="mobile-nav-section">
-              <div class="mobile-nav-section-title">My Workspace</div>
-              <ul class="mobile-nav-list">
-                <li><a href="/posts/new" class="mobile-nav-link mobile-create-link"><span class="mobile-link-icon">✏️</span> + Create New Post</a></li>
-                <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>"><span class="mobile-link-icon">📝</span> My Articles</a></li>
-                <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>"><span class="mobile-link-icon">📚</span> My Library</a></li>
-                <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>"><span class="mobile-link-icon">👥</span> Following Feed</a></li>
-                <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>"><span class="mobile-link-icon">📊</span> Dashboard</a></li>
-              </ul>
-            </div>
-
-            <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-              <!-- Section: Administration -->
-              <div class="mobile-nav-section">
-                <div class="mobile-nav-section-title">Administration</div>
-                <ul class="mobile-nav-list">
-                  <li><a href="/admin/reported-posts-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>"><span class="mobile-link-icon">🚩</span> Reported Posts</a></li>
-                  <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories Admin</a></li>
-                  <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="mobile-link-icon">👤</span> Users Management</a></li>
-                  <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="mobile-link-icon">🛡️</span> Audit Logs</a></li>
-                  <li><a href="/admin/contact-messages-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Contact Inquiries</a></li>
-                </ul>
-              </div>
-            <?php endif; ?>
-
-            <!-- Section: Account -->
-            <div class="mobile-nav-section mobile-account-section">
-              <div class="mobile-user-card">
-                <a href="/profile" class="mobile-user-info" aria-label="View user profile">
-                  <?php if (!empty($navAvatarUrl)): ?>
-                    <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
-                         alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
-                         class="user-avatar-img"
-                         style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
-                         onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
-                    <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
-                      <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
-                    </div>
-                  <?php else: ?>
-                    <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
-                      <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
-                    </div>
-                  <?php endif; ?>
-                  <div class="mobile-user-meta">
-                    <span class="mobile-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
-                    <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-                      <span class="user-role-badge admin">Admin</span>
-                    <?php endif; ?>
-                  </div>
-                </a>
-                <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
-              </div>
-            </div>
-          <?php else: ?>
-            <!-- Section: Guest Account -->
-            <div class="mobile-nav-section mobile-account-section">
-              <div class="mobile-nav-section-title">Account</div>
-              <div class="mobile-guest-actions">
-                <a href="/login" class="btn btn-primary btn-pill btn-full">Sign In</a>
-                <a href="/register" class="btn btn-secondary btn-pill btn-full">Create Account</a>
-              </div>
-            </div>
-          <?php endif; ?>
-        </div>
-      </header>
 
   <!-- Flash Messages Container -->
   <div class="container container-wide flash-messages">
@@ -586,6 +379,108 @@
       </div>
     </div>
   </footer>
+
+  <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer" style="display: none;"></button>
+
+  <!-- Accessible Slide-Out Mobile Navigation Drawer -->
+  <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" role="dialog" aria-modal="true" aria-label="Mobile Navigation" style="display: none;">
+    <!-- Mobile Search Form -->
+    <form action="/" method="GET" class="mobile-search-form" role="search">
+      <svg class="mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="search" name="search" class="mobile-search-input" placeholder="Search articles..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
+    </form>
+
+    <!-- Section: Discover -->
+    <div class="mobile-nav-section">
+      <div class="mobile-nav-section-title">Discover</div>
+      <ul class="mobile-nav-list">
+        <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>"><span class="mobile-link-icon">🏠</span> Home</a></li>
+        <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>"><span class="mobile-link-icon">🧭</span> Explore Stories</a></li>
+        <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories</a></li>
+        <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>"><span class="mobile-link-icon">✍️</span> Authors</a></li>
+        <li><a href="/communities" class="mobile-nav-link <?= ($activeNav ?? '') === 'communities' ? 'active' : '' ?>"><span class="mobile-link-icon">🌐</span> Discover Communities</a></li>
+        <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>"><span class="mobile-link-icon">💬</span> Community Chat</a></li>
+        <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
+        <?php if (!empty($currentUser)): ?>
+          <li><a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link"><span class="mobile-link-icon">🔔</span> Notifications <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none;">0</span></a></li>
+        <?php endif; ?>
+      </ul>
+    </div>
+
+    <?php if (!empty($currentUser)): ?>
+      <?php
+        $navAvatarUrl = $navAvatarUrl ?? ($currentUser['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($currentUser['avatar_path'] ?? null));
+        $navDisplayName = $navDisplayName ?? ($currentUser['display_name'] ?? $currentUser['username'] ?? 'User');
+        $navInitial = $navInitial ?? strtoupper(mb_substr($navDisplayName, 0, 1));
+      ?>
+      <!-- Section: My Workspace -->
+      <div class="mobile-nav-section">
+        <div class="mobile-nav-section-title">My Workspace</div>
+        <ul class="mobile-nav-list">
+          <li><a href="/posts/new" class="mobile-nav-link mobile-create-link"><span class="mobile-link-icon">✏️</span> + Create New Post</a></li>
+          <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>"><span class="mobile-link-icon">📝</span> My Articles</a></li>
+          <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>"><span class="mobile-link-icon">📚</span> My Library</a></li>
+          <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>"><span class="mobile-link-icon">👥</span> Following Feed</a></li>
+          <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>"><span class="mobile-link-icon">📊</span> Dashboard</a></li>
+        </ul>
+      </div>
+
+      <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+        <!-- Section: Administration -->
+        <div class="mobile-nav-section">
+          <div class="mobile-nav-section-title">Administration</div>
+          <ul class="mobile-nav-list">
+            <li><a href="/admin/reported-posts-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>"><span class="mobile-link-icon">🚩</span> Reported Posts</a></li>
+            <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories Admin</a></li>
+            <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="mobile-link-icon">👤</span> Users Management</a></li>
+            <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="mobile-link-icon">🛡️</span> Audit Logs</a></li>
+            <li><a href="/admin/contact-messages-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Contact Inquiries</a></li>
+          </ul>
+        </div>
+      <?php endif; ?>
+
+      <!-- Section: Account -->
+      <div class="mobile-nav-section mobile-account-section">
+        <div class="mobile-user-card">
+          <a href="/profile" class="mobile-user-info" aria-label="View user profile">
+            <?php if (!empty($navAvatarUrl)): ?>
+              <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
+                   alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
+                   class="user-avatar-img"
+                   style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                   onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+              <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
+                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php else: ?>
+              <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; font-size: 0.8rem; flex-shrink: 0;">
+                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php endif; ?>
+            <div class="mobile-user-meta">
+              <span class="mobile-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+              <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                <span class="user-role-badge admin">Admin</span>
+              <?php endif; ?>
+            </div>
+          </a>
+          <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
+        </div>
+      </div>
+    <?php else: ?>
+      <!-- Section: Guest Account -->
+      <div class="mobile-nav-section mobile-account-section">
+        <div class="mobile-nav-section-title">Account</div>
+        <div class="mobile-guest-actions">
+          <a href="/login" class="btn btn-primary btn-pill btn-full">Sign In</a>
+          <a href="/register" class="btn btn-secondary btn-pill btn-full">Create Account</a>
+        </div>
+      </div>
+    <?php endif; ?>
+  </div>
 
   <!-- Mobile Bottom Navigation (Claymorphism on Mobile) -->
   <nav class="mobile-bottom-nav" aria-label="Mobile Quick Navigation">

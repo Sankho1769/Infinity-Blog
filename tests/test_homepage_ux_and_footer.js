@@ -204,23 +204,17 @@ async function testViewport(cdp, width, height) {
         throw new Error(`Horizontal overflow detected! docWidth (${report.docWidth}) > viewWidth (${report.viewWidth})`);
     }
 
-    // Verification 3: Compact header dimensions
-    const hHeight = report.header.innerRect ? report.header.innerRect.height : 0;
-    console.log(`  Header compact dimensions: height = ${hHeight}px (target ~48-54px), padV = ${report.header.paddingTop}px, padH = ${report.header.paddingLeft}px`);
-    if (width >= 1025) {
-        if (hHeight < 46 || hHeight > 56) {
-            throw new Error(`Header height ${hHeight}px is outside target range 48-54px!`);
-        }
-        if (report.header.paddingTop < 5 || report.header.paddingTop > 9) {
-            throw new Error(`Header vertical padding ${report.header.paddingTop}px is outside target range 6-8px!`);
-        }
+    // Verification 3: Top bar removal check
+    console.log(`  Top bar removed check: header is ${report.header.rect ? 'PRESENT (FAIL)' : 'REMOVED (PASS)'}`);
+    if (report.header.rect !== null) {
+        throw new Error(`Top bar (.site-header) must be removed! Found element in DOM.`);
     }
 
-    // Verification 4: Header does not cover feed cards
-    if (report.feedHeader.rect && report.header.rect) {
-        console.log(`  Feed content clearance: feed starts at Y = ${report.feedHeader.rect.top}px, header ends at Y = ${report.header.rect.bottom}px (gap: ${report.feedHeader.rect.top - report.header.rect.bottom}px)`);
-        if (report.feedHeader.rect.top < report.header.rect.bottom) {
-            throw new Error(`Header is covering content beneath it! Feed top (${report.feedHeader.rect.top}) < Header bottom (${report.header.rect.bottom})`);
+    // Verification 4: Clean alignment at top of viewport
+    if (report.feedHeader.rect && width >= 1025) {
+        console.log(`  Feed starts at Y = ${report.feedHeader.rect.top}px (target 16px)`);
+        if (report.feedHeader.rect.top !== 16) {
+            throw new Error(`Feed does not start at top 16px! Found top = ${report.feedHeader.rect.top}px`);
         }
     }
 
@@ -371,23 +365,26 @@ async function run() {
         await cdp.send('Page.navigate', { url: 'http://localhost:8086/explore' });
         await sleep(1000);
 
-        const exploreSearch = await cdp.evaluate(`
+        const exploreCheck = await cdp.evaluate(`
             (() => {
-                const headerSearch = document.getElementById('nav-search-form');
-                const headerInput = document.getElementById('nav-search-input');
+                const header = document.querySelector('.site-header');
+                const docWidth = document.documentElement.scrollWidth;
+                const viewWidth = window.innerWidth;
                 return {
-                    hasHeaderSearch: !!headerSearch,
-                    hasHeaderInput: !!headerInput,
-                    display: headerSearch ? window.getComputedStyle(headerSearch).display : null
+                    hasHeader: !!header,
+                    hasHOverflow: docWidth > viewWidth + 1
                 };
             })()
         `);
 
-        console.log('Secondary page (/explore) header search check:', exploreSearch);
-        if (!exploreSearch.hasHeaderSearch || !exploreSearch.hasHeaderInput || exploreSearch.display === 'none') {
-            throw new Error('Header search bar should be present on secondary pages like /explore!');
+        console.log('Secondary page (/explore) top bar removed check:', exploreCheck);
+        if (exploreCheck.hasHeader) {
+            throw new Error('Top bar should be removed site-wide, including on secondary pages like /explore!');
         }
-        console.log('PASS: Header search bar is preserved on secondary pages.');
+        if (exploreCheck.hasHOverflow) {
+            throw new Error('Horizontal overflow detected on secondary page!');
+        }
+        console.log('PASS: Top bar is cleanly removed site-wide, including on secondary pages.');
 
         console.log('\n============================================================');
         console.log('ALL FULL-WIDTH FOOTER AND COMPACT HEADER TESTS PASSED!');
