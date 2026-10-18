@@ -336,7 +336,7 @@ final class LibraryRepository
             'FROM categories c ' .
             'LEFT JOIN user_topic_preferences p ON c.id = p.category_id AND p.user_id = :uid ' .
             'WHERE c.is_active = 1 ' .
-            'ORDER BY c.sort_order ASC, c.name ASC'
+            'ORDER BY c.name ASC'
         );
         $stmt->execute([':uid' => $userId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);

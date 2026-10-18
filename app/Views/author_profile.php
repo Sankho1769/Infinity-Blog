@@ -50,7 +50,7 @@
 
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
           <span style="font-size: 0.85rem; color: var(--text-subtle);">@<?= htmlspecialchars($author['username'] ?? 'cristine_palmer', ENT_QUOTES, 'UTF-8') ?></span>
-          <?php if (!empty($author['website'])): ?>
+          <?php if (!empty($author['website']) && preg_match('#^https?://#i', $author['website'])): ?>
             <span style="color: var(--glass-border);">·</span>
             <a href="<?= htmlspecialchars($author['website'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm btn-pill" style="padding: 3px 12px; font-size: 0.78rem;">
               🔗 <?= htmlspecialchars(preg_replace('#^https?://#', '', $author['website']), ENT_QUOTES, 'UTF-8') ?>
@@ -266,7 +266,7 @@
         </div>
       <?php endif; ?>
 
-      <?php if (!empty($author['website'])): ?>
+      <?php if (!empty($author['website']) && preg_match('#^https?://#i', $author['website'])): ?>
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 1.2rem;">🔗</span>
           <div>

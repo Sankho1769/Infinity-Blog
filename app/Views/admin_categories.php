@@ -154,7 +154,7 @@
           <input type="hidden" id="create-cat-custom-logo-path" value="">
 
           <div id="create-logo-preview-card" style="display: none; align-items: center; gap: 12px; margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border: 1px solid var(--glass-border);">
-            <img id="create-logo-preview-img" src="" alt="Preview" style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
+            <img id="create-logo-preview-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Preview" style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
             <div style="flex: 1; min-width: 0;">
               <div id="create-logo-preview-filename" style="font-size: 0.82rem; font-weight: 700; color: var(--text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
               <div id="create-logo-preview-filesize" style="font-size: 0.72rem; color: var(--text-muted);"></div>
@@ -245,7 +245,7 @@
 
           <div id="edit-existing-logo-box" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 10px 14px; background: rgba(16, 185, 129, 0.08); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.25);">
             <div style="display: flex; align-items: center; gap: 10px;">
-              <img id="edit-existing-logo-img" src="" alt="Current logo" style="width: 32px; height: 32px; object-fit: contain; border-radius: 6px;">
+              <img id="edit-existing-logo-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Current logo" style="width: 32px; height: 32px; object-fit: contain; border-radius: 6px;">
               <div>
                 <div style="font-size: 0.82rem; font-weight: 700; color: #065f46;">Current Custom Logo</div>
                 <div style="font-size: 0.72rem; color: #047857;" id="edit-existing-logo-path-text"></div>
@@ -261,7 +261,7 @@
           <input type="hidden" id="edit-cat-remove-logo" value="0">
 
           <div id="edit-logo-preview-card" style="display: none; align-items: center; gap: 12px; margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border: 1px solid var(--glass-border);">
-            <img id="edit-logo-preview-img" src="" alt="Preview" style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
+            <img id="edit-logo-preview-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Preview" style="width: 36px; height: 36px; object-fit: contain; border-radius: 6px;">
             <div style="flex: 1; min-width: 0;">
               <div id="edit-logo-preview-filename" style="font-size: 0.82rem; font-weight: 700; color: var(--text-dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></div>
               <div id="edit-logo-preview-filesize" style="font-size: 0.72rem; color: var(--text-muted);"></div>

@@ -30,6 +30,19 @@ final class LoginChallengeService
         return hash('sha256', 'infinity-blog-challenge-fallback-secret-2026', true);
     }
 
+    private static function isDevelopmentEnvironment(): bool
+    {
+        $env = strtolower(trim((string) (getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? ''))));
+        if ($env === 'production' || $env === 'prod') {
+            return false;
+        }
+        $debug = getenv('APP_DEBUG') ?: ($_ENV['APP_DEBUG'] ?? null);
+        if ($debug === 'false' || $debug === '0') {
+            return false;
+        }
+        return true;
+    }
+
     /**
      * Determine if an account requires an email challenge.
      * Accounts with null email (such as initial admins or unconfigured users)
@@ -135,7 +148,7 @@ final class LoginChallengeService
         $maskedEmail = MailerService::maskEmail($account->email);
         $mailResult = $this->mailer->sendOtp($account->email, $account->displayName, $otp);
 
-        $isDev = getenv('APP_ENV') !== 'production';
+        $isDev = self::isDevelopmentEnvironment();
 
         return [
             'challenge_required' => true,

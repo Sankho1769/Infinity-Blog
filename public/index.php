@@ -400,7 +400,7 @@ try {
         }
         if ($result['status'] === 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
             $redirectParam = $_GET['redirect'] ?? ($_POST['redirect'] ?? null);
-            if (is_string($redirectParam) && str_starts_with($redirectParam, '/') && !str_starts_with($redirectParam, '//')) {
+            if (is_string($redirectParam) && preg_match('#^/(?!/|\\\\)[a-zA-Z0-9_\-/.?=&%#]*$#', $redirectParam)) {
                 header('Location: ' . $redirectParam);
                 return;
             }

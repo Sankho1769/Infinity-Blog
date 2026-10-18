@@ -61,6 +61,19 @@ final class RegistrationChallengeService
         return hash('sha256', 'infinity-blog-reg-challenge-fallback-secret-2026', true);
     }
 
+    private static function isDevelopmentEnvironment(): bool
+    {
+        $env = strtolower(trim((string) (getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? ''))));
+        if ($env === 'production' || $env === 'prod') {
+            return false;
+        }
+        $debug = getenv('APP_DEBUG') ?: ($_ENV['APP_DEBUG'] ?? null);
+        if ($debug === 'false' || $debug === '0') {
+            return false;
+        }
+        return true;
+    }
+
     /**
      * Ensure the registration_challenges table exists (idempotent for SQLite/test environments).
      */
@@ -268,7 +281,7 @@ final class RegistrationChallengeService
         // Send OTP via MailerService (never send registration OTP via SMS)
         $mailResult = $this->mailer->sendRegistrationOtp($email, $displayName, $otp);
 
-        $isDev = getenv('APP_ENV') !== 'production';
+        $isDev = self::isDevelopmentEnvironment();
 
         if ($mailResult['status'] === 'FAILED') {
             return [
@@ -539,7 +552,7 @@ final class RegistrationChallengeService
         $email = (string) $row['email'];
         $displayName = (string) $row['display_name'];
         $mailResult = $this->mailer->sendRegistrationOtp($email, $displayName, $otp);
-        $isDev = getenv('APP_ENV') !== 'production';
+        $isDev = self::isDevelopmentEnvironment();
 
         if ($mailResult['status'] === 'FAILED') {
             return [

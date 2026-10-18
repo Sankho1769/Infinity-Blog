@@ -258,7 +258,7 @@ declare(strict_types=1);
           </div>
         <?php endif; ?>
 
-        <?php if (!empty($user['website'])): ?>
+        <?php if (!empty($user['website']) && preg_match('#^https?://#i', $user['website'])): ?>
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.1rem;" title="Website">🔗</span>
             <div>
