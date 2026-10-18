@@ -61,17 +61,36 @@ final class RegistrationChallengeService
         return hash('sha256', 'infinity-blog-reg-challenge-fallback-secret-2026', true);
     }
 
-    private static function isDevelopmentEnvironment(): bool
+    public static function isDevelopmentEnvironment(): bool
     {
-        $env = strtolower(trim((string) (getenv('APP_ENV') ?: ($_ENV['APP_ENV'] ?? ''))));
-        if ($env === 'production' || $env === 'prod') {
+        $rawEnv = getenv('APP_ENV');
+        if ($rawEnv === false || $rawEnv === '') {
+            $rawEnv = $_ENV['APP_ENV'] ?? null;
+        }
+        if ($rawEnv === null || $rawEnv === false) {
             return false;
         }
-        $debug = getenv('APP_DEBUG') ?: ($_ENV['APP_DEBUG'] ?? null);
-        if ($debug === 'false' || $debug === '0') {
+        $env = strtolower(trim((string) $rawEnv));
+
+        $allowed = ['development', 'dev', 'local', 'test', 'testing'];
+        if (!in_array($env, $allowed, true)) {
             return false;
         }
-        return true;
+
+        $rawDebug = getenv('APP_DEBUG');
+        if ($rawDebug === false || $rawDebug === '') {
+            $rawDebug = $_ENV['APP_DEBUG'] ?? null;
+        }
+
+        if ($env === 'test' || $env === 'testing') {
+            return $rawDebug !== 'false' && $rawDebug !== '0';
+        }
+
+        if ($rawDebug === null || $rawDebug === false) {
+            return false;
+        }
+        $debug = strtolower(trim((string) $rawDebug));
+        return $debug === 'true' || $debug === '1';
     }
 
     /**

@@ -71,6 +71,14 @@ $errorLogger = new ApiErrorLogger();
 
 try {
     $config = AppConfig::fromEnvironment();
+    if (getenv('APP_ENV') === false || getenv('APP_ENV') === '') {
+        putenv('APP_ENV=' . $config->environment);
+        $_ENV['APP_ENV'] = $config->environment;
+    }
+    if (getenv('APP_DEBUG') === false || getenv('APP_DEBUG') === '') {
+        putenv('APP_DEBUG=' . ($config->debug ? 'true' : 'false'));
+        $_ENV['APP_DEBUG'] = $config->debug ? 'true' : 'false';
+    }
     $request = Request::fromGlobals($config->baseUrl);
     if (!RequestOriginPolicy::allows($request, $config->baseUrl)) {
         JsonResponse::send(403, ApiErrorResponder::build(
@@ -400,7 +408,7 @@ try {
         }
         if ($result['status'] === 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
             $redirectParam = $_GET['redirect'] ?? ($_POST['redirect'] ?? null);
-            if (is_string($redirectParam) && preg_match('#^/(?!/|\\\\)[a-zA-Z0-9_\-/.?=&%#]*$#', $redirectParam)) {
+            if (is_string($redirectParam) && preg_match('~^/(?!/|\\\\)[a-zA-Z0-9_\-/.?=&%#+,:]*$~', $redirectParam)) {
                 header('Location: ' . $redirectParam);
                 return;
             }

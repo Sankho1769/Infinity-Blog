@@ -61,6 +61,14 @@ use InfinityBlog\Moderation\PostReportRepository;
 use InfinityBlog\Http\ModerationController;
 
 require dirname(__DIR__) . '/autoload.php';
+if (getenv('APP_ENV') === false || getenv('APP_ENV') === '') {
+    putenv('APP_ENV=test');
+    $_ENV['APP_ENV'] = 'test';
+}
+if (getenv('APP_DEBUG') === false || getenv('APP_DEBUG') === '') {
+    putenv('APP_DEBUG=true');
+    $_ENV['APP_DEBUG'] = 'true';
+}
 ob_start();
 
 final class TestLoginAttemptLimiter implements LoginAttemptLimiter
@@ -5027,6 +5035,133 @@ $run('Registration email verification enforces unique phone and email, OTP email
         $expect($blockedResult['status'] === 'BLOCKED', 'Unconfigured SMS status must be BLOCKED');
         $expect(!empty($blockedResult['reason']), 'Unconfigured SMS must include actionable instructions');
     });
+});
+
+$run('Post-login redirect validation strictly enforces relative paths and rejects open redirects and CRLF injection', static function () use ($expect): void {
+    $redirectRegex = '~^/(?!/|\\\\)[a-zA-Z0-9_\-/.?=&%#+,:]*$~';
+
+    // Valid targets
+    $validTargets = [
+        '/dashboard',
+        '/',
+        '/posts/manage',
+        '/article/42?ref=trending#comments',
+        '/categories?filter=tech&page=2',
+        '/explore?q=hello+world',
+        '/items?ids=1,2,3',
+        '/log?time=2026-10-18T10:00:00Z',
+        '/profile#tab-about',
+    ];
+    foreach ($validTargets as $target) {
+        $expect(preg_match($redirectRegex, $target) === 1, "Target '$target' must be accepted as valid relative redirect");
+    }
+
+    // Unsafe / open-redirect / CRLF targets
+    $unsafeTargets = [
+        '//evil.com',
+        '///evil.com',
+        '////evil.com',
+        '/\\evil.com',
+        '/\evil.com',
+        '/\\/evil.com',
+        'http://evil.com',
+        'https://evil.com',
+        'javascript:alert(1)',
+        'data:text/html,evil',
+        '/foo\bar',
+        "/dashboard\r\nSet-Cookie: evil=1",
+        "/dashboard\nLocation: http://evil.com",
+        "/dashboard\rLocation: http://evil.com",
+        "/dashboard\0evil",
+        '',
+        'dashboard',
+        '\\\\evil.com',
+        '\\evil.com',
+        '/foo bar',
+        '/foo<script>',
+        '/foo"bar',
+        "/foo'bar",
+    ];
+    foreach ($unsafeTargets as $target) {
+        $expect(preg_match($redirectRegex, $target) !== 1, "Unsafe target '$target' must be rejected");
+    }
+});
+
+$run('OTP dev_code exposure logic strictly blocks unknown or production environments and requires explicit dev configuration', static function () use ($expect): void {
+    $origEnv = getenv('APP_ENV');
+    $origDebug = getenv('APP_DEBUG');
+    $origEnvGlobal = $_ENV['APP_ENV'] ?? null;
+    $origDebugGlobal = $_ENV['APP_DEBUG'] ?? null;
+
+    $cases = [
+        [null, null, false, 'Unset APP_ENV, unset APP_DEBUG must return false'],
+        ['', '', false, 'Empty APP_ENV, empty APP_DEBUG must return false'],
+        ['unknown', 'true', false, 'Unknown environment must return false even if debug=true'],
+        ['staging', 'true', false, 'Staging environment must return false even if debug=true'],
+        ['production', 'true', false, 'Production environment must never return dev_code'],
+        ['production', 'false', false, 'Production environment with debug=false must return false'],
+        ['production', null, false, 'Production environment with debug unset must return false'],
+        ['prod', 'true', false, 'Prod alias must never return dev_code'],
+        ['development', null, false, 'Development with debug unset must return false (not explicitly enabled)'],
+        ['development', '', false, 'Development with debug empty must return false'],
+        ['development', 'false', false, 'Development with debug=false must return false'],
+        ['development', '0', false, 'Development with debug=0 must return false'],
+        ['development', 'true', true, 'Explicitly enabled development configuration must return true'],
+        ['development', '1', true, 'Development with debug=1 must return true'],
+        ['dev', 'true', true, 'Dev alias with debug=true must return true'],
+        ['local', 'true', true, 'Local alias with debug=true must return true'],
+        ['test', 'true', true, 'Test environment with debug=true must return true'],
+        ['test', null, true, 'Test environment with debug unset must return true'],
+        ['test', 'false', false, 'Test environment with debug=false must return false'],
+        ['testing', 'true', true, 'Testing environment with debug=true must return true'],
+    ];
+
+    try {
+        foreach ($cases as [$envVal, $debugVal, $expected, $desc]) {
+            if ($envVal === null) {
+                putenv('APP_ENV');
+                unset($_ENV['APP_ENV']);
+            } else {
+                putenv("APP_ENV=$envVal");
+                $_ENV['APP_ENV'] = $envVal;
+            }
+
+            if ($debugVal === null) {
+                putenv('APP_DEBUG');
+                unset($_ENV['APP_DEBUG']);
+            } else {
+                putenv("APP_DEBUG=$debugVal");
+                $_ENV['APP_DEBUG'] = $debugVal;
+            }
+
+            $regDev = \InfinityBlog\Security\RegistrationChallengeService::isDevelopmentEnvironment();
+            $loginDev = \InfinityBlog\Auth\LoginChallengeService::isDevelopmentEnvironment();
+
+            $expect($regDev === $expected, "$desc (RegistrationChallengeService): expected " . var_export($expected, true) . ", got " . var_export($regDev, true));
+            $expect($loginDev === $expected, "$desc (LoginChallengeService): expected " . var_export($expected, true) . ", got " . var_export($loginDev, true));
+        }
+    } finally {
+        if ($origEnv === false) {
+            putenv('APP_ENV');
+        } else {
+            putenv("APP_ENV=$origEnv");
+        }
+        if ($origDebug === false) {
+            putenv('APP_DEBUG');
+        } else {
+            putenv("APP_DEBUG=$origDebug");
+        }
+        if ($origEnvGlobal === null) {
+            unset($_ENV['APP_ENV']);
+        } else {
+            $_ENV['APP_ENV'] = $origEnvGlobal;
+        }
+        if ($origDebugGlobal === null) {
+            unset($_ENV['APP_DEBUG']);
+        } else {
+            $_ENV['APP_DEBUG'] = $origDebugGlobal;
+        }
+    }
 });
 
 $databaseTestFlag = getenv('INFINITY_BLOG_RUN_DB_TESTS');
