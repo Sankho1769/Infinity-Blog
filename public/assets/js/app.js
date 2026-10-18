@@ -201,9 +201,57 @@
           summaryBtn.textContent = 'Generate AI Summary';
         }
       });
-    }
+    // Unified Search Experience: header search + hero search synchronization & keyboard shortcut
+    function initUnifiedSearch() {
+      const navInput = document.getElementById('nav-search-input');
+      const heroInput = document.getElementById('hero-search-input');
+      const heroClearBtn = document.getElementById('hero-search-clear');
 
-    // Navigation Dropdown Controls (More, Admin, etc.)
+      function syncInputs(val, source) {
+        if (source !== navInput && navInput) navInput.value = val;
+        if (source !== heroInput && heroInput) heroInput.value = val;
+        if (heroClearBtn) {
+          heroClearBtn.style.display = val.trim() ? 'block' : 'none';
+        }
+      }
+
+      if (navInput) {
+        navInput.addEventListener('input', () => syncInputs(navInput.value, navInput));
+      }
+
+      if (heroInput) {
+        heroInput.addEventListener('input', () => syncInputs(heroInput.value, heroInput));
+      }
+
+      if (heroClearBtn && heroInput) {
+        heroClearBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          heroInput.value = '';
+          syncInputs('', heroClearBtn);
+          heroInput.focus();
+          if (new URLSearchParams(window.location.search).has('search')) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('search');
+            window.location.href = url.pathname + (url.search ? url.search : '');
+          }
+        });
+      }
+
+      // Keyboard shortcut: Press '/' to focus search when not in an input/textarea
+      document.addEventListener('keydown', (e) => {
+        if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          const target = heroInput || navInput;
+          if (target) {
+            target.focus();
+            target.select();
+          }
+        }
+      });
+    }
+    initUnifiedSearch();
+
+    // Navigation Dropdown Controls (More, Admin, User Profile, etc.)
     const navDropdowns = document.querySelectorAll('.nav-dropdown');
 
     function closeAllNavDropdowns() {

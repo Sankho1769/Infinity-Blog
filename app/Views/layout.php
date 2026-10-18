@@ -69,9 +69,9 @@
       <div class="nav-section-middle">
         <ul class="nav-links">
           <li><a href="/" class="nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">Home</a></li>
+          <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
           <li><a href="/categories" class="nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">Categories</a></li>
           <li><a href="/authors" class="nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">Authors</a></li>
-          <li><a href="/explore" class="nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">Explore</a></li>
           <li class="nav-item-collapsible"><a href="/chat" class="nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">Community Chat</a></li>
           <li class="nav-item-collapsible"><a href="/messages" class="nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">Messages <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
           <?php if (!empty($currentUser)): ?>
@@ -132,12 +132,13 @@
       <!-- Right Section: Desktop Header Actions -->
       <div class="nav-actions nav-section-right">
         <!-- Search bar -->
-        <form action="/" method="GET" class="nav-search-form" role="search">
+        <form action="/" method="GET" class="nav-search-form" role="search" id="nav-search-form">
           <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="search" name="search" class="nav-search-input" placeholder="Search..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles">
+          <input type="search" name="search" id="nav-search-input" class="nav-search-input" placeholder="Search stories..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles" autocomplete="off">
+          <kbd class="nav-search-kbd" title="Press / to focus search">/</kbd>
         </form>
 
         <?php if (!empty($currentUser)): ?>
@@ -169,27 +170,55 @@
             </div>
           </div>
 
-          <a href="/profile" class="user-menu-pill user-profile-link" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?> — My Profile" aria-label="View user profile for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
-            <?php if (!empty($navAvatarUrl)): ?>
-              <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
-                   alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
-                   class="user-avatar-img"
-                   style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
-                   onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
-              <div class="user-avatar nav-avatar-fallback" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; border-radius: 50%; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
-                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+          <!-- Account Dropdown Menu with Profile, Settings, and Logout -->
+          <div class="nav-dropdown user-nav-dropdown" id="user-nav-dropdown">
+            <button type="button" class="user-menu-pill user-profile-link nav-dropdown-btn" id="user-nav-dropdown-btn" aria-haspopup="true" aria-expanded="false" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?> — Account Menu" aria-label="Account menu for <?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>">
+              <?php if (!empty($navAvatarUrl)): ?>
+                <img src="<?= htmlspecialchars($navAvatarUrl, ENT_QUOTES, 'UTF-8') ?>"
+                     alt="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>"
+                     class="user-avatar-img"
+                     style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                     onerror="this.style.display='none'; const fb = this.nextElementSibling; if (fb) fb.style.display='flex';">
+                <div class="user-avatar nav-avatar-fallback" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="display: none; width: 28px; height: 28px; border-radius: 50%; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
+                  <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+              <?php else: ?>
+                <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
+                  <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
+                </div>
+              <?php endif; ?>
+              <span class="user-display-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+              <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                <span class="user-role-badge admin">Admin</span>
+              <?php endif; ?>
+              <span class="nav-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="nav-dropdown-menu glass-panel user-dropdown-menu" id="user-nav-dropdown-menu" role="menu" aria-label="Account Menu">
+              <div class="user-dropdown-header" style="padding: 10px 14px; border-bottom: 1px solid var(--glass-border); margin-bottom: 4px;">
+                <div class="user-dropdown-name" style="font-weight: 700; color: var(--text-dark); font-size: 0.92rem;"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></div>
+                <div class="user-dropdown-handle" style="font-size: 0.78rem; color: var(--text-muted);">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
               </div>
-            <?php else: ?>
-              <div class="user-avatar" title="<?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0;">
-                <?= htmlspecialchars($navInitial, ENT_QUOTES, 'UTF-8') ?>
-              </div>
-            <?php endif; ?>
-            <span class="user-display-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
-            <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-              <span class="user-role-badge admin">Admin</span>
-            <?php endif; ?>
-          </a>
-          <a href="/logout" class="btn btn-secondary btn-sm btn-pill nav-logout-btn" title="Sign out of Infinity Blog">Logout</a>
+              <a href="/profile" class="nav-dropdown-link" role="menuitem">
+                <span class="dropdown-item-icon">👤</span> My Profile
+              </a>
+              <a href="/profile/edit" class="nav-dropdown-link" role="menuitem">
+                <span class="dropdown-item-icon">⚙️</span> Account Settings
+              </a>
+              <a href="/posts/new" class="nav-dropdown-link" role="menuitem">
+                <span class="dropdown-item-icon">✍️</span> Write a Story
+              </a>
+              <a href="/dashboard" class="nav-dropdown-link" role="menuitem">
+                <span class="dropdown-item-icon">📊</span> Creator Dashboard
+              </a>
+              <a href="/library" class="nav-dropdown-link" role="menuitem">
+                <span class="dropdown-item-icon">📚</span> Reading Library
+              </a>
+              <div style="height: 1px; background: var(--glass-border); margin: 6px 0;"></div>
+              <a href="/logout" class="nav-dropdown-link nav-logout-item" role="menuitem" title="Sign out of Infinity Blog" style="color: #ef4444;">
+                <span class="dropdown-item-icon">🚪</span> Logout
+              </a>
+            </div>
+          </div>
         <?php else: ?>
           <!-- Guest Navigation Buttons: Sign In (Primary Blue) | Create Account (Secondary Glass) -->
           <a href="/login" class="btn btn-primary btn-pill btn-sm" style="padding: 7px 16px; white-space: nowrap;">Sign In</a>

@@ -151,11 +151,34 @@ final class WebController
 
         $postResult = $this->posts->listPublic($filters, 1, 24);
 
+        $trendingResult = $this->posts->listPublic(['sort' => 'popular'], 1, 3);
+        $trendingPosts = $trendingResult['posts'] ?? [];
+
+        $featuredCommunities = [];
+        if ($this->community !== null) {
+            try {
+                $allRooms = $this->community->getChatRooms();
+                $featuredCommunities = array_slice($allRooms, 0, 4);
+            } catch (\Throwable) {
+            }
+        }
+
+        $featuredAuthors = [];
+        try {
+            $allAuthors = $this->users->listPublicAuthors();
+            $featuredAuthors = array_slice($allAuthors, 0, 4);
+        } catch (\Throwable) {
+        }
+
         return $this->render('home', [
             'pageTitle' => 'Ideas. Stories. Perspectives.',
             'metaDescription' => 'Discover insightful articles on web development, artificial intelligence, software engineering, and creative perspectives on Infinity Blog.',
             'activeNav' => 'home',
             'posts' => $postResult['posts'],
+            'totalPosts' => (int) ($postResult['total'] ?? count($postResult['posts'])),
+            'trendingPosts' => $trendingPosts,
+            'featuredCommunities' => $featuredCommunities,
+            'featuredAuthors' => $featuredAuthors,
             'categories' => $activeCategories,
             'activeCategorySlug' => $categorySlug,
             'activeCategoryName' => $activeCatName,

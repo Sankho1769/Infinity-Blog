@@ -311,7 +311,7 @@
         ?>
         <article class="glass-panel glass-panel-hover article-card">
           <div class="article-card-banner has-image">
-            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy">
+            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
                 <span class="badge badge-category">

@@ -24,9 +24,15 @@ final class ArticleImageHelper
     public static function resolveThumbnail(array $post, int $index = 0): string
     {
         if (!empty($post['cover_image_path']) && is_string($post['cover_image_path'])) {
-            $cover = $post['cover_image_path'];
-            if (str_starts_with($cover, 'http://') || str_starts_with($cover, 'https://') || str_starts_with($cover, '/')) {
+            $cover = trim($post['cover_image_path']);
+            if (str_starts_with($cover, 'http://') || str_starts_with($cover, 'https://')) {
                 return $cover;
+            }
+            if (str_starts_with($cover, '/')) {
+                $publicPath = dirname(__DIR__, 2) . '/public' . $cover;
+                if (file_exists($publicPath)) {
+                    return $cover;
+                }
             }
             try {
                 $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
@@ -35,15 +41,26 @@ final class ArticleImageHelper
                 }
             } catch (\Throwable) {
             }
-            return $cover;
         }
 
         if (!empty($post['featured_image_url']) && is_string($post['featured_image_url'])) {
-            return $post['featured_image_url'];
+            $feat = trim($post['featured_image_url']);
+            if (str_starts_with($feat, 'http://') || str_starts_with($feat, 'https://')) {
+                return $feat;
+            }
+            if (str_starts_with($feat, '/') && file_exists(dirname(__DIR__, 2) . '/public' . $feat)) {
+                return $feat;
+            }
         }
 
         if (!empty($post['image_url']) && is_string($post['image_url'])) {
-            return $post['image_url'];
+            $img = trim($post['image_url']);
+            if (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) {
+                return $img;
+            }
+            if (str_starts_with($img, '/') && file_exists(dirname(__DIR__, 2) . '/public' . $img)) {
+                return $img;
+            }
         }
 
         if (!empty($post['content']) && is_string($post['content'])) {
