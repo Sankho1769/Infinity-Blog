@@ -5080,30 +5080,15 @@ figcaption {
   box-sizing: border-box;
 }
 
-/* Right Sidebar: Fixed track width, sticky floating column */
+/* Right Sidebar: Fixed track width, scrolling naturally with document */
 .homepage-sidebar {
   width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  position: sticky;
-  top: 80px;
-  max-height: calc(100vh - 100px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
-  padding-bottom: 24px;
+  position: relative;
   box-sizing: border-box;
-}
-
-.homepage-sidebar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.homepage-sidebar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
-  border-radius: 4px;
 }
 
 /* 1. Feed Header & Greeting Section */
@@ -6100,17 +6085,15 @@ figcaption {
   min-height: 100vh;
   width: 100%;
   position: relative;
+  align-items: flex-start;
 }
 
 .app-left-sidebar {
   width: 280px;
   min-width: 280px;
   max-width: 280px;
-  height: calc(100vh - 32px);
-  max-height: calc(100vh - 32px);
-  position: sticky;
-  top: 16px;
-  margin: 16px 0 16px 16px;
+  position: relative;
+  margin: 16px 0 24px 16px;
   display: flex;
   flex-direction: column;
   background: rgba(255, 255, 255, 0.85);
@@ -6118,7 +6101,7 @@ figcaption {
   -webkit-backdrop-filter: var(--glass-blur-lg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  z-index: 150;
+  z-index: 10;
   padding: 22px 16px 18px;
   box-sizing: border-box;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
@@ -6144,22 +6127,10 @@ figcaption {
 
 .sidebar-scrollable-content {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-right: 4px;
-}
-
-.sidebar-scrollable-content::-webkit-scrollbar {
-  width: 5px;
-}
-.sidebar-scrollable-content::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.4);
-  border-radius: 999px;
 }
 
 .sidebar-nav-group {
@@ -6489,7 +6460,7 @@ figcaption {
     min-width: 0 !important;
   }
   .homepage-sidebar {
-    position: sticky !important;
+    position: relative !important;
     width: 100% !important;
     min-width: 0 !important;
   }

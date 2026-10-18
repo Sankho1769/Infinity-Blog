@@ -149,12 +149,14 @@ echo "\n=== 4. Testing CSS Floating Sidebar Rules in style.css ===\n";
 $cssPath = __DIR__ . '/../public/assets/css/style.css';
 $css = file_get_contents($cssPath);
 
-assertCondition(preg_match('/\.app-left-sidebar\s*\{[^}]*position:\s*sticky/s', $css) === 1, ".app-left-sidebar has position: sticky");
-assertCondition(preg_match('/\.app-left-sidebar\s*\{[^}]*top:\s*16px/s', $css) === 1, ".app-left-sidebar has top: 16px");
+assertCondition(preg_match('/\.app-left-sidebar\s*\{[^}]*position:\s*relative/s', $css) === 1, ".app-left-sidebar has position: relative");
+assertCondition(!preg_match('/\.app-left-sidebar\s*\{[^}]*position:\s*(sticky|fixed)/s', $css), ".app-left-sidebar does not use sticky or fixed positioning");
 assertCondition(preg_match('/\.app-left-sidebar\s*\{[^}]*margin:\s*16px/s', $css) === 1, ".app-left-sidebar has margin: 16px detached panel spacing");
 assertCondition(preg_match('/\.app-left-sidebar\s*\{[^}]*border-radius:\s*var\(--radius-xl\)/s', $css) === 1, ".app-left-sidebar has border-radius: var(--radius-xl)");
-assertCondition(preg_match('/\.homepage-sidebar\s*\{[^}]*position:\s*sticky/s', $css) === 1, ".homepage-sidebar has position: sticky");
-assertCondition(preg_match('/\.homepage-sidebar\s*\{[^}]*max-height:\s*calc\(100vh\s*-\s*100px\)/s', $css) === 1, ".homepage-sidebar has max-height for comfortable scrolling");
+assertCondition(preg_match('/\.homepage-sidebar\s*\{[^}]*position:\s*relative/s', $css) === 1, ".homepage-sidebar has position: relative");
+assertCondition(!preg_match('/\.homepage-sidebar\s*\{[^}]*position:\s*(sticky|fixed)/s', $css), ".homepage-sidebar does not use sticky or fixed positioning");
+assertCondition(!preg_match('/\.homepage-sidebar\s*\{[^}]*max-height:/s', $css), ".homepage-sidebar does not have max-height constraint");
+assertCondition(preg_match('/\.sidebar-scrollable-content\s*\{[^}]*overflow:\s*visible/s', $css) === 1, ".sidebar-scrollable-content has overflow: visible");
 assertCondition(preg_match('/\.sidebar-card\s*\{[^}]*border-radius:\s*var\(--radius-xl\)/s', $css) === 1, ".sidebar-card has border-radius: var(--radius-xl)");
 assertCondition(preg_match('/\.feed-card-inline-media\s*\{/s', $css) === 1, "Contains .feed-card-inline-media rules");
 assertCondition(preg_match('/\.feed-card-inline-image\s*\{/s', $css) === 1, "Contains .feed-card-inline-image rules");
