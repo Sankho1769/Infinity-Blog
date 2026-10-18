@@ -4357,7 +4357,37 @@ $run('MailerService and SmtpTransport provide authentic email delivery, socket a
     $expect(str_contains((string) $msg['bodyHtml'], '654321'));
     $expect(str_contains((string) $msg['bodyHtml'], 'Infinity Blog Security'));
 
-    // 2. Email masking for privacy
+    // 2. Contact notification email generation (Client IP completely excluded)
+    $contactRes = $mailer->sendContactNotification([
+        'ticket_id' => 9876,
+        'name' => 'Jane Miller',
+        'email' => 'jane.miller@example.org',
+        'subject' => 'Platform Feedback',
+        'message' => 'Great publishing experience!',
+        'ip' => '198.51.100.42', // Even if provided in input array, it must never appear in email bodies
+        'timestamp' => '2026-10-18 10:15:00',
+    ]);
+    $expect($contactRes['delivered'] === true);
+    $expect($transport->count() === 2);
+    $contactMsg = $transport->lastMessage();
+    $expect($contactMsg !== null);
+    $expect($contactMsg['subject'] === '[Infinity Blog Contact] #9876: Platform Feedback');
+    $expect(isset($contactMsg['headers']['Reply-To']));
+    $expect(str_contains($contactMsg['headers']['Reply-To'], 'jane.miller@example.org'));
+    $expect(str_contains($contactMsg['bodyText'], 'Jane Miller'));
+    $expect(str_contains($contactMsg['bodyText'], 'jane.miller@example.org'));
+    $expect(str_contains($contactMsg['bodyText'], 'Platform Feedback'));
+    $expect(str_contains($contactMsg['bodyText'], 'Great publishing experience!'));
+    $expect(str_contains($contactMsg['bodyText'], 'Ticket Reference : #9876'));
+    $expect(!str_contains($contactMsg['bodyText'], 'Client IP'));
+    $expect(!str_contains($contactMsg['bodyText'], '198.51.100.42'));
+    $expect(str_contains((string) $contactMsg['bodyHtml'], 'Ticket #9876'));
+    $expect(str_contains((string) $contactMsg['bodyHtml'], 'Jane Miller'));
+    $expect(str_contains((string) $contactMsg['bodyHtml'], 'Platform Feedback'));
+    $expect(!str_contains((string) $contactMsg['bodyHtml'], 'Client IP'));
+    $expect(!str_contains((string) $contactMsg['bodyHtml'], '198.51.100.42'));
+
+    // 3. Email masking for privacy
     $expect(\InfinityBlog\Mail\MailerService::maskEmail('shubham.banerjee@example.com') === 's***e@example.com');
     $expect(\InfinityBlog\Mail\MailerService::maskEmail('ab@example.com') === 'a***@example.com');
     $expect(\InfinityBlog\Mail\MailerService::maskEmail('x@example.com') === 'x***@example.com');
@@ -4469,8 +4499,18 @@ $run('Contact form submission delivers notification to configured CONTACT_TO_EMA
         $expect(isset($delivered['headers']['Reply-To']));
         $expect(str_contains($delivered['headers']['Reply-To'], 'cristine.palmer@example.com'));
         $expect(str_contains($delivered['bodyText'], 'Cristine Palmer'));
-        $expect(str_contains($delivered['bodyText'], '192.0.2.77'));
+        $expect(str_contains($delivered['bodyText'], 'cristine.palmer@example.com'));
+        $expect(str_contains($delivered['bodyText'], 'Publishing Partnership Inquiry'));
+        $expect(str_contains($delivered['bodyText'], 'Ticket Reference : #'));
         $expect(str_contains((string) $delivered['bodyHtml'], 'Ticket #'));
+        $expect(str_contains((string) $delivered['bodyHtml'], 'Cristine Palmer'));
+        $expect(str_contains((string) $delivered['bodyHtml'], 'cristine.palmer@example.com'));
+        $expect(str_contains((string) $delivered['bodyHtml'], 'Publishing Partnership Inquiry'));
+        // Verify Client IP is completely removed from both text and HTML notification emails
+        $expect(!str_contains($delivered['bodyText'], 'Client IP'), 'Plain-text body does not contain Client IP label');
+        $expect(!str_contains($delivered['bodyText'], '192.0.2.77'), 'Plain-text body does not contain client IP address');
+        $expect(!str_contains((string) $delivered['bodyHtml'], 'Client IP'), 'HTML body does not contain Client IP label');
+        $expect(!str_contains((string) $delivered['bodyHtml'], '192.0.2.77'), 'HTML body does not contain client IP address');
 
         // 2. Graceful handling when mail transport encounters an exception
         $failingTransport = new class implements \InfinityBlog\Mail\MailTransportInterface {

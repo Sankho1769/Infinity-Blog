@@ -1810,7 +1810,6 @@ final class WebController
                     'email' => $email,
                     'subject' => $subject,
                     'message' => $message,
-                    'ip' => $ip,
                     'timestamp' => gmdate('Y-m-d H:i:s'),
                 ]);
             } catch (Throwable $e) {

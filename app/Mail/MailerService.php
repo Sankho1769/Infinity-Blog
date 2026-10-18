@@ -383,7 +383,6 @@ HTML;
      *     email?: string,
      *     subject?: string,
      *     message?: string,
-     *     ip?: string,
      *     timestamp?: string
      * } $data
      * @return array{delivered: bool, status: string, reason?: string}
@@ -395,7 +394,6 @@ HTML;
         $email = SmtpTransport::sanitizeHeader(trim((string) ($data['email'] ?? '')));
         $subject = SmtpTransport::sanitizeHeader(trim((string) ($data['subject'] ?? 'New Inquiry')));
         $message = trim((string) ($data['message'] ?? ''));
-        $ip = SmtpTransport::sanitizeHeader(trim((string) ($data['ip'] ?? '127.0.0.1')));
         $timestamp = trim((string) ($data['timestamp'] ?? gmdate('Y-m-d H:i:s')));
 
         $emailSubject = "[Infinity Blog Contact] #{$ticketId}: {$subject}";
@@ -412,7 +410,6 @@ HTML;
             "Submission Time  : {$timestamp} (UTC)\n" .
             "Sender Name      : {$name}\n" .
             "Sender Email     : {$email}\n" .
-            "Client IP        : {$ip}\n" .
             "Topic / Subject  : {$subject}\n\n" .
             "Message:\n" .
             "---------------------------------------------------\n" .
@@ -424,7 +421,6 @@ HTML;
         $htmlEmail = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
         $htmlSubject = htmlspecialchars($subject, ENT_QUOTES, 'UTF-8');
         $htmlMessage = nl2br(htmlspecialchars($message, ENT_QUOTES, 'UTF-8'));
-        $htmlIp = htmlspecialchars($ip, ENT_QUOTES, 'UTF-8');
         $htmlTimestamp = htmlspecialchars($timestamp, ENT_QUOTES, 'UTF-8');
         $htmlTicketId = htmlspecialchars((string) $ticketId, ENT_QUOTES, 'UTF-8');
 
@@ -457,10 +453,6 @@ HTML;
       <tr>
         <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Subject:</td>
         <td style="padding: 6px 0; color: #0f172a; font-weight: 600;">{$htmlSubject}</td>
-      </tr>
-      <tr>
-        <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Client IP:</td>
-        <td style="padding: 6px 0; color: #64748b; font-family: monospace;">{$htmlIp}</td>
       </tr>
     </table>
 
