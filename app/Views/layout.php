@@ -45,8 +45,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
-</head>
-<body>
+<body class="<?= ($activeNav ?? '') === 'home' ? 'is-home-page' : '' ?>">
   <!-- Ambient glow backdrop for pastel claymorphism/glassmorphism -->
   <div class="ambient-glow" aria-hidden="true">
     <div class="ambient-blob-1"></div>
@@ -285,15 +284,17 @@
 
           <!-- Right: Search, Notifications, Create, Profile Dropdown -->
           <div class="nav-actions header-section-right">
-            <!-- Global search -->
-            <form action="/" method="GET" class="nav-search-form" role="search" id="nav-search-form">
-              <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="search" name="search" id="nav-search-input" class="nav-search-input" placeholder="Search stories..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles" autocomplete="off">
-              <kbd class="nav-search-kbd" title="Press / to focus search">/</kbd>
-            </form>
+            <?php if (($activeNav ?? '') !== 'home'): ?>
+              <!-- Global search (shown on secondary pages, omitted on homepage) -->
+              <form action="/" method="GET" class="nav-search-form" role="search" id="nav-search-form">
+                <svg class="nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="search" name="search" id="nav-search-input" class="nav-search-input" placeholder="Search stories..." value="<?= htmlspecialchars($_GET['search'] ?? '', ENT_QUOTES, 'UTF-8') ?>" aria-label="Search articles" autocomplete="off">
+                <kbd class="nav-search-kbd" title="Press / to focus search">/</kbd>
+              </form>
+            <?php endif; ?>
 
             <?php if (!empty($currentUser)): ?>
               <?php
@@ -525,66 +526,61 @@
   <!-- Footer with Clean Multi-Column Layout -->
   <footer class="site-footer-wrapper container container-wide">
     <div class="site-footer glass-panel">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 28px; margin-bottom: 24px;">
-        <div style="max-width: 320px;">
-          <a href="/" class="brand-logo" aria-label="Infinity Blog Home" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+      <div class="footer-top-grid">
+        <!-- Column 1: Brand & Concise Description -->
+        <div class="footer-brand-col">
+          <a href="/" class="brand-logo footer-brand-logo" aria-label="Infinity Blog Home">
             <span class="brand-logo-icon">✦</span>
             <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
           </a>
-          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
-            A modern publishing platform exploring web development, AI, software engineering, and creative perspectives.
+          <p class="footer-tagline">
+            A community for sharing ideas, stories, and knowledge.
           </p>
         </div>
 
-        <div style="display: flex; gap: 40px; flex-wrap: wrap;">
-          <div>
-            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Explore</div>
-            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
-              <li><a href="/" style="color: var(--text-muted); text-decoration: none;">Home</a></li>
-              <li><a href="/explore" style="color: var(--text-muted); text-decoration: none;">Articles</a></li>
-              <li><a href="/categories" style="color: var(--text-muted); text-decoration: none;">Categories</a></li>
-              <li><a href="/authors" style="color: var(--text-muted); text-decoration: none;">Authors</a></li>
-              <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About</a></li>
-            </ul>
-          </div>
+        <!-- Column 2: Explore -->
+        <div class="footer-nav-col">
+          <div class="footer-col-heading">Explore</div>
+          <ul class="footer-link-list">
+            <li><a href="/explore" class="footer-nav-link">Explore Stories</a></li>
+            <li><a href="/categories" class="footer-nav-link">Categories</a></li>
+            <li><a href="/authors" class="footer-nav-link">Authors</a></li>
+            <li><a href="/communities" class="footer-nav-link">Discover Communities</a></li>
+          </ul>
+        </div>
 
-          <div>
-            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Platform</div>
-            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem;">
-              <?php if (!empty($currentUser)): ?>
-                <li><a href="/profile" style="color: var(--text-muted); text-decoration: none;">My Profile</a></li>
-                <li><a href="/dashboard" style="color: var(--text-muted); text-decoration: none;">Dashboard</a></li>
-                <li><a href="/posts/new" style="color: var(--text-muted); text-decoration: none;">Write Post</a></li>
-              <?php else: ?>
-                <li><a href="/login" style="color: var(--text-muted); text-decoration: none;">Sign In</a></li>
-                <li><a href="/register" style="color: var(--text-muted); text-decoration: none;">Create Account</a></li>
-              <?php endif; ?>
-              <li><a href="/about" style="color: var(--text-muted); text-decoration: none;">About Platform</a></li>
-              <li><a href="/contact" style="color: var(--text-muted); text-decoration: none;">Contact Us</a></li>
-              <li><a href="/privacy" style="color: var(--text-muted); text-decoration: none;">Privacy Policy</a></li>
-              <li><a href="/terms" style="color: var(--text-muted); text-decoration: none;">Terms &amp; Conditions</a></li>
-              <li><button type="button" class="footer-link-btn" onclick="openCookiePreferences()" style="background: none; border: none; padding: 0; color: var(--text-muted); font-size: inherit; font-family: inherit; cursor: pointer; text-align: left;">Cookie Preferences</button></li>
-            </ul>
-          </div>
+        <!-- Column 3: Platform -->
+        <div class="footer-nav-col">
+          <div class="footer-col-heading">Platform</div>
+          <ul class="footer-link-list">
+            <li><a href="/about" class="footer-nav-link">About</a></li>
+            <li><a href="/contact" class="footer-nav-link">Contact</a></li>
+            <li><a href="/privacy" class="footer-nav-link">Privacy Policy</a></li>
+            <li><a href="/terms" class="footer-nav-link">Terms of Service</a></li>
+          </ul>
+        </div>
 
-          <div>
-            <div style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; color: var(--text-heading); margin-bottom: 12px; letter-spacing: 0.05em;">Connect</div>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.88rem; color: var(--text-muted);">
-              <?php if (!empty($supportEmail)): ?>
-                <a href="mailto:<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?></a>
-              <?php endif; ?>
-              <?php if (!empty($editorialEmail)): ?>
-                <a href="mailto:<?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?>" style="color: var(--primary-600, #4f46e5); text-decoration: none;"><?= htmlspecialchars($editorialEmail, ENT_QUOTES, 'UTF-8') ?></a>
-              <?php endif; ?>
-              <a href="/contact" style="color: var(--primary-600, #4f46e5); text-decoration: none; font-weight: 600;">Support &amp; Feedback Form →</a>
-            </div>
-          </div>
+        <!-- Column 4: Support & Legal -->
+        <div class="footer-nav-col">
+          <div class="footer-col-heading">Support &amp; Legal</div>
+          <ul class="footer-link-list">
+            <?php if (!empty($supportEmail)): ?>
+              <li><a href="mailto:<?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?>" class="footer-nav-link"><?= htmlspecialchars($supportEmail, ENT_QUOTES, 'UTF-8') ?></a></li>
+            <?php endif; ?>
+            <li><a href="/contact" class="footer-nav-link">Support &amp; Feedback Form</a></li>
+            <li><button type="button" class="footer-link-btn" onclick="openCookiePreferences()">Cookie Preferences</button></li>
+          </ul>
         </div>
       </div>
 
-      <div style="border-top: 1px solid rgba(226, 232, 240, 0.6); padding-top: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 0.84rem; color: var(--text-muted);">
-        <div>© <?= date('Y') ?> Infinity Blog. All rights reserved.</div>
-        <div>Crafted with PHP, PDO &amp; MySQL.</div>
+      <!-- Bottom Row: Subtle Divider & Copyright -->
+      <div class="footer-bottom-row">
+        <div class="footer-copyright">
+          © <?= date('Y') ?> Infinity Blog. All rights reserved.
+        </div>
+        <div class="footer-badges">
+          <span>Crafted for modern editorial communities</span>
+        </div>
       </div>
     </div>
   </footer>

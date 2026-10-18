@@ -73,6 +73,7 @@
                       placeholder="Share an idea, ask a question, or start a discussion…"
                       maxlength="10000"
                       aria-label="Compose post"
+                      onclick="toggleFeedComposer(true)"
                       onfocus="toggleFeedComposer(true)"></textarea>
           </div>
         </div>
