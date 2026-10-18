@@ -38,6 +38,11 @@ final class AuthGuard
         return $account;
     }
 
+    public function user(): ?UserAccount
+    {
+        return $this->currentAccount();
+    }
+
     /** @param list<string> $allowedRoles */
     public function permits(array $allowedRoles): bool
     {

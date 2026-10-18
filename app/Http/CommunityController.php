@@ -273,15 +273,19 @@ final class CommunityController
             $status = $isRateLimit ? 429 : 422;
             $code = $isRateLimit ? 'RATE_LIMITED' : 'VALIDATION_ERROR';
             return ['status' => $status, 'body' => ApiErrorResponder::build($code, $e->getMessage())];
+        } catch (\Throwable $e) {
+            return ['status' => 500, 'body' => ApiErrorResponder::build('CHAT_ERROR', 'Unable to send message at this time. Please try again.')];
         }
         return [
             'status' => 201,
             'body' => [
                 'data' => [
                     'id' => $msgId,
-                    'room_id' => $room['id'],
+                    'room_id' => (int) $room['id'],
                     'user_id' => $user->id,
                     'user_name' => $user->displayName,
+                    'user_username' => $user->username,
+                    'user_avatar' => $user->avatarPath,
                     'message' => $message,
                     'created_at' => date('Y-m-d H:i:s'),
                 ],

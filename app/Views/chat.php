@@ -66,7 +66,7 @@
         <!-- Chat Stream -->
         <div id="chatMessageStream" style="flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
           <?php if (empty($messages)): ?>
-            <div style="margin: auto; text-align: center; color: var(--text-muted);">
+            <div id="noChatMessagesNotice" style="margin: auto; text-align: center; color: var(--text-muted);">
               <div style="font-size: 2.4rem; margin-bottom: 8px;">💬</div>
               <p style="font-weight: 600;">No messages yet in this topic room.</p>
               <p style="font-size: 0.85rem;">Be the first to start the conversation!</p>
@@ -98,11 +98,20 @@
 
         <!-- Chat Input Bar -->
         <div style="padding: 16px 20px; border-top: 1px solid var(--glass-border); background: rgba(255,255,255,0.7);">
+          <!-- Inline Error Banner -->
+          <div id="chatErrorBanner" style="display: none; margin-bottom: 12px; padding: 10px 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 12px; color: #dc2626; font-size: 0.88rem; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1rem; line-height: 1;">⚠️</span>
+              <span id="chatErrorMessage" style="font-weight: 500;"></span>
+            </div>
+            <button type="button" onclick="dismissChatError()" style="background: none; border: none; color: #dc2626; font-size: 1.2rem; cursor: pointer; padding: 0 4px; line-height: 1;" aria-label="Close error">&times;</button>
+          </div>
+
           <?php if (!empty($currentUser)): ?>
             <form id="chatSendForm" onsubmit="handleSendChatMessage(event)" style="display: flex; gap: 10px; align-items: center;">
-              <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" style="flex: 1; border-radius: 24px; padding: 12px 18px;">
-              <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px;">
-                Send ➔
+              <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="flex: 1; border-radius: 24px; padding: 12px 18px;">
+              <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
+                <span id="chatSendBtnText">Send</span> <span id="chatSendBtnIcon">➔</span>
               </button>
             </form>
           <?php else: ?>
@@ -121,12 +130,28 @@
 </div>
 
 <script>
-let lastMsgId = <?= !empty($messages) ? (int) end($messages)['id'] : 0 ?>;
+let lastMsgId = <?= !empty($messages) ? (int) $messages[array_key_last($messages)]['id'] : 0 ?>;
 const roomSlug = "<?= htmlspecialchars($activeRoom['slug'] ?? '', ENT_QUOTES, 'UTF-8') ?>";
 const stream = document.getElementById('chatMessageStream');
 
 if (stream) {
   stream.scrollTop = stream.scrollHeight;
+}
+
+function showChatError(msg) {
+  const banner = document.getElementById('chatErrorBanner');
+  const msgEl = document.getElementById('chatErrorMessage');
+  if (banner && msgEl) {
+    msgEl.textContent = msg;
+    banner.style.display = 'flex';
+  }
+}
+
+function dismissChatError() {
+  const banner = document.getElementById('chatErrorBanner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
 }
 
 // Polling for new messages every 4 seconds
@@ -140,7 +165,7 @@ if (roomSlug) {
         if (newMsgs.length > 0) {
           newMsgs.forEach(m => {
             appendChatMessage(m);
-            lastMsgId = Math.max(lastMsgId, m.id);
+            lastMsgId = Math.max(lastMsgId, parseInt(m.id, 10));
           });
           stream.scrollTop = stream.scrollHeight;
         }
@@ -150,7 +175,17 @@ if (roomSlug) {
 }
 
 function appendChatMessage(m) {
-  const isMe = <?= !empty($currentUser) ? (int) $currentUser['id'] : -1 ?> === parseInt(m.user_id);
+  if (!m || !stream) return;
+  // Prevent duplicate rendering
+  if (stream.querySelector(`[data-msg-id="${m.id}"]`)) return;
+
+  // Remove empty placeholder if present
+  const emptyNotice = document.getElementById('noChatMessagesNotice');
+  if (emptyNotice) {
+    emptyNotice.remove();
+  }
+
+  const isMe = <?= !empty($currentUser) ? (int) $currentUser['id'] : -1 ?> === parseInt(m.user_id, 10);
   const div = document.createElement('div');
   div.style.display = 'flex';
   div.style.gap = '12px';
@@ -158,19 +193,25 @@ function appendChatMessage(m) {
   if (isMe) div.style.flexDirection = 'row-reverse';
   div.dataset.msgId = m.id;
 
-  const initial = (m.user_name || 'U').substring(0, 1);
-  const time = new Date(m.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const initial = (m.user_name || 'U').substring(0, 1).toUpperCase();
+  const dateVal = typeof m.created_at === 'string' ? m.created_at.replace(' ', 'T') : m.created_at;
+  const parsedDate = new Date(dateVal);
+  const time = !isNaN(parsedDate.getTime())
+    ? parsedDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '';
+
+  const avatarHtml = m.user_avatar
+    ? `<img src="${escapeHtml(m.user_avatar)}" alt="${escapeHtml(m.user_name || 'User')}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid var(--glass-border);">`
+    : `<div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;">${escapeHtml(initial)}</div>`;
 
   div.innerHTML = `
-    <div style="width: 36px; height: 36px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;">
-      ${escapeHtml(initial)}
-    </div>
+    ${avatarHtml}
     <div style="max-width: 70%;">
       <div style="display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; ${isMe ? 'justify-content: flex-end;' : ''}">
         <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">${escapeHtml(m.user_name || 'User')}</span>
         <span style="font-size: 0.72rem; color: var(--text-muted);">${time}</span>
       </div>
-      <div style="padding: 10px 16px; border-radius: 16px; font-size: 0.92rem; line-height: 1.4; ${isMe ? 'background: var(--primary-gradient); color: #fff; border-bottom-right-radius: 4px;' : 'background: #fff; color: var(--text-main); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px;'}">
+      <div style="padding: 10px 16px; border-radius: 16px; font-size: 0.92rem; line-height: 1.4; word-break: break-word; ${isMe ? 'background: var(--primary-gradient); color: #fff; border-bottom-right-radius: 4px;' : 'background: #fff; color: var(--text-main); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px;'}">
         ${escapeHtml(m.message).replace(/\n/g, '<br>')}
       </div>
     </div>
@@ -180,12 +221,29 @@ function appendChatMessage(m) {
 
 async function handleSendChatMessage(e) {
   e.preventDefault();
+  dismissChatError();
   const input = document.getElementById('chatInputMessage');
+  if (!input) return;
+
   const msg = input.value.trim();
-  if (!msg) return;
+  if (!msg) {
+    showChatError('Please enter a message before sending.');
+    input.focus();
+    return;
+  }
+
+  if (msg.length > 1000) {
+    showChatError('Message exceeds maximum limit of 1000 characters.');
+    return;
+  }
 
   const btn = document.getElementById('chatSendBtn');
-  btn.disabled = true;
+  const btnText = document.getElementById('chatSendBtnText');
+  const btnIcon = document.getElementById('chatSendBtnIcon');
+  if (btn) btn.disabled = true;
+  if (btnText) btnText.textContent = 'Sending';
+  if (btnIcon) btnIcon.textContent = '...';
+
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
   try {
@@ -198,22 +256,24 @@ async function handleSendChatMessage(e) {
       },
       body: JSON.stringify({ message: msg })
     });
-    if (res.ok) {
-      const data = await res.json();
+
+    const data = await res.json().catch(() => null);
+
+    if (res.ok && data?.data) {
       input.value = '';
-      if (data.data) {
-        appendChatMessage(data.data);
-        lastMsgId = Math.max(lastMsgId, data.data.id);
-        stream.scrollTop = stream.scrollHeight;
-      }
+      appendChatMessage(data.data);
+      lastMsgId = Math.max(lastMsgId, parseInt(data.data.id, 10));
+      stream.scrollTop = stream.scrollHeight;
     } else {
-      const err = await res.json();
-      alert(err.error?.message || 'Failed to send message.');
+      const errMsg = data?.error?.message || 'Failed to send message. Please try again.';
+      showChatError(errMsg);
     }
-  } catch (e) {
-    alert('Network error.');
+  } catch (err) {
+    showChatError('Network error. Please check your internet connection.');
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
+    if (btnText) btnText.textContent = 'Send';
+    if (btnIcon) btnIcon.textContent = '➔';
     input.focus();
   }
 }
