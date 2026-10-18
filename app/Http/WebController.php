@@ -2054,17 +2054,26 @@ final class WebController
         $activeRoom = null;
         if ($slug !== null && trim($slug) !== '') {
             $activeRoom = $this->community?->getChatRoomBySlug(trim($slug));
+            if ($activeRoom !== null && empty($activeRoom['is_active'])) {
+                $activeRoom = null;
+            }
         }
         if ($activeRoom === null && !empty($rooms)) {
             $activeRoom = $rooms[0];
         }
 
         $messages = [];
+        $isMember = false;
+        $memberCount = 0;
         if ($activeRoom !== null && $this->community !== null) {
             $messages = $this->community->getChatMessages((int) $activeRoom['id'], 50);
+            $memberCount = $this->community->getRoomMemberCount((int) $activeRoom['id']);
         }
 
         $account = $this->guard->currentAccount();
+        if ($activeRoom !== null && $account !== null && $this->community !== null) {
+            $isMember = $this->community->isMember((int) $activeRoom['id'], $account->id);
+        }
 
         return $this->render('chat', [
             'pageTitle' => 'Public Text Chat Rooms — Community Discussions',
@@ -2073,6 +2082,8 @@ final class WebController
             'rooms' => $rooms,
             'activeRoom' => $activeRoom,
             'messages' => $messages,
+            'isMember' => $isMember,
+            'memberCount' => $memberCount,
             'currentUser' => $account !== null ? [
                 'id' => $account->id,
                 'username' => $account->username,

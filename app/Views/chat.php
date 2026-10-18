@@ -30,7 +30,7 @@
                 # <?= htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8') ?>
               </span>
               <span style="font-size: 0.75rem; color: var(--text-muted);">
-                <?= (int) ($r['message_count'] ?? 0) ?> msgs
+                <?= (int) ($r['member_count'] ?? 0) ?> members
               </span>
             </div>
             <?php if (!empty($r['description'])): ?>
@@ -47,7 +47,7 @@
     <div style="flex: 1; display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.65);">
       <?php if (!empty($activeRoom)): ?>
         <!-- Room Header -->
-        <div style="padding: 16px 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center;">
+        <div style="padding: 16px 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-main); margin: 0;">
               # <?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>
@@ -58,9 +58,17 @@
               </p>
             <?php endif; ?>
           </div>
-          <span style="font-size: 0.78rem; background: rgba(16, 185, 129, 0.12); color: #10B981; font-weight: 700; padding: 4px 10px; border-radius: 12px;">
-            ● Live Chat
-          </span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="chatMembershipBadge" style="font-size: 0.78rem; background: <?= !empty($isMember) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(100, 116, 139, 0.12)' ?>; color: <?= !empty($isMember) ? '#10B981' : 'var(--text-muted)' ?>; font-weight: 700; padding: 4px 10px; border-radius: 12px; transition: all 0.2s ease;">
+              <?= !empty($isMember) ? '✓ Joined Member' : 'Guest Viewer' ?>
+            </span>
+            <span style="font-size: 0.78rem; background: rgba(37, 99, 235, 0.08); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 12px;">
+              👥 <span id="chatMemberCount"><?= (int) ($memberCount ?? 0) ?></span> members
+            </span>
+            <span style="font-size: 0.78rem; background: rgba(16, 185, 129, 0.12); color: #10B981; font-weight: 700; padding: 4px 10px; border-radius: 12px;">
+              ● Live Chat
+            </span>
+          </div>
         </div>
 
         <!-- Chat Stream -->
@@ -107,16 +115,46 @@
             <button type="button" onclick="dismissChatError()" style="background: none; border: none; color: #dc2626; font-size: 1.2rem; cursor: pointer; padding: 0 4px; line-height: 1;" aria-label="Close error">&times;</button>
           </div>
 
+          <!-- Inline Success Banner -->
+          <div id="chatSuccessBanner" style="display: none; margin-bottom: 12px; padding: 10px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; color: #059669; font-size: 0.88rem; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1rem; line-height: 1;">✓</span>
+              <span id="chatSuccessMessage" style="font-weight: 500;"></span>
+            </div>
+            <button type="button" onclick="dismissChatSuccess()" style="background: none; border: none; color: #059669; font-size: 1.2rem; cursor: pointer; padding: 0 4px; line-height: 1;" aria-label="Close message">&times;</button>
+          </div>
+
           <?php if (!empty($currentUser)): ?>
-            <form id="chatSendForm" onsubmit="handleSendChatMessage(event)" style="display: flex; gap: 10px; align-items: center;">
-              <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="flex: 1; border-radius: 24px; padding: 12px 18px;">
-              <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
-                <span id="chatSendBtnText">Send</span> <span id="chatSendBtnIcon">➔</span>
-              </button>
-            </form>
+            <!-- Non-Member Join Prompt -->
+            <div id="chatJoinContainer" style="<?= empty($isMember) ? 'display: block;' : 'display: none;' ?> text-align: center; padding: 12px 16px;">
+              <div style="max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.3rem;">🛡️</span>
+                  <span style="font-weight: 700; font-size: 1.05rem; color: var(--text-main);">
+                    Join #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?> to Participate
+                  </span>
+                </div>
+                <p style="margin: 0; font-size: 0.86rem; color: var(--text-muted); line-height: 1.45;">
+                  You must join this community before sending messages in this channel. Membership keeps discussions organized, authentic, and focused.
+                </p>
+                <button type="button" id="chatJoinBtn" onclick="handleJoinCommunity()" class="btn btn-primary" style="border-radius: 24px; padding: 10px 28px; margin-top: 6px; font-weight: 700; font-size: 0.92rem; display: inline-flex; align-items: center; gap: 8px;">
+                  <span id="chatJoinBtnText">Join Community</span> <span id="chatJoinBtnIcon">➔</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Member Chat Message Composer -->
+            <div id="chatComposerContainer" style="<?= !empty($isMember) ? 'display: block;' : 'display: none;' ?>">
+              <form id="chatSendForm" onsubmit="handleSendChatMessage(event)" style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="flex: 1; border-radius: 24px; padding: 12px 18px;">
+                <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
+                  <span id="chatSendBtnText">Send</span> <span id="chatSendBtnIcon">➔</span>
+                </button>
+              </form>
+            </div>
           <?php else: ?>
-            <div style="text-align: center; padding: 8px; font-size: 0.9rem; color: var(--text-muted);">
-              <a href="/login?redirect=<?= urlencode('/chat/' . $activeRoom['slug']) ?>" style="color: var(--primary-color); font-weight: 700; text-decoration: underline;">Sign In</a> to participate in public chat rooms.
+            <div style="text-align: center; padding: 10px; font-size: 0.9rem; color: var(--text-muted);">
+              <a href="/login?redirect=<?= urlencode('/chat/' . $activeRoom['slug']) ?>" style="color: var(--primary-color); font-weight: 700; text-decoration: underline;">Sign In</a> to join and participate in public chat rooms.
             </div>
           <?php endif; ?>
         </div>
@@ -131,6 +169,7 @@
 
 <script>
 let lastMsgId = <?= !empty($messages) ? (int) $messages[array_key_last($messages)]['id'] : 0 ?>;
+let isMember = <?= !empty($isMember) ? 'true' : 'false' ?>;
 const roomSlug = "<?= htmlspecialchars($activeRoom['slug'] ?? '', ENT_QUOTES, 'UTF-8') ?>";
 const stream = document.getElementById('chatMessageStream');
 
@@ -154,6 +193,22 @@ function dismissChatError() {
   }
 }
 
+function showChatSuccess(msg) {
+  const banner = document.getElementById('chatSuccessBanner');
+  const msgEl = document.getElementById('chatSuccessMessage');
+  if (banner && msgEl) {
+    msgEl.textContent = msg;
+    banner.style.display = 'flex';
+  }
+}
+
+function dismissChatSuccess() {
+  const banner = document.getElementById('chatSuccessBanner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
+}
+
 // Polling for new messages every 4 seconds
 if (roomSlug) {
   setInterval(async () => {
@@ -168,6 +223,10 @@ if (roomSlug) {
             lastMsgId = Math.max(lastMsgId, parseInt(m.id, 10));
           });
           stream.scrollTop = stream.scrollHeight;
+        }
+        if (data.member_count !== undefined) {
+          const countEl = document.getElementById('chatMemberCount');
+          if (countEl) countEl.textContent = data.member_count;
         }
       }
     } catch (e) {}
@@ -219,9 +278,82 @@ function appendChatMessage(m) {
   stream.appendChild(div);
 }
 
+async function handleJoinCommunity() {
+  if (!roomSlug) return;
+  dismissChatError();
+  dismissChatSuccess();
+
+  const joinBtn = document.getElementById('chatJoinBtn');
+  const btnText = document.getElementById('chatJoinBtnText');
+  const btnIcon = document.getElementById('chatJoinBtnIcon');
+  if (joinBtn) joinBtn.disabled = true;
+  if (btnText) btnText.textContent = 'Joining';
+  if (btnIcon) btnIcon.textContent = '...';
+
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+  try {
+    const res = await fetch(`/api/chat/rooms/${roomSlug}/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      }
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (res.ok && data?.data) {
+      isMember = true;
+      const joinContainer = document.getElementById('chatJoinContainer');
+      const composerContainer = document.getElementById('chatComposerContainer');
+      if (joinContainer) joinContainer.style.display = 'none';
+      if (composerContainer) composerContainer.style.display = 'block';
+
+      const badge = document.getElementById('chatMembershipBadge');
+      if (badge) {
+        badge.textContent = '✓ Joined Member';
+        badge.style.background = 'rgba(16, 185, 129, 0.12)';
+        badge.style.color = '#10B981';
+      }
+      const countEl = document.getElementById('chatMemberCount');
+      if (countEl && data.data.member_count !== undefined) {
+        countEl.textContent = data.data.member_count;
+      }
+
+      showChatSuccess(data.data.message || 'You have joined this community!');
+      setTimeout(() => dismissChatSuccess(), 4000);
+
+      const input = document.getElementById('chatInputMessage');
+      if (input) input.focus();
+    } else {
+      const errMsg = data?.error?.message || 'Failed to join community. Please try again.';
+      showChatError(errMsg);
+    }
+  } catch (err) {
+    showChatError('Network error. Please check your internet connection.');
+  } finally {
+    if (joinBtn) joinBtn.disabled = false;
+    if (btnText) btnText.textContent = 'Join Community';
+    if (btnIcon) btnIcon.textContent = '➔';
+  }
+}
+
 async function handleSendChatMessage(e) {
   e.preventDefault();
   dismissChatError();
+  dismissChatSuccess();
+
+  if (!isMember) {
+    showChatError('You must join this community before sending messages.');
+    const joinContainer = document.getElementById('chatJoinContainer');
+    const composerContainer = document.getElementById('chatComposerContainer');
+    if (joinContainer) joinContainer.style.display = 'block';
+    if (composerContainer) composerContainer.style.display = 'none';
+    return;
+  }
+
   const input = document.getElementById('chatInputMessage');
   if (!input) return;
 
@@ -265,6 +397,19 @@ async function handleSendChatMessage(e) {
       lastMsgId = Math.max(lastMsgId, parseInt(data.data.id, 10));
       stream.scrollTop = stream.scrollHeight;
     } else {
+      if (res.status === 403 && data?.error?.code === 'MEMBERSHIP_REQUIRED') {
+        isMember = false;
+        const joinContainer = document.getElementById('chatJoinContainer');
+        const composerContainer = document.getElementById('chatComposerContainer');
+        if (joinContainer) joinContainer.style.display = 'block';
+        if (composerContainer) composerContainer.style.display = 'none';
+        const badge = document.getElementById('chatMembershipBadge');
+        if (badge) {
+          badge.textContent = 'Guest Viewer';
+          badge.style.background = 'rgba(100, 116, 139, 0.12)';
+          badge.style.color = 'var(--text-muted)';
+        }
+      }
       const errMsg = data?.error?.message || 'Failed to send message. Please try again.';
       showChatError(errMsg);
     }

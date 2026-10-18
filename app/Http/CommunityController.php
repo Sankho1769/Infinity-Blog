@@ -73,9 +73,25 @@ final class CommunityController
             if ($room === null) {
                 return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Chat room not found.')];
             }
+            $user = $this->guard->user();
+            $isMember = $user !== null ? $this->community->isMember((int) $room['id'], $user->id) : false;
+            $memberCount = $this->community->getRoomMemberCount((int) $room['id']);
             $afterId = isset($_GET['after']) ? (int) $_GET['after'] : null;
             $messages = $this->community->getChatMessages((int) $room['id'], 50, $afterId);
-            return ['status' => 200, 'body' => ['data' => $messages, 'room' => $room]];
+            return [
+                'status' => 200,
+                'body' => [
+                    'data' => $messages,
+                    'room' => $room,
+                    'is_member' => $isMember,
+                    'member_count' => $memberCount,
+                ],
+            ];
+        }
+
+        // Join chat room: POST /api/chat/rooms/{slug}/join
+        if ($method === 'POST' && preg_match('#^/api/chat/rooms/([a-zA-Z0-9_\-]+)/join$#D', $path, $m)) {
+            return $this->joinChatRoom($request, $m[1]);
         }
 
         // Post chat message: POST /api/chat/rooms/{slug}/messages
@@ -260,6 +276,15 @@ final class CommunityController
             return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Room not found.')];
         }
 
+        if (empty($room['is_active'])) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('ROOM_INACTIVE', 'This community room is inactive.')];
+        }
+
+        // Server-side membership authorization check
+        if (!$this->community->isMember((int) $room['id'], $user->id)) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('MEMBERSHIP_REQUIRED', 'You must join this community before sending messages.')];
+        }
+
         $input = $request->input();
         $message = trim((string) ($input['message'] ?? ''));
         if ($message === '' || strlen($message) > 1000) {
@@ -269,6 +294,9 @@ final class CommunityController
         try {
             $msgId = $this->community->postChatMessage((int) $room['id'], $user->id, $message);
         } catch (\InvalidArgumentException $e) {
+            if (str_contains($e->getMessage(), 'join this community') || str_contains($e->getMessage(), 'MEMBERSHIP_REQUIRED')) {
+                return ['status' => 403, 'body' => ApiErrorResponder::build('MEMBERSHIP_REQUIRED', $e->getMessage())];
+            }
             $isRateLimit = str_contains($e->getMessage(), 'Rate limit') || str_contains($e->getMessage(), 'wait a moment');
             $status = $isRateLimit ? 429 : 422;
             $code = $isRateLimit ? 'RATE_LIMITED' : 'VALIDATION_ERROR';
@@ -291,6 +319,47 @@ final class CommunityController
                 ],
             ],
         ];
+    }
+
+    private function joinChatRoom(Request $request, string $slug): array
+    {
+        if (!$this->validateCsrf($request)) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('CSRF_INVALID', 'Security verification failed.')];
+        }
+
+        $user = $this->guard->user();
+        if ($user === null) {
+            return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in to join this community.')];
+        }
+
+        $room = $this->community->getChatRoomBySlug($slug);
+        if ($room === null) {
+            return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Room not found.')];
+        }
+
+        if (empty($room['is_active'])) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('ROOM_INACTIVE', 'This community room is inactive.')];
+        }
+
+        try {
+            $this->community->joinRoom((int) $room['id'], $user->id);
+            $memberCount = $this->community->getRoomMemberCount((int) $room['id']);
+            return [
+                'status' => 200,
+                'body' => [
+                    'data' => [
+                        'success' => true,
+                        'is_member' => true,
+                        'room_id' => (int) $room['id'],
+                        'slug' => $room['slug'],
+                        'member_count' => $memberCount,
+                        'message' => 'You have joined the #' . $room['name'] . ' community.',
+                    ],
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return ['status' => 500, 'body' => ApiErrorResponder::build('JOIN_ERROR', 'Unable to join community at this time. Please try again.')];
+        }
     }
 
     private function createChatRoom(Request $request): array

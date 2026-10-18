@@ -169,24 +169,80 @@ final class CommunityRepository
      */
     public function getChatRooms(): array
     {
-        $stmt = $this->pdo->query(
-            'SELECT r.id, r.slug, r.name, r.description, r.category_id, r.is_active, r.created_at, ' .
-            'c.name AS category_name, ' .
-            '(SELECT COUNT(*) FROM chat_room_messages m WHERE m.room_id = r.id) AS message_count ' .
-            'FROM chat_rooms r ' .
-            'LEFT JOIN categories c ON r.category_id = c.id ' .
-            'WHERE r.is_active = 1 ' .
-            'ORDER BY r.created_at ASC'
-        );
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $stmt = $this->pdo->query(
+                'SELECT r.id, r.slug, r.name, r.description, r.category_id, r.is_active, r.created_at, ' .
+                'c.name AS category_name, ' .
+                '(SELECT COUNT(*) FROM chat_room_messages m WHERE m.room_id = r.id) AS message_count, ' .
+                '(SELECT COUNT(*) FROM chat_room_members cm WHERE cm.room_id = r.id) AS member_count ' .
+                'FROM chat_rooms r ' .
+                'LEFT JOIN categories c ON r.category_id = c.id ' .
+                'WHERE r.is_active = 1 ' .
+                'ORDER BY r.created_at ASC'
+            );
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\PDOException $e) {
+            $stmt = $this->pdo->query(
+                'SELECT r.id, r.slug, r.name, r.description, r.category_id, r.is_active, r.created_at, ' .
+                'c.name AS category_name, ' .
+                '(SELECT COUNT(*) FROM chat_room_messages m WHERE m.room_id = r.id) AS message_count, ' .
+                '0 AS member_count ' .
+                'FROM chat_rooms r ' .
+                'LEFT JOIN categories c ON r.category_id = c.id ' .
+                'WHERE r.is_active = 1 ' .
+                'ORDER BY r.created_at ASC'
+            );
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
     }
 
     public function getChatRoomBySlug(string $slug): ?array
     {
-        $stmt = $this->pdo->prepare('SELECT * FROM chat_rooms WHERE slug = :slug AND is_active = 1 LIMIT 1');
+        $stmt = $this->pdo->prepare('SELECT * FROM chat_rooms WHERE slug = :slug LIMIT 1');
         $stmt->execute([':slug' => $slug]);
         $room = $stmt->fetch(PDO::FETCH_ASSOC);
         return is_array($room) ? $room : null;
+    }
+
+    public function isMember(int $roomId, int $userId): bool
+    {
+        try {
+            $stmt = $this->pdo->prepare('SELECT 1 FROM chat_room_members WHERE room_id = :rid AND user_id = :uid LIMIT 1');
+            $stmt->execute([':rid' => $roomId, ':uid' => $userId]);
+            return $stmt->fetchColumn() !== false;
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), 'no such table') || str_contains($e->getMessage(), "doesn't exist")) {
+                return false;
+            }
+            throw $e;
+        }
+    }
+
+    public function joinRoom(int $roomId, int $userId): bool
+    {
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $timeExpr = $driver === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
+        $insertVerb = $driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
+
+        $stmt = $this->pdo->prepare(
+            "{$insertVerb} INTO chat_room_members (room_id, user_id, joined_at) VALUES (:rid, :uid, {$timeExpr})"
+        );
+        $stmt->execute([':rid' => $roomId, ':uid' => $userId]);
+        return true;
+    }
+
+    public function getRoomMemberCount(int $roomId): int
+    {
+        try {
+            $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM chat_room_members WHERE room_id = :rid');
+            $stmt->execute([':rid' => $roomId]);
+            return (int) $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), 'no such table') || str_contains($e->getMessage(), "doesn't exist")) {
+                return 0;
+            }
+            throw $e;
+        }
     }
 
     public function createChatRoom(string $name, string $slug, ?string $description, ?int $categoryId, int $userId): int
@@ -202,7 +258,12 @@ final class CommunityRepository
             ':cat' => $categoryId,
             ':uid' => $userId,
         ]);
-        return (int) $this->pdo->lastInsertId();
+        $roomId = (int) $this->pdo->lastInsertId();
+        try {
+            $this->joinRoom($roomId, $userId);
+        } catch (\Throwable) {
+        }
+        return $roomId;
     }
 
     public function getChatMessages(int $roomId, int $limit = 50, ?int $afterId = null, ?int $viewerId = null): array
