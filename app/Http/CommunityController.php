@@ -6,6 +6,7 @@ namespace InfinityBlog\Http;
 use InfinityBlog\Auth\AuthGuard;
 use InfinityBlog\Auth\SessionManager;
 use InfinityBlog\Community\CommunityRepository;
+use InfinityBlog\Community\CommunityNameFormatter;
 use InfinityBlog\Posts\PostRepository;
 
 final class CommunityController
@@ -353,7 +354,7 @@ final class CommunityController
                         'room_id' => (int) $room['id'],
                         'slug' => $room['slug'],
                         'member_count' => $memberCount,
-                        'message' => 'You have joined the #' . $room['name'] . ' community.',
+                        'message' => 'You have joined the ' . CommunityNameFormatter::format((string) ($room['name'] ?? '')) . ' community.',
                     ],
                 ],
             ];

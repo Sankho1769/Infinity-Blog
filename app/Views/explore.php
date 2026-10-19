@@ -307,17 +307,24 @@
     <div class="articles-grid">
       <?php foreach ($posts as $idx => $post): ?>
         <?php
+          $postId = (int) $post['id'];
+          $canonicalPostUrl = '/article/' . $postId;
           $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
         ?>
-        <article class="glass-panel glass-panel-hover article-card">
+        <article class="glass-panel glass-panel-hover article-card"
+                 data-post-id="<?= $postId ?>"
+                 data-article-url="<?= $canonicalPostUrl ?>"
+                 tabindex="0"
+                 role="article"
+                 aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
           <div class="article-card-banner has-image">
             <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
             <div class="article-banner-badge-wrapper">
               <?php if (!empty($post['category_name'])): ?>
-                <span class="badge badge-category">
+                <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
                   <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
                   <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
-                </span>
+                </a>
               <?php else: ?>
                 <span class="badge badge-published">Published</span>
               <?php endif; ?>

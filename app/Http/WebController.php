@@ -57,6 +57,7 @@ final class WebController
     private ?ContactRepository $contactRepo;
     private ?PostReportRepository $postReports;
     private ?MailerService $mailer;
+    private ?\InfinityBlog\Reviews\ReviewRepository $reviews;
 
     public function __construct(
         PostRepository $posts,
@@ -79,7 +80,8 @@ final class WebController
         ?SeoService $seo = null,
         ?ContactRepository $contactRepo = null,
         ?PostReportRepository $postReports = null,
-        ?MailerService $mailer = null
+        ?MailerService $mailer = null,
+        ?\InfinityBlog\Reviews\ReviewRepository $reviews = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -113,6 +115,7 @@ final class WebController
         $this->contactRepo = $contactRepo;
         $this->postReports = $postReports;
         $this->mailer = $mailer ?? new MailerService();
+        $this->reviews = $reviews ?? new \InfinityBlog\Reviews\ReviewRepository($this->users->getPdo(), $this->scores);
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -153,10 +156,13 @@ final class WebController
 
         $account = $this->guard->currentAccount();
 
-        // Feed Tabs: for-you, following, latest, popular
+        // Feed Tabs: for-you, following, latest, trending, popular
         $tabParam = $request->query('tab') ?? ($_GET['tab'] ?? null);
         $activeTab = is_string($tabParam) ? strtolower(trim($tabParam)) : 'for-you';
-        if (!in_array($activeTab, ['for-you', 'following', 'latest', 'popular'], true)) {
+        if ($activeTab === 'popular') {
+            $activeTab = 'trending';
+        }
+        if (!in_array($activeTab, ['for-you', 'following', 'latest', 'trending'], true)) {
             $activeTab = 'for-you';
         }
 
@@ -181,7 +187,7 @@ final class WebController
         } elseif ($activeTab === 'latest') {
             $filters['sort'] = 'newest';
             $postResult = $this->posts->listPublic($filters, 1, 24);
-        } elseif ($activeTab === 'popular') {
+        } elseif ($activeTab === 'trending') {
             $filters['sort'] = 'popular';
             $postResult = $this->posts->listPublic($filters, 1, 24);
         } else {
@@ -307,6 +313,15 @@ final class WebController
             }
         }
 
+        // 3. Trending Topics (Top 5 active categories by post_count DESC)
+        $trendingTopics = [];
+        try {
+            $categoriesWithCounts = $this->categories->listActiveWithCounts();
+            usort($categoriesWithCounts, static fn(array $a, array $b): int => $b['post_count'] <=> $a['post_count']);
+            $trendingTopics = array_slice($categoriesWithCounts, 0, 5);
+        } catch (\Throwable) {
+        }
+
         $featuredCommunities = array_slice($sidebarCommunities, 0, 4);
         $featuredAuthors = array_slice($sidebarAuthors, 0, 4);
 
@@ -321,6 +336,7 @@ final class WebController
             'featuredAuthors' => $featuredAuthors,
             'sidebarAuthors' => $sidebarAuthors,
             'sidebarCommunities' => $sidebarCommunities,
+            'trendingTopics' => $trendingTopics,
             'categories' => $activeCategories,
             'activeCategorySlug' => $categorySlug,
             'activeCategoryName' => $activeCatName,
@@ -408,6 +424,13 @@ final class WebController
         $authorHasBadge = $authorId > 0 && $badgeService->qualifiesForAuthorBadge($authorId);
         $post['author_has_badge'] = $authorHasBadge;
 
+        $reviewsData = $this->reviews !== null
+            ? $this->reviews->getReviewsForPost($id, $account?->id, 1, 10)
+            : ['reviews' => [], 'total' => 0, 'page' => 1, 'per_page' => 10, 'total_pages' => 0];
+        $userReview = ($this->reviews !== null && $account !== null)
+            ? $this->reviews->getUserReview($id, $account->id)
+            : null;
+
         return $this->render('article', [
             'pageTitle' => $post['title'],
             'metaDescription' => $metaDescription,
@@ -424,6 +447,11 @@ final class WebController
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
             'scoreSummary' => $scoreSummary,
             'userScore' => $userScore,
+            'reviews' => $reviewsData['reviews'],
+            'reviewsTotal' => $reviewsData['total'],
+            'reviewsPage' => $reviewsData['page'],
+            'reviewsTotalPages' => $reviewsData['total_pages'],
+            'userReview' => $userReview,
             'speechData' => $speechData,
             'isBookmarked' => $isBookmarked,
             'comments' => $comments,
@@ -2438,8 +2466,11 @@ final class WebController
         try {
             $res = $this->assistant->ask($postId, $account?->id, $sessionId, $question);
             return $this->jsonResponse(200, ['data' => $res]);
+        } catch (\InvalidArgumentException $e) {
+            $status = $e->getMessage() === 'Article not found.' ? 404 : 422;
+            return $this->jsonResponse($status, ['error' => ['code' => 'INVALID_REQUEST', 'message' => $e->getMessage()]]);
         } catch (Throwable $e) {
-            return $this->jsonResponse(500, ['error' => ['code' => 'ASSISTANT_ERROR', 'message' => 'Could not process question.']]);
+            return $this->jsonResponse(500, ['error' => ['code' => 'ASSISTANT_ERROR', 'message' => $e->getMessage() ?: 'Could not process question.']]);
         }
     }
 

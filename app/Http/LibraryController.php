@@ -119,13 +119,38 @@ final class LibraryController
             return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in to save articles.')];
         }
 
-        $isBookmarked = $this->library->toggleBookmark($user->id, $postId);
+        $input = $request->input();
+        $action = isset($input['action']) && is_string($input['action']) ? strtolower(trim($input['action'])) : 'toggle';
+
+        if ($action === 'unsave') {
+            $isBookmarked = $this->library->unsaveBookmark($user->id, $postId);
+        } elseif ($action === 'save') {
+            $post = $this->posts->findPublished($postId);
+            if ($post === null) {
+                return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Article not found or not published.')];
+            }
+            $isBookmarked = $this->library->saveBookmark($user->id, $postId);
+        } else {
+            // Toggle mode
+            if ($this->library->isBookmarked($user->id, $postId)) {
+                $isBookmarked = $this->library->unsaveBookmark($user->id, $postId);
+            } else {
+                $post = $this->posts->findPublished($postId);
+                if ($post === null) {
+                    return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Article not found or not published.')];
+                }
+                $isBookmarked = $this->library->saveBookmark($user->id, $postId);
+            }
+        }
+
         return [
             'status' => 200,
             'body' => [
                 'data' => [
                     'is_bookmarked' => $isBookmarked,
-                    'message' => $isBookmarked ? 'Article saved to your library.' : 'Article removed from your library.',
+                    'bookmarked' => $isBookmarked,
+                    'saved' => $isBookmarked,
+                    'message' => $isBookmarked ? 'Article saved to your reading library.' : 'Article removed from your reading library.',
                 ],
             ],
         ];

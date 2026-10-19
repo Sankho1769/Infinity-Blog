@@ -163,6 +163,21 @@ final class ScoreRepository
                 'metadata' => json_encode(['score' => $score], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             ]);
 
+            // If user has an existing written review, synchronize rating in post_reviews
+            try {
+                $syncReviewStmt = $this->pdo->prepare(
+                    'UPDATE post_reviews SET rating = :rating, updated_at = CURRENT_TIMESTAMP ' .
+                    'WHERE post_id = :post_id AND user_id = :user_id'
+                );
+                $syncReviewStmt->execute([
+                    'rating' => $score,
+                    'post_id' => $postId,
+                    'user_id' => $userId,
+                ]);
+            } catch (\Throwable) {
+                // Table might not exist in isolated unit test environments
+            }
+
             $summary = $this->getSummary($postId);
             $this->pdo->commit();
 

@@ -42,7 +42,7 @@
     <?php foreach ($communities as $comm): ?>
       <?php
         $slug = htmlspecialchars($comm['slug'] ?? '', ENT_QUOTES, 'UTF-8');
-        $name = htmlspecialchars($comm['name'] ?? '', ENT_QUOTES, 'UTF-8');
+        $name = htmlspecialchars(\InfinityBlog\Community\CommunityNameFormatter::format($comm['name'] ?? ''), ENT_QUOTES, 'UTF-8');
         $desc = htmlspecialchars($comm['description'] ?? 'Active discussion space for creators and readers.', ENT_QUOTES, 'UTF-8');
         $categoryName = !empty($comm['category_name']) ? htmlspecialchars($comm['category_name'], ENT_QUOTES, 'UTF-8') : 'General';
         $memberCount = (int) ($comm['member_count'] ?? 0);
@@ -53,7 +53,7 @@
           <!-- Header: Category Tag & Member Badge -->
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px;">
             <span style="background: rgba(224, 231, 255, 0.75); color: #4338ca; font-weight: 700; padding: 4px 10px; border-radius: var(--radius-pill); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em;">
-              #<?= $categoryName ?>
+              <?= $categoryName ?>
             </span>
             <span class="community-member-count" data-slug="<?= $slug ?>" style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>

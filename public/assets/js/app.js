@@ -65,15 +65,191 @@
     return div.innerHTML;
   }
 
+  // ==========================================================================
+  // Application-Wide Theme System (Light, Dark, Device Mode)
+  // ==========================================================================
+  const ThemeManager = {
+    STORAGE_KEY: 'ib_theme_preference',
+
+    getPreference() {
+      try {
+        const val = localStorage.getItem(this.STORAGE_KEY);
+        if (val === 'dark' || val === 'device' || val === 'light') {
+          return val;
+        }
+      } catch (e) {}
+      return 'light'; // Strict Light Mode default for all new visitors
+    },
+
+    resolveTheme(preference) {
+      if (preference === 'dark') return 'dark';
+      if (preference === 'device') {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          return 'dark';
+        }
+        return 'light';
+      }
+      return 'light';
+    },
+
+    apply(preference, notify = true) {
+      const theme = this.resolveTheme(preference);
+
+      // 1. Root DOM attributes
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-theme-preference', preference);
+      if (theme === 'dark') {
+        document.documentElement.classList.add('theme-dark');
+      } else {
+        document.documentElement.classList.remove('theme-dark');
+      }
+
+      // 2. Meta theme-color for browser chrome
+      const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (metaThemeColor) {
+        metaThemeColor.setAttribute('content', theme === 'dark' ? '#070d18' : '#3b82f6');
+      }
+
+      // 3. Header Toggle Button Icon and Accessible Label
+      const currentIconEl = document.getElementById('header-theme-current-icon');
+      const toggleBtn = document.getElementById('header-theme-toggle-btn');
+      if (currentIconEl) {
+        let icon = '☀️';
+        if (preference === 'dark') icon = '🌙';
+        else if (preference === 'device') icon = '💻';
+        currentIconEl.textContent = icon;
+      }
+      if (toggleBtn) {
+        const modeTitle = preference === 'device' ? 'Device (Auto)' : (preference === 'dark' ? 'Dark' : 'Light');
+        toggleBtn.title = `Theme: ${modeTitle} (click to switch)`;
+        toggleBtn.setAttribute('aria-label', `Theme: ${modeTitle} (click to switch)`);
+      }
+
+      // 4. Header Popover Dropdown Radio Items
+      document.querySelectorAll('.theme-option-btn').forEach(btn => {
+        const btnPref = btn.getAttribute('data-theme-value');
+        const isSelected = btnPref === preference;
+        btn.classList.toggle('active', isSelected);
+        btn.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      });
+
+      // 5. Segmented Buttons (User Account Menu and Mobile Navigation Drawer)
+      document.querySelectorAll('.theme-segmented-btn').forEach(btn => {
+        const btnPref = btn.getAttribute('data-theme-value');
+        const isSelected = btnPref === preference;
+        btn.classList.toggle('active', isSelected);
+        btn.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      });
+
+      // 6. Broadcast Custom Event
+      if (notify) {
+        try {
+          window.dispatchEvent(new CustomEvent('ib:themechange', {
+            detail: { theme, preference }
+          }));
+        } catch (e) {}
+      }
+    },
+
+    setPreference(preference) {
+      try {
+        localStorage.setItem(this.STORAGE_KEY, preference);
+      } catch (e) {}
+      this.apply(preference);
+    },
+
+    init() {
+      const pref = this.getPreference();
+      this.apply(pref, false);
+
+      // Listen for OS scheme changes in real-time without reloading
+      if (window.matchMedia) {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = () => {
+          if (this.getPreference() === 'device') {
+            this.apply('device');
+          }
+        };
+        if (typeof mediaQuery.addEventListener === 'function') {
+          mediaQuery.addEventListener('change', handleChange);
+        } else if (typeof mediaQuery.addListener === 'function') {
+          mediaQuery.addListener(handleChange);
+        }
+      }
+
+      // Header Popover Toggle Button & Dropdown Interactions
+      const toggleBtn = document.getElementById('header-theme-toggle-btn');
+      const dropdown = document.getElementById('header-theme-dropdown');
+
+      if (toggleBtn && dropdown) {
+        toggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isOpen = dropdown.style.display === 'flex';
+
+          // Close other open popovers
+          const headerUserDropdown = document.getElementById('header-user-dropdown');
+          if (headerUserDropdown) {
+            headerUserDropdown.style.display = 'none';
+            const userBtn = document.getElementById('header-user-menu-btn');
+            if (userBtn) userBtn.setAttribute('aria-expanded', 'false');
+          }
+          const notifDropdown = document.getElementById('nav-notif-dropdown');
+          if (notifDropdown) {
+            notifDropdown.style.display = 'none';
+            const notifBtn = document.getElementById('nav-notif-btn');
+            if (notifBtn) notifBtn.setAttribute('aria-expanded', 'false');
+          }
+
+          dropdown.style.display = isOpen ? 'none' : 'flex';
+          toggleBtn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+        });
+
+        document.addEventListener('click', (e) => {
+          if (dropdown.style.display === 'flex' && !dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
+            dropdown.style.display = 'none';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+          }
+        });
+
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && dropdown.style.display === 'flex') {
+            dropdown.style.display = 'none';
+            toggleBtn.setAttribute('aria-expanded', 'false');
+            toggleBtn.focus();
+          }
+        });
+      }
+
+      // Bind all theme interactive buttons across the entire page
+      document.querySelectorAll('.theme-option-btn, .theme-segmented-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const newPref = btn.getAttribute('data-theme-value');
+          if (newPref) {
+            this.setPreference(newPref);
+            if (dropdown) {
+              dropdown.style.display = 'none';
+              if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+            }
+          }
+        });
+      });
+    }
+  };
+
   // Expose immediately so page scripts can access anytime
   window.InfinityBlog = window.BlogCMS = {
     getCsrfToken,
     ensureCsrfToken,
-    showAlert
+    showAlert,
+    ThemeManager
   };
 
   // Password Visibility Toggle & Setup
   document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Theme Manager
+    ThemeManager.init();
+
     // Clean transient query parameters from URL so feedback alerts never persist on refresh or subsequent visits
     try {
       const url = new URL(window.location.href);
@@ -412,6 +588,47 @@
       });
     }
 
+    // Header User Account Menu Dropdown Controls
+    const headerUserBtn = document.getElementById('header-user-menu-btn');
+    const headerUserDropdown = document.getElementById('header-user-dropdown');
+    if (headerUserBtn && headerUserDropdown) {
+      headerUserBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = headerUserDropdown.style.display === 'flex';
+        headerUserDropdown.style.display = isOpen ? 'none' : 'flex';
+        headerUserBtn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (headerUserDropdown.style.display === 'flex' && !headerUserDropdown.contains(e.target) && !headerUserBtn.contains(e.target)) {
+          headerUserDropdown.style.display = 'none';
+          headerUserBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && headerUserDropdown.style.display === 'flex') {
+          headerUserDropdown.style.display = 'none';
+          headerUserBtn.setAttribute('aria-expanded', 'false');
+          headerUserBtn.focus();
+        }
+      });
+    }
+
+    // Header Global Search Clear Button Sync
+    const headerSearchInput = document.getElementById('header-search-input');
+    const headerSearchClear = document.getElementById('header-search-clear');
+    if (headerSearchInput && headerSearchClear) {
+      headerSearchInput.addEventListener('input', () => {
+        headerSearchClear.style.display = headerSearchInput.value.trim() ? 'flex' : 'none';
+      });
+      headerSearchClear.addEventListener('click', () => {
+        headerSearchInput.value = '';
+        headerSearchClear.style.display = 'none';
+        headerSearchInput.focus();
+      });
+    }
+
     // Horizontal Category Carousel Scroll Navigation
     function initCategoryCarousels() {
       document.querySelectorAll('.category-carousel-wrapper').forEach(wrapper => {
@@ -476,14 +693,21 @@
     initCategoryCarousels();
 
     // Social Follow / Unfollow AJAX Handler
+    function checkUserLoggedIn() {
+      return document.body.getAttribute('data-user-logged-in') === '1' ||
+             !!document.querySelector('.user-profile-link') ||
+             !!document.querySelector('.sidebar-user-info') ||
+             !!document.getElementById('header-user-menu-btn');
+    }
+
+    // Social Follow / Unfollow AJAX Handler
     document.querySelectorAll('.btn-follow-toggle').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
         const authorId = btn.getAttribute('data-author-id');
         if (!authorId) return;
 
-        const isLoggedIn = !!document.querySelector('.user-profile-link');
-        if (!isLoggedIn) {
+        if (!checkUserLoggedIn()) {
           window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
           return;
         }
@@ -553,8 +777,7 @@
           return;
         }
 
-        const isLoggedIn = !!document.querySelector('.user-profile-link');
-        if (!isLoggedIn) {
+        if (!checkUserLoggedIn()) {
           window.location.href = `/login?redirect=${encodeURIComponent('/chat/' + slug)}`;
           return;
         }
@@ -589,7 +812,7 @@
                 countEl.textContent = `${cur + 1} members`;
               }
             });
-            showAlert(`You have joined the #${slug} community!`, 'success');
+            showAlert(data?.data?.message || 'You have joined this community!', 'success');
           } else {
             const errorMsg = data?.error?.message || 'Could not join community.';
             showAlert(errorMsg, 'error');
@@ -632,7 +855,7 @@
       } catch (e) {}
     }
 
-    if (document.querySelector('.user-profile-link')) {
+    if (checkUserLoggedIn()) {
       updateUnreadCount();
       setInterval(updateUnreadCount, 15000);
     }
@@ -1661,6 +1884,130 @@
       }
     };
 
+    window.openReportReviewModal = function (reviewId) {
+      const modal = document.getElementById('report-review-modal');
+      if (!modal) return;
+      const targetInput = document.getElementById('reportTargetReviewId');
+      if (targetInput) targetInput.value = reviewId ? String(reviewId) : '';
+      const form = document.getElementById('reportReviewForm');
+      if (form) form.reset();
+      const feedback = document.getElementById('reportReviewFormFeedback');
+      if (feedback) {
+        feedback.style.display = 'none';
+        feedback.textContent = '';
+      }
+      const counter = document.getElementById('reportReviewCharCounter');
+      if (counter) counter.textContent = '0 / 500';
+
+      modal.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+      const reasonSelect = document.getElementById('reportReviewReasonSelect');
+      if (reasonSelect) reasonSelect.focus();
+    };
+
+    window.closeReportReviewModal = function () {
+      const modal = document.getElementById('report-review-modal');
+      if (!modal) return;
+      modal.style.display = 'none';
+      document.body.style.overflow = '';
+      const form = document.getElementById('reportReviewForm');
+      if (form) form.reset();
+      const feedback = document.getElementById('reportReviewFormFeedback');
+      if (feedback) {
+        feedback.style.display = 'none';
+        feedback.textContent = '';
+      }
+    };
+
+    window.updateReportReviewCharCount = function (textarea) {
+      const counter = document.getElementById('reportReviewCharCounter');
+      if (counter && textarea) {
+        const len = textarea.value.length;
+        counter.textContent = `${len} / 500`;
+        counter.style.color = len > 450 ? '#ef4444' : 'var(--text-muted)';
+      }
+    };
+
+    window.handleReportReviewSubmit = async function (event) {
+      if (event) event.preventDefault();
+      const btn = document.getElementById('reportReviewSubmitBtn');
+      const feedback = document.getElementById('reportReviewFormFeedback');
+      const reason = document.getElementById('reportReviewReasonSelect')?.value;
+      const explanation = document.getElementById('reportReviewExplanationTextarea')?.value || '';
+      const reviewId = document.getElementById('reportTargetReviewId')?.value;
+
+      if (!reason) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.textContent = 'Please select a reason for reporting.';
+        }
+        return;
+      }
+
+      if (!reviewId) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.textContent = 'Unable to identify review ID to report.';
+        }
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+      }
+
+      try {
+        const csrf = await ensureCsrfToken();
+        const res = await fetch(`/api/reviews/${reviewId}/report`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-Token': csrf || ''
+          },
+          body: JSON.stringify({ reason, explanation })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          if (feedback) {
+            feedback.style.display = 'block';
+            feedback.style.background = '#ecfdf5';
+            feedback.style.color = '#065f46';
+            feedback.textContent = 'Thank you. Your report has been submitted for moderation review.';
+          }
+          setTimeout(() => {
+            closeReportReviewModal();
+            showAlert('Review flagged for moderation. Thank you for keeping our community safe.', 'success');
+          }, 1200);
+        } else {
+          if (feedback) {
+            feedback.style.display = 'block';
+            feedback.style.background = '#fef2f2';
+            feedback.style.color = '#991b1b';
+            feedback.textContent = data.error?.message || 'Could not submit report.';
+          }
+        }
+      } catch (err) {
+        if (feedback) {
+          feedback.style.display = 'block';
+          feedback.style.background = '#fef2f2';
+          feedback.style.color = '#991b1b';
+          feedback.textContent = 'Network error occurred while submitting report.';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Submit Report';
+        }
+      }
+    };
+
     window.handleFeedScore = async function (e, postId, scoreVal) {
       if (e) {
         e.preventDefault();
@@ -1728,6 +2075,12 @@
       const card = document.querySelector(`.feed-card[data-post-id="${postId}"]`);
       const bookmarkBtn = card?.querySelector('.btn-feed-bookmark');
       const label = bookmarkBtn?.querySelector('.bookmark-label');
+      const isCurrentlySaved = bookmarkBtn ? bookmarkBtn.classList.contains('active') : false;
+      const intendedAction = isCurrentlySaved ? 'unsave' : 'save';
+
+      if (bookmarkBtn) {
+        bookmarkBtn.disabled = true;
+      }
 
       try {
         const csrf = await ensureCsrfToken();
@@ -1737,7 +2090,8 @@
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'X-CSRF-Token': csrf
-          }
+          },
+          body: JSON.stringify({ action: intendedAction })
         });
 
         if (res.status === 401) {
@@ -1747,24 +2101,37 @@
 
         const data = await res.json();
         if (res.ok && data.data) {
-          const isBookmarked = data.data.bookmarked;
+          const isBookmarked = Boolean(data.data.is_bookmarked ?? data.data.bookmarked ?? data.data.saved);
           if (bookmarkBtn) {
             if (isBookmarked) {
               bookmarkBtn.classList.add('active');
               bookmarkBtn.querySelector('svg')?.setAttribute('fill', 'currentColor');
+              bookmarkBtn.setAttribute('title', 'Remove bookmark');
               if (label) label.textContent = 'Saved';
             } else {
               bookmarkBtn.classList.remove('active');
               bookmarkBtn.querySelector('svg')?.setAttribute('fill', 'none');
+              bookmarkBtn.setAttribute('title', 'Bookmark story');
               if (label) label.textContent = 'Save';
             }
           }
-          showAlert(isBookmarked ? 'Article added to your reading library.' : 'Article removed from your library.', 'success');
+
+          // Also synchronize the 3-dots dropdown menu item if open/present
+          const menuItem = card?.querySelector('.feed-menu-item[onclick*="toggleFeedBookmark"]');
+          if (menuItem) {
+            menuItem.innerHTML = '<span>🔖</span> ' + (isBookmarked ? 'Remove bookmark' : 'Bookmark story');
+          }
+
+          showAlert(isBookmarked ? 'Article added to your reading library.' : 'Article removed from your reading library.', 'success');
         } else {
           showAlert(data.error?.message || 'Could not update bookmark.', 'error');
         }
       } catch (err) {
         showAlert('Network error updating bookmark.', 'error');
+      } finally {
+        if (bookmarkBtn) {
+          bookmarkBtn.disabled = false;
+        }
       }
     };
 
@@ -1796,6 +2163,122 @@
       }
     });
 
+    // Feed and Article Card Click Navigation:
+    // Clicking anywhere on a feed or article card (background, title, excerpt, thumbnail, or padding)
+    // navigates to the article detail page.
+    // Child controls (buttons, author links, category tags, reaction bars, dropdown menus, inputs)
+    // and active text selections do NOT trigger card-level navigation.
+    const CARD_INTERACTIVE_SELECTOR = [
+      'button',
+      'input',
+      'textarea',
+      'select',
+      'label',
+      '.feed-card-actions',
+      '.feed-action-btn',
+      '.feed-card-menu',
+      '.feed-menu-dropdown',
+      '.feed-menu-btn',
+      '.feed-menu-item',
+      '.dropdown',
+      '.dropdown-menu',
+      '.dropdown-item',
+      '.feed-author-avatar-link',
+      '.feed-author-name',
+      '.feed-card-category-tag',
+      '.article-author-info',
+      '.article-author-info a',
+      '.badge-category',
+      'a[href*="/author/"]',
+      'a[href*="category="]',
+      'a[href*="remix="]',
+      'a[href*="#comments"]',
+      'a[href*="/edit"]',
+      'a.btn',
+      '.user-avatar',
+      '[onclick]'
+    ].join(', ');
+
+    function getCardNavigationUrl(card) {
+      if (!card) return null;
+      const articleUrl = card.getAttribute('data-article-url');
+      if (articleUrl) return articleUrl;
+      const postId = card.getAttribute('data-post-id');
+      if (postId) return `/article/${postId}`;
+      return null;
+    }
+
+    function shouldIgnoreCardEvent(e, card) {
+      // 1. Text selection in progress (user is copying/highlighting text)
+      const selection = window.getSelection ? window.getSelection().toString().trim() : '';
+      if (selection.length > 0) return true;
+
+      // 2. Interactive control clicked (buttons, menus, author/category links, etc.)
+      const interactiveEl = e.target.closest(CARD_INTERACTIVE_SELECTOR);
+      if (interactiveEl && card.contains(interactiveEl) && interactiveEl !== card) {
+        return true;
+      }
+
+      // 3. Explicit link clicked within card (e.g. title link or thumbnail link)
+      const link = e.target.closest('a');
+      if (link && card.contains(link)) {
+        // Native link handles navigation
+        return true;
+      }
+
+      return false;
+    }
+
+    // Left click & modifier click delegation
+    document.addEventListener('click', (e) => {
+      const card = e.target.closest('.feed-card, .article-card[data-article-url], .article-card[data-post-id]');
+      if (!card) return;
+
+      if (shouldIgnoreCardEvent(e, card)) return;
+
+      const url = getCardNavigationUrl(card);
+      if (!url) return;
+
+      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        window.location.href = url;
+      }
+    });
+
+    // Middle click (auxclick button 1) delegation
+    document.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return;
+      const card = e.target.closest('.feed-card, .article-card[data-article-url], .article-card[data-post-id]');
+      if (!card) return;
+
+      if (shouldIgnoreCardEvent(e, card)) return;
+
+      const url = getCardNavigationUrl(card);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    });
+
+    // Keyboard navigation: Enter on a focused card opens the article
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const activeEl = document.activeElement;
+        if (!activeEl) return;
+        if (activeEl.matches && activeEl.matches('.feed-card, .article-card[data-article-url], .article-card[data-post-id]')) {
+          const url = getCardNavigationUrl(activeEl);
+          if (url) {
+            e.preventDefault();
+            if (e.metaKey || e.ctrlKey) {
+              window.open(url, '_blank', 'noopener,noreferrer');
+            } else {
+              window.location.href = url;
+            }
+          }
+        }
+      }
+    });
+
     // Escape key closes modals, dropdowns, and mobile drawer
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -1805,9 +2288,21 @@
         if (typeof window.closeShareModal === 'function') {
           window.closeShareModal();
         }
+        if (typeof window.closeReportReviewModal === 'function') {
+          window.closeReportReviewModal();
+        }
+        if (typeof window.closeReportPostModal === 'function') {
+          window.closeReportPostModal();
+        }
         document.querySelectorAll('.feed-menu-dropdown').forEach(m => {
           m.style.display = 'none';
         });
+        const themeDropdown = document.getElementById('header-theme-dropdown');
+        if (themeDropdown) {
+          themeDropdown.style.display = 'none';
+          const themeBtn = document.getElementById('header-theme-toggle-btn');
+          if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
+        }
         closeAllNavDropdowns();
         closeMobileDrawer();
       }
@@ -1820,6 +2315,7 @@
   window.InfinityBlog = window.BlogCMS = {
     getCsrfToken,
     ensureCsrfToken,
-    showAlert
+    showAlert,
+    ThemeManager
   };
 })();

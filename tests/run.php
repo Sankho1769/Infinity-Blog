@@ -6069,6 +6069,8 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $migrationRunner->rollbackLast(false);
             } catch (InvalidArgumentException $exception) {
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610180026_create_post_reviews');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610180025_create_chat_room_members');
                 $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610140024_create_registration_challenges');
@@ -6163,6 +6165,7 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610130023_create_post_reports', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610140024_create_registration_challenges', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610180025_create_chat_room_members', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610180026_create_post_reviews', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

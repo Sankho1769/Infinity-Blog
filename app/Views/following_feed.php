@@ -22,27 +22,38 @@
   <?php else: ?>
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px;">
       <?php foreach ($posts as $post): ?>
-        <div class="glass-panel article-card" style="display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border);">
-          <?php
-            $thumb = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
-          ?>
+        <?php
+          $postId = (int) $post['id'];
+          $canonicalPostUrl = '/article/' . $postId;
+          $thumb = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
+          $authorId = (int) ($post['author_id'] ?? 1);
+        ?>
+        <article class="glass-panel article-card"
+                 data-post-id="<?= $postId ?>"
+                 data-article-url="<?= $canonicalPostUrl ?>"
+                 tabindex="0"
+                 role="article"
+                 aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
+                 style="display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border);">
           <div style="height: 180px; overflow: hidden; position: relative;">
             <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;">
-            <span class="badge" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem;">
-              <?= htmlspecialchars($post['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?>
-            </span>
+            <?php if (!empty($post['category_name'])): ?>
+              <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; text-decoration: none;">
+                <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            <?php endif; ?>
           </div>
 
           <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-              <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">
+              <a href="/author/<?= $authorId ?>" class="feed-author-name" style="font-size: 0.82rem; font-weight: 700; color: var(--text-main); text-decoration: none;">
                 <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
-              </span>
+              </a>
               <span style="font-size: 0.75rem; color: var(--text-muted);">● <?= date('M j, Y', strtotime($post['published_at'])) ?></span>
             </div>
 
             <h3 style="font-size: 1.18rem; font-weight: 700; margin: 0 0 10px; line-height: 1.35;">
-              <a href="/article/<?= (int) $post['id'] ?>" style="color: var(--text-main); text-decoration: none;">
+              <a href="/article/<?= $postId ?>" style="color: var(--text-main); text-decoration: none;">
                 <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
               </a>
             </h3>
@@ -61,10 +72,10 @@
               <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">
                 ⏱️ <?= (int) ($post['reading_time'] ?? 1) ?> min read
               </span>
-              <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-primary btn-sm">Read Article</a>
+              <a href="/article/<?= $postId ?>" class="btn btn-primary btn-sm">Read Article</a>
             </div>
           </div>
-        </div>
+        </article>
       <?php endforeach; ?>
     </div>
   <?php endif; ?>

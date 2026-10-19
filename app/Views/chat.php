@@ -27,7 +27,7 @@
           <a href="/chat/<?= htmlspecialchars($r['slug'], ENT_QUOTES, 'UTF-8') ?>" style="padding: 12px 14px; border-radius: 12px; text-decoration: none; display: flex; flex-direction: column; gap: 4px; background: <?= $isActive ? 'rgba(37, 99, 235, 0.12)' : 'transparent' ?>; border: 1px solid <?= $isActive ? 'rgba(37, 99, 235, 0.25)' : 'transparent' ?>; transition: all 0.15s ease;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span style="font-weight: 700; font-size: 0.95rem; color: <?= $isActive ? 'var(--primary-color)' : 'var(--text-main)' ?>;">
-                # <?= htmlspecialchars($r['name'], ENT_QUOTES, 'UTF-8') ?>
+                <?= htmlspecialchars(\InfinityBlog\Community\CommunityNameFormatter::format($r['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
               </span>
               <span style="font-size: 0.75rem; color: var(--text-muted);">
                 <?= (int) ($r['member_count'] ?? 0) ?> members
@@ -50,7 +50,7 @@
         <div style="padding: 16px 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-main); margin: 0;">
-              # <?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>
+              <?= htmlspecialchars(\InfinityBlog\Community\CommunityNameFormatter::format($activeRoom['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
             </h2>
             <?php if (!empty($activeRoom['description'])): ?>
               <p style="font-size: 0.82rem; color: var(--text-muted); margin: 2px 0 0;">
@@ -134,7 +134,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="font-size: 1.3rem;">🛡️</span>
                   <span style="font-weight: 700; font-size: 1.05rem; color: var(--text-main);">
-                    Join #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?> to Participate
+                    Join <?= htmlspecialchars(\InfinityBlog\Community\CommunityNameFormatter::format($activeRoom['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?> to Participate
                   </span>
                 </div>
                 <p style="margin: 0; font-size: 0.86rem; color: var(--text-muted); line-height: 1.45;">
@@ -150,7 +150,7 @@
             <div id="chatComposerContainer" style="<?= !empty($isMember) ? 'display: block;' : 'display: none;' ?>">
               <form id="chatSendForm" onsubmit="handleSendChatMessage(event)" style="display: flex; gap: 10px; align-items: center;">
                 <div style="position: relative; flex: 1;">
-                  <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in #<?= htmlspecialchars($activeRoom['name'], ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="width: 100%; border-radius: 24px; padding: 12px 18px;">
+                  <input type="text" id="chatInputMessage" class="form-input" placeholder="Type your message in <?= htmlspecialchars(\InfinityBlog\Community\CommunityNameFormatter::format($activeRoom['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>..." required autocomplete="off" maxlength="1000" style="width: 100%; border-radius: 24px; padding: 12px 18px;">
                 </div>
                 <button type="submit" class="btn btn-primary" id="chatSendBtn" style="border-radius: 24px; padding: 12px 22px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;">
                   <span id="chatSendBtnText">Send</span> <span id="chatSendBtnIcon">➔</span>

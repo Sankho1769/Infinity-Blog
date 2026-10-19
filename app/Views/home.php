@@ -19,8 +19,8 @@
         <p class="feed-greeting-sub">Discover ideas, ask questions, and grow together.</p>
       </div>
 
-      <!-- Prominent Search Bar (100% width up to 780px, 56-60px height) -->
-      <div class="homepage-search-section">
+      <!-- Redundant Search Bar hidden in favor of single global search in compact header -->
+      <div class="homepage-search-section" style="display: none;">
         <form action="/" method="GET" class="homepage-main-search-bar" role="search" id="hero-search-form">
           <div class="homepage-search-icon-left" aria-hidden="true">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -143,17 +143,18 @@
          aria-selected="<?= ($activeTab ?? '') === 'following' ? 'true' : 'false' ?>">
         <span>👥</span> Following
       </a>
+      <a href="/?tab=trending<?= !empty($activeCategorySlug) ? '&category=' . urlencode($activeCategorySlug) : '' ?>"
+         class="feed-tab-btn <?= in_array($activeTab ?? '', ['trending', 'popular']) ? 'active' : '' ?>"
+         role="tab"
+         title="Trending &amp; Popular Stories"
+         aria-selected="<?= in_array($activeTab ?? '', ['trending', 'popular']) ? 'true' : 'false' ?>">
+        <span>🔥</span> Trending
+      </a>
       <a href="/?tab=latest<?= !empty($activeCategorySlug) ? '&category=' . urlencode($activeCategorySlug) : '' ?>"
          class="feed-tab-btn <?= ($activeTab ?? '') === 'latest' ? 'active' : '' ?>"
          role="tab"
          aria-selected="<?= ($activeTab ?? '') === 'latest' ? 'true' : 'false' ?>">
         <span>⚡</span> Latest
-      </a>
-      <a href="/?tab=popular<?= !empty($activeCategorySlug) ? '&category=' . urlencode($activeCategorySlug) : '' ?>"
-         class="feed-tab-btn <?= ($activeTab ?? '') === 'popular' ? 'active' : '' ?>"
-         role="tab"
-         aria-selected="<?= ($activeTab ?? '') === 'popular' ? 'true' : 'false' ?>">
-        <span>🔥</span> Popular
       </a>
     </nav>
 
@@ -274,29 +275,34 @@
               $canonicalPostUrl = '/article/' . $postId;
               $relativeTime = $post['relative_time'] ?? 'recently';
 
-              $rawContent = $post['content'] ?? '';
+              $rawContent = $post['content'] ?? $post['excerpt'] ?? '';
               $snippetData = $renderer->renderFeedSnippet(!empty($post['summary']) ? $post['summary'] : $rawContent, 200);
               $primaryInlineImage = $snippetData['primary_image'];
-              $excerptText = !empty($post['summary']) ? $post['summary'] : $snippetData['text'];
+              $excerptText = !empty($post['summary']) ? $post['summary'] : (!empty($snippetData['text']) ? $snippetData['text'] : ($post['excerpt'] ?? ''));
               $hasInlineImage = ($primaryInlineImage !== null);
             ?>
-            <article class="glass-panel feed-card article-card <?= $hasInlineImage ? 'has-inline-image' : '' ?>" data-post-id="<?= $postId ?>">
-              <!-- Main Left Column of Card -->
+            <article class="glass-panel feed-card article-card <?= $hasInlineImage ? 'has-inline-image' : '' ?>"
+                     data-post-id="<?= $postId ?>"
+                     data-article-url="<?= htmlspecialchars($canonicalPostUrl, ENT_QUOTES, 'UTF-8') ?>"
+                     tabindex="0"
+                     role="article"
+                     aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+              <!-- Main Feed Card Container -->
               <div class="feed-card-main">
-                <!-- Card Header: Avatar, Author, Badge, Category, Time, Overflow -->
+                <!-- Card Header: Avatar, Author, Badge, Handle, Category, Time, Overflow -->
                 <div class="feed-card-header">
                   <a href="/author/<?= $authorId ?>" class="feed-author-avatar-link" title="View <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>'s profile">
                     <?php if (!empty($authorAvatar)): ?>
                       <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
                            alt="<?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>"
                            class="feed-author-avatar-img"
-                           width="32" height="32" loading="lazy"
+                           width="34" height="34" loading="lazy"
                            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                      <div class="user-avatar feed-avatar-fallback" style="display: none; width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
+                      <div class="user-avatar feed-avatar-fallback" style="display: none; width: 34px; height: 34px; font-size: 0.85rem; font-weight: 700;">
                         <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
                       </div>
                     <?php else: ?>
-                      <div class="user-avatar feed-avatar-fallback" style="width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
+                      <div class="user-avatar feed-avatar-fallback" style="width: 34px; height: 34px; font-size: 0.85rem; font-weight: 700;">
                         <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
                       </div>
                     <?php endif; ?>
@@ -309,6 +315,8 @@
                     <?php if (!empty($post['author_has_badge'])): ?>
                       <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
                     <?php endif; ?>
+
+                    <span class="feed-author-handle">@<?= htmlspecialchars($post['author_username'] ?? 'author', ENT_QUOTES, 'UTF-8') ?></span>
 
                     <span class="feed-meta-dot">·</span>
 
@@ -366,18 +374,41 @@
                     </p>
                   <?php endif; ?>
 
-                  <!-- Responsive Inline Embedded Image (if post contains an uploaded/embedded image) -->
-                  <?php if ($hasInlineImage): ?>
-                    <div class="feed-card-inline-media">
-                      <a href="/article/<?= $postId ?>" class="feed-inline-media-link" aria-label="View post image">
+                  <!-- Prominent Full-Width Featured Media Image Banner -->
+                  <?php if (!empty($thumb)): ?>
+                    <div class="feed-card-featured-media feed-card-media">
+                      <a href="/article/<?= $postId ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+                        <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>"
+                             alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
+                             class="feed-card-featured-img feed-card-thumb-img"
+                             loading="lazy"
+                             onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
+                      </a>
+                    </div>
+                  <?php elseif ($hasInlineImage): ?>
+                    <div class="feed-card-featured-media feed-card-media">
+                      <a href="/article/<?= $postId ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
                         <img src="<?= htmlspecialchars($primaryInlineImage['url'], ENT_QUOTES, 'UTF-8') ?>"
                              alt="<?= htmlspecialchars($primaryInlineImage['alt'] ?: $post['title'], ENT_QUOTES, 'UTF-8') ?>"
-                             class="feed-card-inline-image"
+                             class="feed-card-featured-img feed-card-thumb-img feed-card-inline-image"
                              loading="lazy"
-                             onerror="this.closest('.feed-card-inline-media').style.display='none';">
+                             onerror="this.closest('.feed-card-media').style.display='none';">
                       </a>
                     </div>
                   <?php endif; ?>
+                </div>
+
+                <!-- Engagement Summary Row (Likes · Comments) -->
+                <div class="feed-card-engagement-summary">
+                  <span class="engagement-summary-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                    <span class="engagement-count-val" data-post-id="<?= $postId ?>"><?= $scoreCount ?></span>
+                  </span>
+                  <span class="engagement-dot">·</span>
+                  <span class="engagement-summary-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <span><?= $commentCount ?> <?= $commentCount === 1 ? 'comment' : 'comments' ?></span>
+                  </span>
                 </div>
 
                 <!-- Card Footer: Engagement Action Buttons -->
@@ -457,19 +488,6 @@
                   </button>
                 </div>
               </div>
-
-              <!-- Right Media Column: Small Thumbnail (Aligned to right on desktop, hidden if inline image is featured) -->
-              <div class="feed-card-media" style="<?= $hasInlineImage ? 'display: none;' : '' ?>">
-                <a href="/article/<?= $postId ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
-                  <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>"
-                       alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
-                       class="feed-card-thumb-img"
-                       width="140"
-                       height="95"
-                       loading="lazy"
-                       onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
-                </a>
-              </div>
             </article>
           <?php endforeach; ?>
         </div>
@@ -479,17 +497,133 @@
   </div><!-- /homepage-main-column -->
 
 
-  <!-- Right Sidebar (~320-350px width): Authors You May Know & Popular Communities -->
-  <aside class="homepage-sidebar" aria-label="Suggested Authors and Communities">
+  <!-- Right Sidebar (~320-350px width): Popular Communities, Trending Topics & Suggested People -->
+  <aside class="homepage-sidebar" aria-label="Suggested Communities, Topics, and People">
 
-    <!-- Card 1: Authors You May Know -->
+    <!-- Card 1: Popular Communities -->
+    <div class="glass-panel sidebar-card sidebar-card-communities">
+      <div class="sidebar-card-header">
+        <div class="sidebar-card-title-group">
+          <span class="sidebar-card-icon" aria-hidden="true">💬</span>
+          <h3 class="sidebar-card-title">Popular Communities</h3>
+        </div>
+      </div>
+
+      <?php if (empty($sidebarCommunities)): ?>
+        <div class="sidebar-empty-state">
+          <p class="sidebar-empty-text">No active communities found right now. Check back soon!</p>
+          <a href="/communities" class="btn btn-secondary btn-sm btn-pill" style="margin-top: 8px;">Explore Communities</a>
+        </div>
+      <?php else: ?>
+        <div class="sidebar-item-list">
+          <?php foreach ($sidebarCommunities as $comm): ?>
+            <?php
+              $isMember = !empty($comm['is_member']);
+              $memberCount = (int) ($comm['member_count'] ?? 0);
+              $commCleanName = \InfinityBlog\Community\CommunityNameFormatter::format($comm['name'] ?? '');
+            ?>
+            <div class="sidebar-row sidebar-community-row" data-room-id="<?= (int) $comm['id'] ?>" data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>">
+              <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-community-icon-tile" aria-label="Open <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?> room">
+                <span>#</span>
+              </a>
+
+              <div class="sidebar-row-info">
+                <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-row-title" title="<?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>">
+                  <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>
+                </a>
+                <?php if (!empty($comm['description'])): ?>
+                  <div class="sidebar-row-desc" title="<?= htmlspecialchars($comm['description'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= htmlspecialchars($comm['description'], ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php elseif (!empty($comm['category_name'])): ?>
+                  <div class="sidebar-row-desc">
+                    <?= htmlspecialchars($comm['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php endif; ?>
+                <div class="sidebar-row-meta">
+                  <span class="community-member-count" data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= $memberCount ?> <?= $memberCount === 1 ? 'member' : 'members' ?>
+                  </span>
+                  <?php if (!empty($comm['message_count'])): ?>
+                    <span class="sidebar-meta-dot">·</span>
+                    <span><?= (int) $comm['message_count'] ?> messages</span>
+                  <?php endif; ?>
+                </div>
+              </div>
+
+              <div class="sidebar-row-action">
+                <button type="button"
+                        class="btn btn-primary btn-sm btn-pill btn-community-join <?= $isMember ? 'joined' : '' ?>"
+                        data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>"
+                        data-room-id="<?= (int) $comm['id'] ?>"
+                        data-is-member="<?= $isMember ? '1' : '0' ?>"
+                        aria-label="<?= $isMember ? 'Joined' : 'Join' ?> <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>">
+                  <?php if ($isMember): ?>
+                    <span>✓</span> Joined
+                  <?php else: ?>
+                    <span>+</span> Join
+                  <?php endif; ?>
+                </button>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+
+      <div class="sidebar-card-footer">
+        <a href="/communities" class="sidebar-card-footer-link">Explore Communities →</a>
+      </div>
+    </div>
+
+
+    <!-- Card 2: Trending Topics -->
+    <div class="glass-panel sidebar-card sidebar-card-topics">
+      <div class="sidebar-card-header">
+        <div class="sidebar-card-title-group">
+          <span class="sidebar-card-icon" aria-hidden="true">🔥</span>
+          <h3 class="sidebar-card-title">Trending Topics</h3>
+        </div>
+      </div>
+
+      <?php if (empty($trendingTopics)): ?>
+        <div class="sidebar-empty-state">
+          <p class="sidebar-empty-text">No trending topics available right now.</p>
+          <a href="/categories" class="btn btn-secondary btn-sm btn-pill" style="margin-top: 8px;">Browse Categories</a>
+        </div>
+      <?php else: ?>
+        <div class="sidebar-item-list sidebar-topics-list">
+          <?php foreach ($trendingTopics as $rank => $topic): ?>
+            <?php
+              $rankNum = $rank + 1;
+              $postCount = (int) ($topic['post_count'] ?? 0);
+              $topicSlug = $topic['slug'] ?? '';
+              $topicName = $topic['name'] ?? '';
+            ?>
+            <a href="/?category=<?= urlencode($topicSlug) ?>" class="sidebar-topic-row" title="Explore #<?= htmlspecialchars($topicName, ENT_QUOTES, 'UTF-8') ?>">
+              <span class="topic-rank-badge"><?= $rankNum ?></span>
+              <div class="sidebar-topic-info">
+                <span class="sidebar-topic-name">#<?= htmlspecialchars($topicName, ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="sidebar-topic-meta"><?= $postCount ?> <?= $postCount === 1 ? 'post' : 'posts' ?></span>
+              </div>
+              <span class="sidebar-topic-trend" aria-label="Trending up">↗</span>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+
+      <div class="sidebar-card-footer">
+        <a href="/categories" class="sidebar-card-footer-link">See All Topics →</a>
+      </div>
+    </div>
+
+
+    <!-- Card 3: Suggested People -->
     <div class="glass-panel sidebar-card sidebar-card-authors">
       <div class="sidebar-card-header">
         <div class="sidebar-card-title-group">
-          <span class="sidebar-card-icon" aria-hidden="true">✍️</span>
-          <h3 class="sidebar-card-title">Authors You May Know</h3>
+          <span class="sidebar-card-icon" aria-hidden="true">👥</span>
+          <h3 class="sidebar-card-title">Suggested People <span class="visually-hidden">Authors You May Know</span></h3>
         </div>
-        <a href="/authors" class="sidebar-card-header-link" title="Discover more authors">Discover Authors →</a>
       </div>
 
       <?php if (empty($sidebarAuthors)): ?>
@@ -560,82 +694,6 @@
 
       <div class="sidebar-card-footer">
         <a href="/authors" class="sidebar-card-footer-link">Discover Authors →</a>
-      </div>
-    </div>
-
-
-    <!-- Card 2: Popular Communities -->
-    <div class="glass-panel sidebar-card sidebar-card-communities">
-      <div class="sidebar-card-header">
-        <div class="sidebar-card-title-group">
-          <span class="sidebar-card-icon" aria-hidden="true">💬</span>
-          <h3 class="sidebar-card-title">Popular Communities</h3>
-        </div>
-        <a href="/communities" class="sidebar-card-header-link" title="Explore all communities">Explore Communities →</a>
-      </div>
-
-      <?php if (empty($sidebarCommunities)): ?>
-        <div class="sidebar-empty-state">
-          <p class="sidebar-empty-text">No active communities found right now. Check back soon!</p>
-          <a href="/communities" class="btn btn-secondary btn-sm btn-pill" style="margin-top: 8px;">Explore Communities</a>
-        </div>
-      <?php else: ?>
-        <div class="sidebar-item-list">
-          <?php foreach ($sidebarCommunities as $comm): ?>
-            <?php
-              $isMember = !empty($comm['is_member']);
-              $memberCount = (int) ($comm['member_count'] ?? 0);
-            ?>
-            <div class="sidebar-row sidebar-community-row" data-room-id="<?= (int) $comm['id'] ?>" data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>">
-              <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-community-icon-tile" aria-label="Open #<?= htmlspecialchars($comm['name'], ENT_QUOTES, 'UTF-8') ?> room">
-                <span>#</span>
-              </a>
-
-              <div class="sidebar-row-info">
-                <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-row-title" title="#<?= htmlspecialchars($comm['name'], ENT_QUOTES, 'UTF-8') ?>">
-                  #<?= htmlspecialchars($comm['name'], ENT_QUOTES, 'UTF-8') ?>
-                </a>
-                <?php if (!empty($comm['description'])): ?>
-                  <div class="sidebar-row-desc" title="<?= htmlspecialchars($comm['description'], ENT_QUOTES, 'UTF-8') ?>">
-                    <?= htmlspecialchars($comm['description'], ENT_QUOTES, 'UTF-8') ?>
-                  </div>
-                <?php elseif (!empty($comm['category_name'])): ?>
-                  <div class="sidebar-row-desc">
-                    <?= htmlspecialchars($comm['category_name'], ENT_QUOTES, 'UTF-8') ?>
-                  </div>
-                <?php endif; ?>
-                <div class="sidebar-row-meta">
-                  <span class="community-member-count" data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>">
-                    <?= $memberCount ?> <?= $memberCount === 1 ? 'member' : 'members' ?>
-                  </span>
-                  <?php if (!empty($comm['message_count'])): ?>
-                    <span class="sidebar-meta-dot">·</span>
-                    <span><?= (int) $comm['message_count'] ?> messages</span>
-                  <?php endif; ?>
-                </div>
-              </div>
-
-              <div class="sidebar-row-action">
-                <button type="button"
-                        class="btn btn-primary btn-sm btn-pill btn-community-join <?= $isMember ? 'joined' : '' ?>"
-                        data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>"
-                        data-room-id="<?= (int) $comm['id'] ?>"
-                        data-is-member="<?= $isMember ? '1' : '0' ?>"
-                        aria-label="<?= $isMember ? 'Joined' : 'Join' ?> <?= htmlspecialchars($comm['name'], ENT_QUOTES, 'UTF-8') ?>">
-                  <?php if ($isMember): ?>
-                    <span>✓</span> Joined
-                  <?php else: ?>
-                    <span>+</span> Join
-                  <?php endif; ?>
-                </button>
-              </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php endif; ?>
-
-      <div class="sidebar-card-footer">
-        <a href="/communities" class="sidebar-card-footer-link">Explore Communities →</a>
       </div>
     </div>
 

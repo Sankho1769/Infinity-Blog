@@ -16,20 +16,49 @@ final class LibraryRepository
     }
 
     /**
+     * Idempotently save a bookmark for a user.
+     * Safe across MySQL and SQLite; prevents duplicate key errors on rapid retries.
+     */
+    public function saveBookmark(int $userId, int $postId): bool
+    {
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO user_bookmarks (user_id, post_id, created_at) ' .
+                'VALUES (:uid, :pid, CURRENT_TIMESTAMP) ' .
+                'ON CONFLICT(user_id, post_id) DO NOTHING'
+            );
+        } else {
+            $stmt = $this->pdo->prepare(
+                'INSERT IGNORE INTO user_bookmarks (user_id, post_id, created_at) ' .
+                'VALUES (:uid, :pid, CURRENT_TIMESTAMP)'
+            );
+        }
+        $stmt->execute([':uid' => $userId, ':pid' => $postId]);
+        return true;
+    }
+
+    /**
+     * Idempotently remove a bookmark for a user.
+     */
+    public function unsaveBookmark(int $userId, int $postId): bool
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM user_bookmarks WHERE user_id = :uid AND post_id = :pid');
+        $stmt->execute([':uid' => $userId, ':pid' => $postId]);
+        return false;
+    }
+
+    /**
      * Bookmark or unbookmark an article (Toggle).
      * @return bool True if bookmarked, False if unbookmarked
      */
     public function toggleBookmark(int $userId, int $postId): bool
     {
         if ($this->isBookmarked($userId, $postId)) {
-            $stmt = $this->pdo->prepare('DELETE FROM user_bookmarks WHERE user_id = :uid AND post_id = :pid');
-            $stmt->execute([':uid' => $userId, ':pid' => $postId]);
-            return false;
+            return $this->unsaveBookmark($userId, $postId);
         }
 
-        $stmt = $this->pdo->prepare('INSERT INTO user_bookmarks (user_id, post_id, created_at) VALUES (:uid, :pid, NOW())');
-        $stmt->execute([':uid' => $userId, ':pid' => $postId]);
-        return true;
+        return $this->saveBookmark($userId, $postId);
     }
 
     public function isBookmarked(int $userId, int $postId): bool
@@ -51,8 +80,8 @@ final class LibraryRepository
             'b.created_at AS bookmarked_at ' .
             'FROM user_bookmarks b ' .
             'JOIN posts p ON b.post_id = p.id ' .
-            'JOIN categories c ON p.category_id = c.id ' .
-            'JOIN users u ON p.author_id = u.id ' .
+            'LEFT JOIN categories c ON p.category_id = c.id ' .
+            'LEFT JOIN users u ON p.author_id = u.id ' .
             'WHERE b.user_id = :uid AND p.status = \'published\' ';
 
         $params = [':uid' => $userId];

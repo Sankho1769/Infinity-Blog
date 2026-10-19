@@ -179,7 +179,18 @@ declare(strict_types=1);
     <?php else: ?>
       <div class="articles-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
         <?php foreach ($userPosts as $post): ?>
-          <article class="glass-card article-card" style="display: flex; flex-direction: column; overflow: hidden; border-radius: 18px;">
+          <?php
+            $postId = (int) $post['id'];
+            $isPublished = ($post['status'] === 'published');
+            $canonicalPostUrl = $isPublished ? ('/article/' . $postId) : ('/posts/' . $postId . '/edit');
+          ?>
+          <article class="glass-card article-card"
+                   data-post-id="<?= $postId ?>"
+                   data-article-url="<?= $canonicalPostUrl ?>"
+                   tabindex="0"
+                   role="article"
+                   aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
+                   style="display: flex; flex-direction: column; overflow: hidden; border-radius: 18px;">
             <div class="article-card-body" style="padding: 20px; display: flex; flex-direction: column; flex: 1;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <span class="category-pill" style="font-size: 0.76rem; padding: 3px 10px;">

@@ -60,7 +60,18 @@
     <?php else: ?>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px;">
         <?php foreach ($bookmarks as $post): ?>
-          <div class="glass-panel article-card" style="display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border);">
+          <?php
+            $postId = (int) $post['id'];
+            $canonicalPostUrl = '/article/' . $postId;
+            $authorId = (int) ($post['author_id'] ?? 1);
+          ?>
+          <article class="glass-panel article-card"
+                   data-post-id="<?= $postId ?>"
+                   data-article-url="<?= $canonicalPostUrl ?>"
+                   tabindex="0"
+                   role="article"
+                   aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
+                   style="display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border);">
             <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <span class="badge" style="background: rgba(37, 99, 235, 0.1); color: var(--primary-color); font-weight: 600; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem;">
@@ -72,7 +83,7 @@
               </div>
 
               <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 10px; line-height: 1.4;">
-                <a href="/article/<?= (int) $post['id'] ?>" style="color: var(--text-main); text-decoration: none;">
+                <a href="/article/<?= $postId ?>" style="color: var(--text-main); text-decoration: none;">
                   <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
                 </a>
               </h3>
@@ -88,18 +99,18 @@
               <?php endif; ?>
 
               <div style="display: flex; justify-content: space-between; align-items: center; pt: 14px; border-top: 1px solid var(--glass-border); margin-top: auto; padding-top: 14px;">
-                <span style="font-size: 0.82rem; color: var(--text-main); font-weight: 600;">
+                <a href="/author/<?= $authorId ?>" class="feed-author-name" style="font-size: 0.82rem; color: var(--text-main); font-weight: 600; text-decoration: none;">
                   By <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
-                </span>
+                </a>
                 <div style="display: flex; gap: 8px;">
-                  <button type="button" class="btn btn-secondary btn-sm" onclick="removeBookmark(<?= (int) $post['id'] ?>, this)" title="Remove from Library">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="removeBookmark(<?= $postId ?>, this)" title="Remove from Library">
                     ✕ Remove
                   </button>
-                  <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-primary btn-sm">Read</a>
+                  <a href="/article/<?= $postId ?>" class="btn btn-primary btn-sm">Read</a>
                 </div>
               </div>
             </div>
-          </div>
+          </article>
         <?php endforeach; ?>
       </div>
     <?php endif; ?>
@@ -312,10 +323,18 @@ async function removeBookmark(postId, btn) {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     const res = await fetch('/api/library/bookmark/' + postId, {
       method: 'POST',
-      headers: { 'X-CSRF-Token': csrf || '', 'Accept': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      },
+      body: JSON.stringify({ action: 'unsave' })
     });
     if (res.ok) {
       window.location.reload();
+    } else {
+      const data = await res.json();
+      alert(data.error?.message || 'Could not remove article from library.');
     }
   } catch (e) {
     alert('Error updating library.');

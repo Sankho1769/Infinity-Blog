@@ -141,6 +141,8 @@ try {
     $tts = new TtsService($postsRepo, $ttsProvider, $aiConfig, $storageConfig, $mediaService, $storageClient);
     $postReports = new \InfinityBlog\Moderation\PostReportRepository($pdo);
     $mailer = new \InfinityBlog\Mail\MailerService();
+    $scoreRepo = new ScoreRepository($pdo);
+    $reviewsRepo = new \InfinityBlog\Reviews\ReviewRepository($pdo, $scoreRepo);
 
     $webController = new WebController(
         $postsRepo,
@@ -151,7 +153,7 @@ try {
         $guard,
         $sessions,
         $config,
-        new ScoreRepository($pdo),
+        $scoreRepo,
         null,
         $follows,
         $messages,
@@ -163,7 +165,8 @@ try {
         null,
         $contactRepo,
         $postReports,
-        $mailer
+        $mailer,
+        $reviewsRepo
     );
 
     // Browser POST form submissions for user profile & media uploads
@@ -387,8 +390,10 @@ try {
         );
         $summaryService = new SummaryService(new PostRepository($pdo), $limiter, $aiConfig, $provider);
         $controller = new PostController(new PostRepository($pdo), $guard, $sessions, $mediaService, $studio, $summaryService, $tts);
+    } elseif (str_starts_with($request->path, '/api/reviews') || (str_starts_with($request->path, '/api/posts/') && str_ends_with($request->path, '/reviews'))) {
+        $controller = new \InfinityBlog\Http\ReviewController($reviewsRepo, $guard, $sessions);
     } elseif (preg_match('#^/posts/[0-9]+/score$#D', $request->path) === 1) {
-        $controller = new ScoreController(new ScoreRepository($pdo), $guard, $sessions);
+        $controller = new ScoreController($scoreRepo, $guard, $sessions);
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {

@@ -41,11 +41,39 @@
     $cssFile = dirname(__DIR__, 2) . '/public/assets/css/style.css';
     $cssVersion = file_exists($cssFile) ? (string) filemtime($cssFile) : '20261013';
   ?>
+  <script>
+    (function() {
+      try {
+        var pref = localStorage.getItem('ib_theme_preference') || 'light';
+        var theme = 'light';
+        if (pref === 'dark') {
+          theme = 'dark';
+        } else if (pref === 'device') {
+          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        } else {
+          theme = 'light';
+          pref = 'light';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-theme-preference', pref);
+        if (theme === 'dark') {
+          document.documentElement.classList.add('theme-dark');
+        } else {
+          document.documentElement.classList.remove('theme-dark');
+        }
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.setAttribute('data-theme-preference', 'light');
+        document.documentElement.classList.remove('theme-dark');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/css/style.css?v=<?= $cssVersion ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
-<body class="<?= ($activeNav ?? '') === 'home' ? 'is-home-page' : '' ?>">
+</head>
+<body class="<?= ($activeNav ?? '') === 'home' ? 'is-home-page' : '' ?>" data-user-logged-in="<?= !empty($currentUser) ? '1' : '0' ?>">
   <!-- Ambient glow backdrop for pastel claymorphism/glassmorphism -->
   <div class="ambient-glow" aria-hidden="true">
     <div class="ambient-blob-1"></div>
@@ -53,19 +81,187 @@
     <div class="ambient-blob-3"></div>
   </div>
 
-  <!-- Sticky Glass Navigation Header -->
-  <!-- App Layout Shell: Left Sidebar (Desktop) + Main Content Area -->
-  <div class="app-layout-shell" id="app-layout-shell">
-    <!-- Desktop Vertical Navigation Sidebar (~250px wide) -->
-    <aside class="app-left-sidebar glass-panel" id="app-left-sidebar" aria-label="Main Navigation">
-      <!-- Top Brand Logo -->
-      <div class="sidebar-brand-wrapper">
+  <!-- Compact Horizontal Top Header (Desktop Glassmorphism & Mobile Claymorphism) -->
+  <header class="app-top-header glass-panel" id="app-top-header" role="banner">
+    <div class="top-header-inner">
+      <!-- Left: Logo & Wordmark -->
+      <div class="top-header-left">
         <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
           <span class="brand-logo-icon">✦</span>
           <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
         </a>
       </div>
 
+      <!-- Center: Global Search Bar -->
+      <div class="top-header-center">
+        <form action="/" method="GET" class="header-search-form" role="search" id="header-search-form">
+          <div class="header-search-icon" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <input type="search"
+                 name="search"
+                 id="header-search-input"
+                 class="header-search-input"
+                 placeholder="Search posts, people, communities…"
+                 value="<?= htmlspecialchars($_GET['search'] ?? ($searchQuery ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                 aria-label="Search posts, people, communities"
+                 autocomplete="off">
+          <button type="button"
+                  class="header-search-clear"
+                  id="header-search-clear"
+                  aria-label="Clear search"
+                  style="<?= empty($_GET['search']) && empty($searchQuery) ? 'display: none;' : '' ?>">×</button>
+        </form>
+      </div>
+
+      <!-- Right: Shortcuts & Account Controls -->
+      <div class="top-header-right">
+        <!-- Home Shortcut -->
+        <a href="/" class="header-nav-icon-btn <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>" title="Home" aria-label="Home">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+        </a>
+
+        <!-- Authors / People Shortcut -->
+        <a href="/authors" class="header-nav-icon-btn <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>" title="People &amp; Authors" aria-label="People and Authors">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        </a>
+
+        <!-- Direct Messages Shortcut with Live Unread Badge -->
+        <a href="/messages" class="header-nav-icon-btn header-msg-btn <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>" title="Messages" aria-label="Direct Messages" style="position: relative;">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+          <span id="nav-unread-badge" class="badge-unread-dot" style="display: none;"></span>
+        </a>
+
+        <!-- Notifications Center Button & Dropdown -->
+        <div class="header-notif-container" style="position: relative;">
+          <button type="button" class="header-nav-icon-btn header-notif-btn" id="nav-notif-btn" title="Open Notifications" aria-label="Notifications" aria-expanded="false">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            <span id="nav-notif-badge" class="badge-unread-count" style="display: none;">0</span>
+          </button>
+          <div class="nav-notif-dropdown glass-panel header-notif-dropdown" id="nav-notif-dropdown" role="menu" aria-label="Notifications Dropdown" style="display: none;">
+            <div class="nav-notif-header">
+              <span class="nav-notif-header-title">Notifications</span>
+              <button type="button" class="nav-notif-mark-all" id="nav-notif-mark-all">Mark all read</button>
+            </div>
+            <div class="nav-notif-list" id="nav-notif-list">
+              <div class="nav-notif-empty">No notifications yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Theme Mode Selector Popover -->
+        <div class="header-theme-container" style="position: relative;">
+          <button type="button"
+                  class="header-nav-icon-btn header-theme-btn"
+                  id="header-theme-toggle-btn"
+                  title="Theme: Light (click to switch)"
+                  aria-label="Theme: Light (click to switch)"
+                  aria-haspopup="true"
+                  aria-expanded="false">
+            <span class="theme-btn-icon" id="header-theme-current-icon" aria-hidden="true">☀️</span>
+          </button>
+          <div class="header-theme-dropdown glass-panel" id="header-theme-dropdown" role="menu" aria-label="Theme selection menu" style="display: none;">
+            <div class="theme-dropdown-header">Appearance</div>
+            <button type="button" class="theme-option-btn active" data-theme-value="light" role="menuitemradio" aria-checked="true">
+              <span class="theme-option-icon">☀️</span>
+              <span class="theme-option-label">Light</span>
+              <span class="theme-option-indicator" aria-hidden="true">✓</span>
+            </button>
+            <button type="button" class="theme-option-btn" data-theme-value="dark" role="menuitemradio" aria-checked="false">
+              <span class="theme-option-icon">🌙</span>
+              <span class="theme-option-label">Dark</span>
+              <span class="theme-option-indicator" aria-hidden="true">✓</span>
+            </button>
+            <button type="button" class="theme-option-btn" data-theme-value="device" role="menuitemradio" aria-checked="false">
+              <span class="theme-option-icon">💻</span>
+              <span class="theme-option-label">Device</span>
+              <span class="theme-option-indicator" aria-hidden="true">✓</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Account Controls: Dropdown or Guest CTAs -->
+        <?php if (!empty($currentUser)): ?>
+          <?php
+            $hdrAvatarUrl = $currentUser['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($currentUser['avatar_path'] ?? null);
+            $hdrDisplayName = $currentUser['display_name'] ?? $currentUser['username'] ?? 'User';
+            $hdrInitial = strtoupper(mb_substr($hdrDisplayName, 0, 1));
+          ?>
+          <div class="header-user-menu-wrapper" style="position: relative;">
+            <button type="button" class="header-user-avatar-btn" id="header-user-menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
+              <?php if (!empty($hdrAvatarUrl)): ?>
+                <img src="<?= htmlspecialchars($hdrAvatarUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($hdrDisplayName, ENT_QUOTES, 'UTF-8') ?>" class="header-avatar-img">
+              <?php else: ?>
+                <div class="header-avatar-fallback"><?= htmlspecialchars($hdrInitial, ENT_QUOTES, 'UTF-8') ?></div>
+              <?php endif; ?>
+            </button>
+            <div class="header-user-dropdown-panel glass-panel" id="header-user-dropdown" role="menu" aria-label="User Account Menu" style="display: none;">
+              <div class="header-user-dropdown-header">
+                <div class="header-user-name-row">
+                  <span class="header-user-display-name"><?= htmlspecialchars($hdrDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+                  <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                    <span class="user-role-badge admin">Admin</span>
+                  <?php endif; ?>
+                </div>
+                <div class="header-user-handle">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+              </div>
+              <div class="header-dropdown-sep"></div>
+              <a href="/profile" class="header-dropdown-link"><span class="hdr-item-icon">👤</span> My Profile</a>
+              <a href="/posts/manage" class="header-dropdown-link"><span class="hdr-item-icon">📄</span> My Articles</a>
+              <a href="/library" class="header-dropdown-link"><span class="hdr-item-icon">🔖</span> Reading Library</a>
+              <a href="/posts/new" class="header-dropdown-link"><span class="hdr-item-icon">✍️</span> Create Post</a>
+              <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                <div class="header-dropdown-sep"></div>
+                <a href="/admin/reported-posts-page" class="header-dropdown-link"><span class="hdr-item-icon">🚩</span> Reported Posts</a>
+                <a href="/admin/categories-page" class="header-dropdown-link"><span class="hdr-item-icon">📁</span> Categories Admin</a>
+                <a href="/admin/users-page" class="header-dropdown-link"><span class="hdr-item-icon">👥</span> Users Management</a>
+                <a href="/admin/audit-logs-page" class="header-dropdown-link"><span class="hdr-item-icon">🛡️</span> Audit Logs</a>
+              <?php endif; ?>
+              <div class="header-dropdown-sep"></div>
+              <div class="header-user-theme-section">
+                <div class="header-theme-label">Appearance</div>
+                <div class="theme-segmented-group" role="radiogroup" aria-label="Theme Appearance">
+                  <button type="button" class="theme-segmented-btn active" data-theme-value="light" role="radio" aria-checked="true" title="Light Theme">
+                    <span class="theme-seg-icon">☀️</span> Light
+                  </button>
+                  <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false" title="Dark Theme">
+                    <span class="theme-seg-icon">🌙</span> Dark
+                  </button>
+                  <button type="button" class="theme-segmented-btn" data-theme-value="device" role="radio" aria-checked="false" title="Device Theme">
+                    <span class="theme-seg-icon">💻</span> Auto
+                  </button>
+                </div>
+              </div>
+              <div class="header-dropdown-sep"></div>
+              <a href="/logout" class="header-dropdown-link text-danger"><span class="hdr-item-icon">🚪</span> Sign Out</a>
+            </div>
+          </div>
+        <?php else: ?>
+          <div class="header-auth-buttons">
+            <a href="/login" class="btn btn-secondary btn-pill btn-sm">Sign In</a>
+            <a href="/register" class="btn btn-primary btn-pill btn-sm">Register</a>
+          </div>
+        <?php endif; ?>
+
+        <!-- Mobile Drawer Toggle Button -->
+        <button type="button" class="mobile-nav-toggle header-mobile-toggle" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- App Layout Shell: Left Sidebar (Desktop) + Main Content Area -->
+  <div class="app-layout-shell" id="app-layout-shell">
+    <!-- Desktop Vertical Navigation Sidebar (~250px wide) -->
+    <aside class="app-left-sidebar glass-panel" id="app-left-sidebar" aria-label="Main Navigation">
       <!-- Scrollable Navigation Groups -->
       <nav class="sidebar-scrollable-content" aria-label="Sidebar Menu">
         <!-- Group 1: Discover -->
@@ -380,8 +576,6 @@
     </div>
   </footer>
 
-  <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="mobile-nav-drawer" style="display: none;"></button>
-
   <!-- Accessible Slide-Out Mobile Navigation Drawer -->
   <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" role="dialog" aria-modal="true" aria-label="Mobile Navigation" style="display: none;">
     <!-- Mobile Search Form -->
@@ -408,6 +602,22 @@
           <li><a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link"><span class="mobile-link-icon">🔔</span> Notifications <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none;">0</span></a></li>
         <?php endif; ?>
       </ul>
+    </div>
+
+    <!-- Section: Appearance Theme Selector -->
+    <div class="mobile-nav-section mobile-theme-section">
+      <div class="mobile-nav-section-title">Appearance</div>
+      <div class="theme-segmented-group mobile-theme-group" role="radiogroup" aria-label="Theme Appearance">
+        <button type="button" class="theme-segmented-btn active" data-theme-value="light" role="radio" aria-checked="true">
+          <span class="theme-seg-icon">☀️</span> Light
+        </button>
+        <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false">
+          <span class="theme-seg-icon">🌙</span> Dark
+        </button>
+        <button type="button" class="theme-segmented-btn" data-theme-value="device" role="radio" aria-checked="false">
+          <span class="theme-seg-icon">💻</span> Device
+        </button>
+      </div>
     </div>
 
     <?php if (!empty($currentUser)): ?>
@@ -691,6 +901,62 @@
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
           <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="closeReportPostModal()">Cancel</button>
           <button type="submit" id="reportSubmitBtn" class="btn btn-danger btn-sm btn-pill" style="min-width: 130px;">
+            Submit Report
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Report Reader Review Modal -->
+  <div class="modal-backdrop" id="report-review-modal" role="dialog" aria-modal="true" aria-labelledby="reportReviewModalTitle" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px;">
+    <div class="modal-card" style="max-width: 520px; width: 100%; border-radius: var(--radius-xl); background: #ffffff; padding: 28px; box-shadow: var(--glass-shadow-dropdown); position: relative;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.4rem;">🚩</span>
+          <div>
+            <h3 id="reportReviewModalTitle" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-dark);">Report Reader Review</h3>
+            <p style="margin: 2px 0 0; font-size: 0.84rem; color: var(--text-muted);">
+              Help keep evaluations helpful, honest, and respectful.
+            </p>
+          </div>
+        </div>
+        <button type="button" class="alert-close-btn" onclick="closeReportReviewModal()" aria-label="Close dialog" style="font-size: 1.4rem; border: none; background: transparent; cursor: pointer; color: var(--text-muted); line-height: 1;">×</button>
+      </div>
+
+      <form id="reportReviewForm" onsubmit="handleReportReviewSubmit(event)">
+        <input type="hidden" id="reportTargetReviewId" name="review_id" value="">
+        <div id="reportReviewFormFeedback" style="display: none; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.88rem; font-weight: 600;"></div>
+
+        <div style="margin-bottom: 16px;">
+          <label for="reportReviewReasonSelect" style="display: block; font-size: 0.86rem; font-weight: 700; color: var(--text-dark); margin-bottom: 6px;">
+            Reason for reporting <span style="color: #ef4444;">*</span>
+          </label>
+          <select id="reportReviewReasonSelect" class="form-input" required style="width: 100%; font-size: 0.9rem; padding: 9px 12px; border-radius: 8px;">
+            <option value="" disabled selected>Select a violation reason...</option>
+            <option value="Spam or misleading content">Spam or misleading content</option>
+            <option value="Harassment or bullying">Harassment or bullying</option>
+            <option value="Hate or abusive content">Hate or abusive content</option>
+            <option value="Sexual or inappropriate content">Sexual or inappropriate content</option>
+            <option value="Violence or dangerous content">Violence or dangerous content</option>
+            <option value="Copyright or intellectual-property concern">Copyright or intellectual-property concern</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label for="reportReviewExplanationTextarea" style="font-size: 0.86rem; font-weight: 700; color: var(--text-dark);">
+              Additional details (Optional)
+            </label>
+            <span id="reportReviewCharCounter" style="font-size: 0.76rem; color: var(--text-muted);">0 / 500</span>
+          </div>
+          <textarea id="reportReviewExplanationTextarea" class="form-input" rows="3" maxlength="500" placeholder="Provide context for our moderation team (max 500 characters)..." oninput="updateReportReviewCharCount(this)" style="width: 100%; resize: vertical; font-size: 0.88rem; padding: 8px 12px; border-radius: 8px;"></textarea>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="closeReportReviewModal()">Cancel</button>
+          <button type="submit" id="reportReviewSubmitBtn" class="btn btn-danger btn-sm btn-pill" style="min-width: 130px;">
             Submit Report
           </button>
         </div>
