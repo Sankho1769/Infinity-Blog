@@ -119,7 +119,7 @@
         <label class="form-label">Article Video <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional · Max 50MB · MP4, WebM · Supabase Private Bucket)</span></label>
         <input type="hidden" id="post-video-path" name="video_path" value="<?= htmlspecialchars($initialVideoPath, ENT_QUOTES, 'UTF-8') ?>">
 
-        <div id="video-preview-container" style="<?= empty($initialVideoPath) ? 'display: none;' : '' ?> margin-bottom: 10px; padding: 12px 16px; background: rgba(255, 255, 255, 0.6); border-radius: var(--radius-md); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div id="video-preview-container" class="video-preview-box" style="<?= empty($initialVideoPath) ? 'display: none;' : '' ?> margin-bottom: 10px; padding: 12px 16px; background: var(--glass-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
             <span style="font-size: 1.3rem;">🎬</span>
             <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -190,7 +190,7 @@
       <?php if ($isEdit): ?>
         <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(226, 232, 240, 0.7);">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-            <span style="font-weight: 700; color: #4338ca; display: flex; align-items: center; gap: 6px;">
+            <span style="font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px;">
               <span>✨</span> AI Article Summary
             </span>
             <button type="button" id="generate-summary-btn" data-post-id="<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm">

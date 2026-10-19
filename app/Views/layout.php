@@ -45,15 +45,12 @@
     (function() {
       try {
         var pref = localStorage.getItem('ib_theme_preference') || 'light';
-        var theme = 'light';
-        if (pref === 'dark') {
-          theme = 'dark';
-        } else if (pref === 'device') {
-          theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-        } else {
-          theme = 'light';
+        if (pref === 'device') {
           pref = 'light';
+          try { localStorage.setItem('ib_theme_preference', 'light'); } catch (e) {}
         }
+        var theme = (pref === 'dark') ? 'dark' : 'light';
+        pref = theme;
         document.documentElement.setAttribute('data-theme', theme);
         document.documentElement.setAttribute('data-theme-preference', pref);
         if (theme === 'dark') {
@@ -152,35 +149,15 @@
           </div>
         </div>
 
-        <!-- Theme Mode Selector Popover -->
-        <div class="header-theme-container" style="position: relative;">
+        <!-- Theme Mode Direct Toggle Button -->
+        <div class="header-theme-container">
           <button type="button"
                   class="header-nav-icon-btn header-theme-btn"
                   id="header-theme-toggle-btn"
-                  title="Theme: Light (click to switch)"
-                  aria-label="Theme: Light (click to switch)"
-                  aria-haspopup="true"
-                  aria-expanded="false">
+                  title="Switch to Dark Mode"
+                  aria-label="Switch to Dark Mode">
             <span class="theme-btn-icon" id="header-theme-current-icon" aria-hidden="true">☀️</span>
           </button>
-          <div class="header-theme-dropdown glass-panel" id="header-theme-dropdown" role="menu" aria-label="Theme selection menu" style="display: none;">
-            <div class="theme-dropdown-header">Appearance</div>
-            <button type="button" class="theme-option-btn active" data-theme-value="light" role="menuitemradio" aria-checked="true">
-              <span class="theme-option-icon">☀️</span>
-              <span class="theme-option-label">Light</span>
-              <span class="theme-option-indicator" aria-hidden="true">✓</span>
-            </button>
-            <button type="button" class="theme-option-btn" data-theme-value="dark" role="menuitemradio" aria-checked="false">
-              <span class="theme-option-icon">🌙</span>
-              <span class="theme-option-label">Dark</span>
-              <span class="theme-option-indicator" aria-hidden="true">✓</span>
-            </button>
-            <button type="button" class="theme-option-btn" data-theme-value="device" role="menuitemradio" aria-checked="false">
-              <span class="theme-option-icon">💻</span>
-              <span class="theme-option-label">Device</span>
-              <span class="theme-option-indicator" aria-hidden="true">✓</span>
-            </button>
-          </div>
         </div>
 
         <!-- Account Controls: Dropdown or Guest CTAs -->
@@ -229,9 +206,6 @@
                   </button>
                   <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false" title="Dark Theme">
                     <span class="theme-seg-icon">🌙</span> Dark
-                  </button>
-                  <button type="button" class="theme-segmented-btn" data-theme-value="device" role="radio" aria-checked="false" title="Device Theme">
-                    <span class="theme-seg-icon">💻</span> Auto
                   </button>
                 </div>
               </div>
@@ -613,9 +587,6 @@
         </button>
         <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false">
           <span class="theme-seg-icon">🌙</span> Dark
-        </button>
-        <button type="button" class="theme-segmented-btn" data-theme-value="device" role="radio" aria-checked="false">
-          <span class="theme-seg-icon">💻</span> Device
         </button>
       </div>
     </div>

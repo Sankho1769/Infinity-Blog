@@ -70,11 +70,17 @@
   // ==========================================================================
   const ThemeManager = {
     STORAGE_KEY: 'ib_theme_preference',
+    _initialized: false,
 
     getPreference() {
       try {
         const val = localStorage.getItem(this.STORAGE_KEY);
-        if (val === 'dark' || val === 'device' || val === 'light') {
+        if (val === 'device') {
+          // Normalize legacy device setting to light
+          try { localStorage.setItem(this.STORAGE_KEY, 'light'); } catch (e) {}
+          return 'light';
+        }
+        if (val === 'dark' || val === 'light') {
           return val;
         }
       } catch (e) {}
@@ -82,22 +88,28 @@
     },
 
     resolveTheme(preference) {
-      if (preference === 'dark') return 'dark';
-      if (preference === 'device') {
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          return 'dark';
-        }
-        return 'light';
-      }
-      return 'light';
+      return preference === 'dark' ? 'dark' : 'light';
     },
 
-    apply(preference, notify = true) {
-      const theme = this.resolveTheme(preference);
+    toggle() {
+      const current = this.getPreference();
+      const next = (current === 'dark') ? 'light' : 'dark';
+      this.setPreference(next);
+      return next;
+    },
+
+    apply(preference, forcedEffectiveTheme = null, notify = true) {
+      let validPref = (preference === 'dark') ? 'dark' : 'light';
+      // If legacy device passed in, normalize to light
+      if (preference === 'device') {
+        validPref = 'light';
+        try { localStorage.setItem(this.STORAGE_KEY, 'light'); } catch (e) {}
+      }
+      const theme = forcedEffectiveTheme || this.resolveTheme(validPref);
 
       // 1. Root DOM attributes
       document.documentElement.setAttribute('data-theme', theme);
-      document.documentElement.setAttribute('data-theme-preference', preference);
+      document.documentElement.setAttribute('data-theme-preference', validPref);
       if (theme === 'dark') {
         document.documentElement.classList.add('theme-dark');
       } else {
@@ -114,21 +126,20 @@
       const currentIconEl = document.getElementById('header-theme-current-icon');
       const toggleBtn = document.getElementById('header-theme-toggle-btn');
       if (currentIconEl) {
-        let icon = '☀️';
-        if (preference === 'dark') icon = '🌙';
-        else if (preference === 'device') icon = '💻';
-        currentIconEl.textContent = icon;
+        currentIconEl.textContent = (validPref === 'dark') ? '🌙' : '☀️';
       }
       if (toggleBtn) {
-        const modeTitle = preference === 'device' ? 'Device (Auto)' : (preference === 'dark' ? 'Dark' : 'Light');
-        toggleBtn.title = `Theme: ${modeTitle} (click to switch)`;
-        toggleBtn.setAttribute('aria-label', `Theme: ${modeTitle} (click to switch)`);
+        const nextActionLabel = (validPref === 'dark') ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+        toggleBtn.title = nextActionLabel;
+        toggleBtn.setAttribute('aria-label', nextActionLabel);
+        toggleBtn.removeAttribute('aria-haspopup');
+        toggleBtn.removeAttribute('aria-expanded');
       }
 
-      // 4. Header Popover Dropdown Radio Items
+      // 4. Header Popover Dropdown Radio Items (if present)
       document.querySelectorAll('.theme-option-btn').forEach(btn => {
         const btnPref = btn.getAttribute('data-theme-value');
-        const isSelected = btnPref === preference;
+        const isSelected = btnPref === validPref;
         btn.classList.toggle('active', isSelected);
         btn.setAttribute('aria-checked', isSelected ? 'true' : 'false');
       });
@@ -136,7 +147,7 @@
       // 5. Segmented Buttons (User Account Menu and Mobile Navigation Drawer)
       document.querySelectorAll('.theme-segmented-btn').forEach(btn => {
         const btnPref = btn.getAttribute('data-theme-value');
-        const isSelected = btnPref === preference;
+        const isSelected = btnPref === validPref;
         btn.classList.toggle('active', isSelected);
         btn.setAttribute('aria-checked', isSelected ? 'true' : 'false');
       });
@@ -145,92 +156,51 @@
       if (notify) {
         try {
           window.dispatchEvent(new CustomEvent('ib:themechange', {
-            detail: { theme, preference }
+            detail: { theme, preference: validPref }
           }));
         } catch (e) {}
       }
     },
 
     setPreference(preference) {
+      let validPref = (preference === 'dark') ? 'dark' : 'light';
+      if (preference === 'device') {
+        validPref = 'light';
+      }
       try {
-        localStorage.setItem(this.STORAGE_KEY, preference);
+        localStorage.setItem(this.STORAGE_KEY, validPref);
       } catch (e) {}
-      this.apply(preference);
+      this.apply(validPref, null, true);
     },
 
     init() {
+      if (this._initialized) {
+        // Re-apply in case DOM elements were newly mounted
+        this.apply(this.getPreference(), null, false);
+        return;
+      }
+      this._initialized = true;
+
       const pref = this.getPreference();
-      this.apply(pref, false);
+      this.apply(pref, null, false);
 
-      // Listen for OS scheme changes in real-time without reloading
-      if (window.matchMedia) {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = () => {
-          if (this.getPreference() === 'device') {
-            this.apply('device');
-          }
-        };
-        if (typeof mediaQuery.addEventListener === 'function') {
-          mediaQuery.addEventListener('change', handleChange);
-        } else if (typeof mediaQuery.addListener === 'function') {
-          mediaQuery.addListener(handleChange);
-        }
-      }
-
-      // Header Popover Toggle Button & Dropdown Interactions
+      // Direct Header Theme Toggle Button Interaction
       const toggleBtn = document.getElementById('header-theme-toggle-btn');
-      const dropdown = document.getElementById('header-theme-dropdown');
-
-      if (toggleBtn && dropdown) {
+      if (toggleBtn) {
         toggleBtn.addEventListener('click', (e) => {
+          e.preventDefault();
           e.stopPropagation();
-          const isOpen = dropdown.style.display === 'flex';
-
-          // Close other open popovers
-          const headerUserDropdown = document.getElementById('header-user-dropdown');
-          if (headerUserDropdown) {
-            headerUserDropdown.style.display = 'none';
-            const userBtn = document.getElementById('header-user-menu-btn');
-            if (userBtn) userBtn.setAttribute('aria-expanded', 'false');
-          }
-          const notifDropdown = document.getElementById('nav-notif-dropdown');
-          if (notifDropdown) {
-            notifDropdown.style.display = 'none';
-            const notifBtn = document.getElementById('nav-notif-btn');
-            if (notifBtn) notifBtn.setAttribute('aria-expanded', 'false');
-          }
-
-          dropdown.style.display = isOpen ? 'none' : 'flex';
-          toggleBtn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
-        });
-
-        document.addEventListener('click', (e) => {
-          if (dropdown.style.display === 'flex' && !dropdown.contains(e.target) && !toggleBtn.contains(e.target)) {
-            dropdown.style.display = 'none';
-            toggleBtn.setAttribute('aria-expanded', 'false');
-          }
-        });
-
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape' && dropdown.style.display === 'flex') {
-            dropdown.style.display = 'none';
-            toggleBtn.setAttribute('aria-expanded', 'false');
-            toggleBtn.focus();
-          }
+          this.toggle();
         });
       }
 
-      // Bind all theme interactive buttons across the entire page
+      // Bind remaining segmented buttons (user account dropdown and mobile drawer)
       document.querySelectorAll('.theme-option-btn, .theme-segmented-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const newPref = btn.getAttribute('data-theme-value');
           if (newPref) {
             this.setPreference(newPref);
-            if (dropdown) {
-              dropdown.style.display = 'none';
-              if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
-            }
           }
         });
       });
@@ -245,10 +215,15 @@
     ThemeManager
   };
 
+  // Initialize Theme Manager immediately if DOM is ready, or on DOMContentLoaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => ThemeManager.init());
+  } else {
+    ThemeManager.init();
+  }
+
   // Password Visibility Toggle & Setup
   document.addEventListener('DOMContentLoaded', () => {
-    // Initialize Theme Manager
-    ThemeManager.init();
 
     // Clean transient query parameters from URL so feedback alerts never persist on refresh or subsequent visits
     try {
@@ -2297,12 +2272,6 @@
         document.querySelectorAll('.feed-menu-dropdown').forEach(m => {
           m.style.display = 'none';
         });
-        const themeDropdown = document.getElementById('header-theme-dropdown');
-        if (themeDropdown) {
-          themeDropdown.style.display = 'none';
-          const themeBtn = document.getElementById('header-theme-toggle-btn');
-          if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
-        }
         closeAllNavDropdowns();
         closeMobileDrawer();
       }

@@ -92,10 +92,10 @@ declare(strict_types=1);
             <span class="user-role-badge <?= ($user['role'] === 'admin') ? 'admin' : 'author' ?>" style="font-size: 0.78rem; text-transform: uppercase;">
               <?= ($user['role'] === 'admin') ? 'Administrator' : 'Author' ?>
             </span>
-            <span style="font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px; background: rgba(34, 197, 94, 0.12); color: #15803d; font-weight: 600;">
+            <span class="badge-status-pill badge-active" style="font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px; font-weight: 600;">
               Active
             </span>
-            <span style="font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px; background: <?= ($user['profile_visibility'] === 'private') ? 'rgba(239, 68, 68, 0.12); color: #b91c1c;' : 'rgba(99, 102, 241, 0.12); color: #4338ca;' ?> font-weight: 600;">
+            <span class="badge-status-pill <?= ($user['profile_visibility'] === 'private') ? 'badge-private' : 'badge-public' ?>" style="font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px; font-weight: 600;">
               <?= ($user['profile_visibility'] === 'private') ? '🔒 Private Profile' : '🌐 Public Profile' ?>
             </span>
           </div>
@@ -115,28 +115,28 @@ declare(strict_types=1);
 
       <!-- Quick Summary Stats Row -->
       <div style="border-top: 1px solid rgba(226, 232, 240, 0.7); margin-top: 20px; padding-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; text-align: center;">
-        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6);">
+        <div class="profile-stat-box">
           <div style="font-size: 1.5rem; font-weight: 800; color: var(--primary-color);"><?= (int) ($stats['published_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Published Posts</div>
         </div>
-        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6);">
+        <div class="profile-stat-box">
           <div style="font-size: 1.5rem; font-weight: 800; color: #f59e0b;"><?= (int) ($stats['draft_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Drafts</div>
         </div>
-        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6);">
+        <div class="profile-stat-box">
           <div style="font-size: 1.5rem; font-weight: 800; color: #10b981;"><?= (int) ($stats['remix_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Remixes</div>
         </div>
-        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6); cursor: pointer;" onclick="document.getElementById('profile-tab-followers')?.click();">
+        <div class="profile-stat-box" style="cursor: pointer;" onclick="document.getElementById('profile-tab-followers')?.click();">
           <div style="font-size: 1.5rem; font-weight: 800; color: #8b5cf6;" id="profile-stat-followers"><?= (int) ($stats['follower_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Followers</div>
         </div>
-        <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6); cursor: pointer;" onclick="document.getElementById('profile-tab-following')?.click();">
+        <div class="profile-stat-box" style="cursor: pointer;" onclick="document.getElementById('profile-tab-following')?.click();">
           <div style="font-size: 1.5rem; font-weight: 800; color: #ec4899;" id="profile-stat-following"><?= (int) ($stats['following_count'] ?? 0) ?></div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Following</div>
         </div>
         <?php if (!empty($user['created_at'])): ?>
-          <div style="padding: 10px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.6);">
+          <div class="profile-stat-box">
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-heading); margin-top: 4px;">
               <?= date('M Y', strtotime($user['created_at'])) ?>
             </div>

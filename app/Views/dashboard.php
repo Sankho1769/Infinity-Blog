@@ -268,7 +268,7 @@
 
     <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
       <div class="glass-panel" style="padding: 24px;">
-        <h3 style="font-size: 1.1rem; font-weight: 800; color: #4338ca; margin-bottom: 16px;">Admin Controls</h3>
+        <h3 style="font-size: 1.1rem; font-weight: 800; color: var(--text-dark); margin-bottom: 16px;">Admin Controls</h3>
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <a href="/admin/categories-page" class="btn btn-secondary" style="justify-content: flex-start; padding: 10px 16px;">
             <span style="margin-right: 8px;">🏷️</span> Manage Categories

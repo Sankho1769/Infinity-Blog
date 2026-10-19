@@ -92,7 +92,7 @@ assertTest(strpos($html, 'Latest Articles') !== false, 'HTML contains Latest Art
 assertTest(strpos($html, 'homepage-articles-grid') !== false, 'HTML contains .homepage-articles-grid');
 
 // Sidebar cards
-assertTest(strpos($html, 'Authors You May Know') !== false, 'Sidebar contains Authors You May Know card');
+assertTest(strpos($html, 'People You Know') !== false || strpos($html, 'Authors You May Know') !== false, 'Sidebar contains People You Know card');
 assertTest(strpos($html, 'sidebar-card-authors') !== false, 'Card has class .sidebar-card-authors');
 assertTest(strpos($html, 'Discover Authors →') !== false, 'Authors card contains Discover Authors link');
 assertTest(strpos($html, 'Popular Communities') !== false, 'Sidebar contains Popular Communities card');

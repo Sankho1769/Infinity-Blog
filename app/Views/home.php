@@ -497,10 +497,91 @@
   </div><!-- /homepage-main-column -->
 
 
-  <!-- Right Sidebar (~320-350px width): Popular Communities, Trending Topics & Suggested People -->
-  <aside class="homepage-sidebar" aria-label="Suggested Communities, Topics, and People">
+  <!-- Right Sidebar (~320-350px width): People You Know, Popular Communities & Trending Topics -->
+  <aside class="homepage-sidebar" aria-label="People You Know, Communities, and Topics">
 
-    <!-- Card 1: Popular Communities -->
+    <!-- Card 1: People You Know -->
+    <div class="glass-panel sidebar-card sidebar-card-authors">
+      <div class="sidebar-card-header">
+        <div class="sidebar-card-title-group">
+          <span class="sidebar-card-icon" aria-hidden="true">👥</span>
+          <h3 class="sidebar-card-title">People You Know</h3>
+        </div>
+      </div>
+
+      <?php if (empty($sidebarAuthors)): ?>
+        <div class="sidebar-empty-state">
+          <p class="sidebar-empty-text">No author recommendations available at this time. Check back soon!</p>
+          <a href="/authors" class="btn btn-secondary btn-sm btn-pill" style="margin-top: 8px;">Discover Authors</a>
+        </div>
+      <?php else: ?>
+        <div class="sidebar-item-list">
+          <?php foreach ($sidebarAuthors as $author): ?>
+            <?php
+              $authorAvatar = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
+              $authorInitial = strtoupper(mb_substr($author['display_name'] ?? 'A', 0, 1));
+              $isFollowing = !empty($author['is_following']);
+              $followerCount = (int) ($author['follower_count'] ?? 0);
+            ?>
+            <div class="sidebar-row sidebar-author-row" data-author-id="<?= (int) $author['id'] ?>">
+              <a href="/author/<?= (int) $author['id'] ?>" class="sidebar-avatar-link" title="View <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>'s profile">
+                <?php if (!empty($authorAvatar)): ?>
+                  <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                       alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>"
+                       class="sidebar-avatar-img"
+                       width="42" height="42" loading="lazy"
+                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                  <div class="user-avatar sidebar-avatar-fallback" style="display: none; width: 42px; height: 42px; font-size: 0.95rem; font-weight: 700;">
+                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php else: ?>
+                  <div class="user-avatar sidebar-avatar-fallback" style="width: 42px; height: 42px; font-size: 0.95rem; font-weight: 700;">
+                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php endif; ?>
+              </a>
+
+              <div class="sidebar-row-info">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden;">
+                  <a href="/author/<?= (int) $author['id'] ?>" class="sidebar-row-title" title="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
+                  </a>
+                  <?php if (!empty($author['has_author_badge'])): ?>
+                    <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                  <?php endif; ?>
+                </div>
+                <div class="sidebar-row-meta">
+                  <span class="sidebar-row-sub">@<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?></span>
+                  <span class="sidebar-meta-dot">·</span>
+                  <span class="sidebar-follower-meta"><span class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>"><?= $followerCount ?></span> <?= $followerCount === 1 ? 'follower' : 'followers' ?></span>
+                </div>
+              </div>
+
+              <div class="sidebar-row-action">
+                <button type="button"
+                        class="btn btn-primary btn-sm btn-pill btn-follow-toggle <?= $isFollowing ? 'following' : '' ?>"
+                        data-author-id="<?= (int) $author['id'] ?>"
+                        data-following="<?= $isFollowing ? '1' : '0' ?>"
+                        aria-label="<?= $isFollowing ? 'Unfollow' : 'Follow' ?> <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>">
+                  <?php if ($isFollowing): ?>
+                    <span>✓</span> Following
+                  <?php else: ?>
+                    <span>+</span> Follow
+                  <?php endif; ?>
+                </button>
+              </div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+
+      <div class="sidebar-card-footer">
+        <a href="/authors" class="sidebar-card-footer-link">Discover Authors →</a>
+      </div>
+    </div>
+
+
+    <!-- Card 2: Popular Communities -->
     <div class="glass-panel sidebar-card sidebar-card-communities">
       <div class="sidebar-card-header">
         <div class="sidebar-card-title-group">
@@ -576,7 +657,7 @@
     </div>
 
 
-    <!-- Card 2: Trending Topics -->
+    <!-- Card 3: Trending Topics -->
     <div class="glass-panel sidebar-card sidebar-card-topics">
       <div class="sidebar-card-header">
         <div class="sidebar-card-title-group">
@@ -613,87 +694,6 @@
 
       <div class="sidebar-card-footer">
         <a href="/categories" class="sidebar-card-footer-link">See All Topics →</a>
-      </div>
-    </div>
-
-
-    <!-- Card 3: Suggested People -->
-    <div class="glass-panel sidebar-card sidebar-card-authors">
-      <div class="sidebar-card-header">
-        <div class="sidebar-card-title-group">
-          <span class="sidebar-card-icon" aria-hidden="true">👥</span>
-          <h3 class="sidebar-card-title">Suggested People <span class="visually-hidden">Authors You May Know</span></h3>
-        </div>
-      </div>
-
-      <?php if (empty($sidebarAuthors)): ?>
-        <div class="sidebar-empty-state">
-          <p class="sidebar-empty-text">No author recommendations available at this time. Check back soon!</p>
-          <a href="/authors" class="btn btn-secondary btn-sm btn-pill" style="margin-top: 8px;">Discover Authors</a>
-        </div>
-      <?php else: ?>
-        <div class="sidebar-item-list">
-          <?php foreach ($sidebarAuthors as $author): ?>
-            <?php
-              $authorAvatar = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
-              $authorInitial = strtoupper(mb_substr($author['display_name'] ?? 'A', 0, 1));
-              $isFollowing = !empty($author['is_following']);
-              $followerCount = (int) ($author['follower_count'] ?? 0);
-            ?>
-            <div class="sidebar-row sidebar-author-row" data-author-id="<?= (int) $author['id'] ?>">
-              <a href="/author/<?= (int) $author['id'] ?>" class="sidebar-avatar-link" title="View <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>'s profile">
-                <?php if (!empty($authorAvatar)): ?>
-                  <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
-                       alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>"
-                       class="sidebar-avatar-img"
-                       width="42" height="42" loading="lazy"
-                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                  <div class="user-avatar sidebar-avatar-fallback" style="display: none; width: 42px; height: 42px; font-size: 0.95rem; font-weight: 700;">
-                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
-                  </div>
-                <?php else: ?>
-                  <div class="user-avatar sidebar-avatar-fallback" style="width: 42px; height: 42px; font-size: 0.95rem; font-weight: 700;">
-                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
-                  </div>
-                <?php endif; ?>
-              </a>
-
-              <div class="sidebar-row-info">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden;">
-                  <a href="/author/<?= (int) $author['id'] ?>" class="sidebar-row-title" title="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>">
-                    <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>
-                  </a>
-                  <?php if (!empty($author['has_author_badge'])): ?>
-                    <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
-                  <?php endif; ?>
-                </div>
-                <div class="sidebar-row-meta">
-                  <span class="sidebar-row-sub">@<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?></span>
-                  <span class="sidebar-meta-dot">·</span>
-                  <span class="sidebar-follower-meta"><span class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>"><?= $followerCount ?></span> <?= $followerCount === 1 ? 'follower' : 'followers' ?></span>
-                </div>
-              </div>
-
-              <div class="sidebar-row-action">
-                <button type="button"
-                        class="btn btn-primary btn-sm btn-pill btn-follow-toggle <?= $isFollowing ? 'following' : '' ?>"
-                        data-author-id="<?= (int) $author['id'] ?>"
-                        data-following="<?= $isFollowing ? '1' : '0' ?>"
-                        aria-label="<?= $isFollowing ? 'Unfollow' : 'Follow' ?> <?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>">
-                  <?php if ($isFollowing): ?>
-                    <span>✓</span> Following
-                  <?php else: ?>
-                    <span>+</span> Follow
-                  <?php endif; ?>
-                </button>
-              </div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php endif; ?>
-
-      <div class="sidebar-card-footer">
-        <a href="/authors" class="sidebar-card-footer-link">Discover Authors →</a>
       </div>
     </div>
 

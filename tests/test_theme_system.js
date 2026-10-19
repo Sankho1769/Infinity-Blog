@@ -197,30 +197,51 @@ async function run() {
         // -------------------------------------------------------------
         // TEST 2: Switch to Dark Mode & Persist across Reload
         // -------------------------------------------------------------
-        console.log('\n--- Test 2: Select Dark Mode & Persistence ---');
-        // Click theme toggle to open dropdown
+        // -------------------------------------------------------------
+        // TEST 2: Immediate Direct Toggle to Dark Mode & Persist across Reload
+        // -------------------------------------------------------------
+        console.log('\n--- Test 2: Immediate Direct Toggle to Dark Mode & Persistence ---');
+        // Verify initial accessible label
+        const initialTitle = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('title')`);
+        const initialAria = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('aria-label')`);
+        assert(initialTitle === 'Switch to Dark Mode', `Initial title is "Switch to Dark Mode" (got "${initialTitle}")`);
+        assert(initialAria === 'Switch to Dark Mode', `Initial aria-label is "Switch to Dark Mode" (got "${initialAria}")`);
+
+        // Click theme toggle directly (must switch immediately, NO dropdown)
         await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
-        await sleep(200);
-
-        const isDropdownOpen = await evalExpr(cdp, `document.getElementById('header-theme-dropdown').style.display === 'flex'`);
-        assert(isDropdownOpen, 'Theme popover opens on button click');
-        await saveScreenshot(cdp, 'theme_dropdown_open.png');
-
-        // Click Dark option
-        await evalExpr(cdp, `document.querySelector('.theme-option-btn[data-theme-value="dark"]').click()`);
         await sleep(300);
+
+        const darkDropdownPresent = await evalExpr(cdp, `Boolean(document.getElementById('header-theme-dropdown'))`);
+        assert(darkDropdownPresent === false, 'No Appearance dropdown/popover exists in DOM');
 
         const darkTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
         const darkPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
         const darkHasClass = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
         const darkStorage = await evalExpr(cdp, `localStorage.getItem('ib_theme_preference')`);
         const darkIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const darkTitle = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('title')`);
+        const darkAria = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('aria-label')`);
 
-        assert(darkTheme === 'dark', `Active data-theme is "dark" (got "${darkTheme}")`);
+        assert(darkTheme === 'dark', `Immediate direct switch: Active data-theme is "dark" (got "${darkTheme}")`);
         assert(darkPref === 'dark', `Active data-theme-preference is "dark" (got "${darkPref}")`);
         assert(darkHasClass === true, '<html> has .theme-dark class');
         assert(darkStorage === 'dark', `localStorage stores "dark" (got "${darkStorage}")`);
-        assert(darkIcon === '🌙', `Header toggle icon updated to "🌙" (got "${darkIcon}")`);
+        assert(darkIcon === '🌙', `Header toggle icon updated immediately to "🌙" (got "${darkIcon}")`);
+        assert(darkTitle === 'Switch to Light Mode', `Title updated to "Switch to Light Mode" (got "${darkTitle}")`);
+        assert(darkAria === 'Switch to Light Mode', `aria-label updated to "Switch to Light Mode" (got "${darkAria}")`);
+
+        // Test immediate toggle BACK to Light Mode
+        await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
+        await sleep(300);
+
+        const backLightTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        const backLightIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        assert(backLightTheme === 'light', `Clicking again immediately switches back to "light" (got "${backLightTheme}")`);
+        assert(backLightIcon === '☀️', `Header toggle icon updated back to "☀️" (got "${backLightIcon}")`);
+
+        // Switch to Dark again for persistence test
+        await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
+        await sleep(300);
 
         // Verify dark styling
         const bodyBgDark = await evalExpr(cdp, `window.getComputedStyle(document.body).backgroundColor`);
@@ -245,54 +266,76 @@ async function run() {
         assert(reloadedClass === true, 'Persisted <html> has .theme-dark class');
         assert(reloadedIcon === '🌙', `Persisted header toggle icon is "🌙"`);
 
+        // Navigate to /explore and return to verify persistence
+        console.log('  Navigating to /explore and verifying theme persistence...');
+        await cdp.send('Page.navigate', { url: 'http://localhost:8086/explore' });
+        await sleep(1500);
+        const exploreTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        assert(exploreTheme === 'dark', `Theme remains "dark" after navigation to /explore`);
+
+        console.log('  Returning to homepage and verifying theme persistence...');
+        await cdp.send('Page.navigate', { url: 'http://localhost:8086/' });
+        await sleep(1500);
+        const homeReturnTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        assert(homeReturnTheme === 'dark', `Theme remains "dark" on homepage return`);
+
         await saveScreenshot(cdp, 'theme_dark_desktop.png');
 
         // -------------------------------------------------------------
-        // TEST 3: Select Device Mode & Live Dynamic OS Tracking
+        // TEST 3: Legacy Normalization & Independent Dropdowns
         // -------------------------------------------------------------
-        console.log('\n--- Test 3: Select Device Mode & Dynamic Live OS Scheme Tracking ---');
+        console.log('\n--- Test 3: Legacy "device" Normalization & Independent Dropdowns ---');
+        // Check mobile drawer has no device button
+        const mobileDrawerDeviceBtnExists = await evalExpr(cdp, `
+            !!document.querySelector('#mobile-nav-drawer .theme-segmented-btn[data-theme-value="device"]')
+        `);
+        assert(mobileDrawerDeviceBtnExists === false, 'Mobile drawer appearance group has no "device" option');
+
+        // Test Legacy Normalization: simulate user having saved 'device' in previous session
+        console.log('  Simulating legacy stored "device" preference in localStorage...');
+        await evalExpr(cdp, `localStorage.setItem('ib_theme_preference', 'device')`);
+        await cdp.send('Page.navigate', { url: 'http://localhost:8086/' });
+        await sleep(1500);
+
+        const normalizedTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        const normalizedPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
+        const normalizedStorage = await evalExpr(cdp, `localStorage.getItem('ib_theme_preference')`);
+        const normalizedIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+
+        assert(normalizedTheme === 'light', `Legacy "device" preference normalized to effective theme "light" (got "${normalizedTheme}")`);
+        assert(normalizedPref === 'light', `Legacy "device" preference normalized in DOM attribute to "light" (got "${normalizedPref}")`);
+        assert(normalizedStorage === 'light', `Legacy "device" in localStorage immediately rewritten to "light" (got "${normalizedStorage}")`);
+        assert(normalizedIcon === '☀️', `Header toggle icon reflects Light theme "☀️" (got "${normalizedIcon}")`);
+
+        // Verify independent dropdowns: notifications menu opens independently
+        console.log('  Verifying notifications dropdown works independently...');
+        await evalExpr(cdp, `document.getElementById('nav-notif-btn')?.click()`);
+        await sleep(200);
+        const notifOpen = await evalExpr(cdp, `
+            const d = document.getElementById('nav-notif-dropdown');
+            Boolean(d && (d.style.display === 'flex' || d.style.display === 'block'))
+        `);
+        assert(notifOpen, 'Notifications center dropdown opens independently');
+
+        // Clicking theme button does not trigger notifications or close inappropriately, it toggles theme
         await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
         await sleep(200);
+        const themeToggled = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        assert(themeToggled === 'dark', 'Theme toggled to dark immediately without interference');
 
-        await evalExpr(cdp, `document.querySelector('.theme-option-btn[data-theme-value="device"]').click()`);
-        await sleep(300);
-
-        const devicePref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
-        const deviceIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
-        assert(devicePref === 'device', `Theme preference is "device"`);
-        assert(deviceIcon === '💻', `Header toggle icon is "💻"`);
-
-        // Current OS emulation is dark => active theme must be dark
-        const liveThemeDark = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
-        assert(liveThemeDark === 'dark', `When OS is dark, active theme is "dark"`);
-
-        // Emulate OS switching to LIGHT in real time (NO page reload)
-        console.log('  Simulating live OS scheme change to LIGHT (no page reload)...');
+        // -------------------------------------------------------------
+        // TEST 4: Light/Dark Selection Strictly Ignores OS Scheme Changes
+        // -------------------------------------------------------------
+        console.log('\n--- Test 4: Light and Dark Choices Strictly Ignore OS Color Scheme Changes ---');
+        // While user is in Dark, change OS scheme to Light
         await setEmulatedColorScheme(cdp, 'light');
         await sleep(400);
 
-        const liveThemeLight = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
-        const liveHasDarkClass = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
-        assert(liveThemeLight === 'light', `Active theme dynamically updated to "light" without page reload`);
-        assert(liveHasDarkClass === false, `theme-dark class removed on live OS change`);
+        const themeAfterOsLightOnDark = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
+        assert(themeAfterOsLightOnDark === 'dark', `Explicit Dark selection ignores OS light mode changes (stays "dark")`);
 
-        // Emulate OS switching back to DARK in real time (NO page reload)
-        console.log('  Simulating live OS scheme change back to DARK (no page reload)...');
-        await setEmulatedColorScheme(cdp, 'dark');
-        await sleep(400);
-
-        const liveThemeDarkAgain = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
-        const liveDarkClassAgain = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
-        assert(liveThemeDarkAgain === 'dark', `Active theme dynamically updated back to "dark" without page reload`);
-        assert(liveDarkClassAgain === true, `theme-dark class restored on live OS change`);
-
-        // -------------------------------------------------------------
-        // TEST 4: Switching away from Device mode overrides OS changes
-        // -------------------------------------------------------------
-        console.log('\n--- Test 4: Explicit Choice Stops OS Overrides ---');
+        // Toggle back to Light Mode via theme toggle button
         await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
-        await sleep(200);
-        await evalExpr(cdp, `document.querySelector('.theme-option-btn[data-theme-value="light"]').click()`);
         await sleep(300);
 
         const explicitPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
@@ -341,7 +384,7 @@ async function run() {
         const mobileThemeBtnsCount = await evalExpr(cdp, `
             document.querySelectorAll('#mobile-nav-drawer .theme-segmented-btn').length
         `);
-        assert(mobileThemeBtnsCount === 3, `Mobile drawer has 3 appearance buttons (got ${mobileThemeBtnsCount})`);
+        assert(mobileThemeBtnsCount === 2, `Mobile drawer has exactly 2 appearance buttons (got ${mobileThemeBtnsCount})`);
 
         const mobileDarkActive = await evalExpr(cdp, `
             document.querySelector('#mobile-nav-drawer .theme-segmented-btn[data-theme-value="dark"]')?.classList.contains('active')

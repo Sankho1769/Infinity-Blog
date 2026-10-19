@@ -519,29 +519,29 @@ async function run() {
 
     assert(sidebarData.headerLinksCount === 0, `All duplicate top-right header links are removed from sidebar cards (found ${sidebarData.headerLinksCount})`);
 
-    assert(sidebarData.cardOrder[0] === 'communities', 'Card 1 is Popular Communities', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
-    assert(sidebarData.hasCommCard, 'Card 1: Popular Communities card is present in right sidebar');
-    assert(sidebarData.commTitle && sidebarData.commTitle.startsWith('Popular Communities'), `Card 1 title is full text "Popular Communities" without truncation ("${sidebarData.commTitle}")`);
-    assert(sidebarData.commFooter && sidebarData.commFooter.includes('Explore Communities'), `Card 1 bottom call-to-action is Explore Communities → ("${sidebarData.commFooter}")`);
+    assert(sidebarData.cardOrder[0] === 'people', 'Card 1 is People You Know', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
+    assert(sidebarData.hasPeopleCard, 'Card 1: People You Know card is present in right sidebar');
+    assert(sidebarData.peopleTitle && sidebarData.peopleTitle.includes('People You Know'), `Card 1 title is full text "People You Know" without truncation ("${sidebarData.peopleTitle}")`);
+    assert(sidebarData.peopleFooter && sidebarData.peopleFooter.includes('Discover Authors'), `Card 1 bottom call-to-action is Discover Authors → ("${sidebarData.peopleFooter}")`);
+    assert(sidebarData.peopleCount > 0 && sidebarData.peopleCount <= 5, `People You Know shows up to 5 real authors (found ${sidebarData.peopleCount})`);
+    assert(sidebarData.hasFollowBtn, 'People You Know includes Follow/Following action buttons');
+
+    assert(sidebarData.cardOrder[1] === 'communities', 'Card 2 is Popular Communities', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
+    assert(sidebarData.hasCommCard, 'Card 2: Popular Communities card is present in right sidebar');
+    assert(sidebarData.commTitle && sidebarData.commTitle.startsWith('Popular Communities'), `Card 2 title is full text "Popular Communities" without truncation ("${sidebarData.commTitle}")`);
+    assert(sidebarData.commFooter && sidebarData.commFooter.includes('Explore Communities'), `Card 2 bottom call-to-action is Explore Communities → ("${sidebarData.commFooter}")`);
     assert(sidebarData.commCount > 0 && sidebarData.commCount <= 5, `Popular Communities shows up to 5 active rooms (found ${sidebarData.commCount})`);
     assert(sidebarData.hasCommJoinBtn, 'Communities card includes Join/Joined action buttons');
     assert(sidebarData.commNames.length > 0 && sidebarData.commNames.every(name => !name.startsWith('#')), `Community names in sidebar render without leading hash prefix (sample: "${sidebarData.commNames[0]}")`);
 
-    assert(sidebarData.cardOrder[1] === 'topics', 'Card 2 is Trending Topics', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
-    assert(sidebarData.hasTopicsCard, 'Card 2: Trending Topics card is present in right sidebar');
-    assert(sidebarData.topicsTitle && sidebarData.topicsTitle.startsWith('Trending Topics'), `Card 2 title is full text "Trending Topics" without truncation ("${sidebarData.topicsTitle}")`);
+    assert(sidebarData.cardOrder[2] === 'topics', 'Card 3 is Trending Topics', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
+    assert(sidebarData.hasTopicsCard, 'Card 3: Trending Topics card is present in right sidebar');
+    assert(sidebarData.topicsTitle && sidebarData.topicsTitle.startsWith('Trending Topics'), `Card 3 title is full text "Trending Topics" without truncation ("${sidebarData.topicsTitle}")`);
     assert(sidebarData.topicsFooter && sidebarData.topicsFooter.toLowerCase().includes('see all topics'), `Card 2 bottom call-to-action is See All Topics → ("${sidebarData.topicsFooter}")`);
     assert(sidebarData.topicCount > 0 && sidebarData.topicCount <= 5, `Trending Topics shows top 5 active categories (found ${sidebarData.topicCount})`);
     assert(sidebarData.topicSample && sidebarData.topicSample.rank === '1', `Trending Topics starts at Rank 1 derived from database post counts (got "${sidebarData.topicSample?.rank}")`);
     assert(sidebarData.topicSample && sidebarData.topicSample.count.includes('post'), `Trending Topics displays real database post counts ("${sidebarData.topicSample?.count}")`);
     assert(sidebarData.topicSample && sidebarData.topicSample.name.startsWith('#'), `Trending topics preserve genuine hashtag format (e.g. "${sidebarData.topicSample?.name}")`);
-
-    assert(sidebarData.cardOrder[2] === 'people', 'Card 3 is Suggested People', `Order: ${sidebarData.cardOrder.join(' -> ')}`);
-    assert(sidebarData.hasPeopleCard, 'Card 3: Suggested People card is present in right sidebar');
-    assert(sidebarData.peopleTitle && sidebarData.peopleTitle.includes('Suggested People'), `Card 3 title is full text "Suggested People" without truncation ("${sidebarData.peopleTitle}")`);
-    assert(sidebarData.peopleFooter && sidebarData.peopleFooter.includes('Discover Authors'), `Card 3 bottom call-to-action is Discover Authors → ("${sidebarData.peopleFooter}")`);
-    assert(sidebarData.peopleCount > 0 && sidebarData.peopleCount <= 5, `Suggested People shows up to 5 real authors (found ${sidebarData.peopleCount})`);
-    assert(sidebarData.hasFollowBtn, 'Suggested People includes Follow/Following action buttons');
 
     assert(sidebarData.hasShimmerKeyframe, 'CSS includes @keyframes glassShimmerSweep animation definition');
     assert(sidebarData.hasCardShimmerRule, 'CSS includes .sidebar-card::after shimmer pseudo-element with sweep effect');

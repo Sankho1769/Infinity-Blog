@@ -16,7 +16,7 @@
   <div class="glass-panel" style="display: flex; height: 680px; border-radius: 20px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow);">
 
     <!-- Left Column: Rooms Directory -->
-    <div style="width: 320px; border-right: 1px solid var(--glass-border); display: flex; flex-direction: column; background: rgba(255,255,255,0.4);">
+    <div class="chat-rooms-sidebar" style="width: 320px; border-right: 1px solid var(--glass-border); display: flex; flex-direction: column;">
       <div style="padding: 18px; border-bottom: 1px solid var(--glass-border);">
         <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-main);">Topic Rooms</h3>
       </div>
@@ -44,7 +44,7 @@
     </div>
 
     <!-- Right Column: Active Room Messages -->
-    <div style="flex: 1; display: flex; flex-direction: column; background: rgba(255, 255, 255, 0.65);">
+    <div class="chat-room-main" style="flex: 1; display: flex; flex-direction: column;">
       <?php if (!empty($activeRoom)): ?>
         <!-- Room Header -->
         <div style="padding: 16px 24px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -98,7 +98,7 @@
                       <?= date('g:i A', strtotime($msg['created_at'])) ?>
                     </span>
                   </div>
-                  <div style="padding: 10px 16px; border-radius: 16px; font-size: 0.92rem; line-height: 1.4; <?= $isMe ? 'background: var(--primary-gradient); color: #fff; border-bottom-right-radius: 4px;' : 'background: #fff; color: var(--text-main); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px;' ?>">
+                  <div class="chat-bubble <?= $isMe ? 'sent' : 'received' ?>" style="max-width: 100%;">
                     <?= !empty($msg['rendered_message']) ? $msg['rendered_message'] : nl2br(htmlspecialchars($msg['message'], ENT_QUOTES, 'UTF-8')) ?>
                   </div>
                 </div>
@@ -108,7 +108,7 @@
         </div>
 
         <!-- Chat Input Bar -->
-        <div style="padding: 16px 20px; border-top: 1px solid var(--glass-border); background: rgba(255,255,255,0.7);">
+        <div class="chat-room-input-bar" style="padding: 16px 20px; border-top: 1px solid var(--glass-border);">
           <!-- Inline Error Banner -->
           <div id="chatErrorBanner" style="display: none; margin-bottom: 12px; padding: 10px 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 12px; color: #dc2626; font-size: 0.88rem; align-items: center; justify-content: space-between; gap: 10px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -275,7 +275,7 @@ function appendChatMessage(m) {
         <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-main);">${escapeHtml(m.user_name || 'User')}</span>
         <span style="font-size: 0.72rem; color: var(--text-muted);">${time}</span>
       </div>
-      <div style="padding: 10px 16px; border-radius: 16px; font-size: 0.92rem; line-height: 1.4; word-break: break-word; ${isMe ? 'background: var(--primary-gradient); color: #fff; border-bottom-right-radius: 4px;' : 'background: #fff; color: var(--text-main); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px;'}">
+      <div class="chat-bubble ${isMe ? 'sent' : 'received'}" style="max-width: 100%;">
         ${escapeHtml(m.message).replace(/\n/g, '<br>')}
       </div>
     </div>
