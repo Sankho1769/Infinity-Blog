@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <div class="dashboard-header">
+      <div>
+        <h1 style="font-size:1.75rem;font-weight:700;">My Author Profile</h1>
+        <p style="color:var(--color-text-muted);">Manage your public identity, author bio, and account details.</p>
+      </div>
+      <div style="display:flex;gap:var(--space-2);">
+        <a id="view-public-profile-btn" href="#" class="btn btn-outline" target="_blank">View Public Profile &rarr;</a>
+        <a href="dashboard.html" class="btn btn-secondary">&larr; Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="profile-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading profile...</p>
+    </div>
+
+    <!-- Error Alert -->
+    <div id="profile-error" class="alert alert-danger" style="display:none;"></div>
+
+    <!-- Profile Grid Layout -->
+    <div id="profile-content" style="display:none;">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:var(--space-6);align-items:start;">
+        <!-- Main Form Column -->
+        <div class="card" style="padding:var(--space-6);">
+          <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:var(--space-4);border-bottom:1px solid var(--color-border);padding-bottom:var(--space-3);">
+            Personal Information
+          </h2>
+
+          <form id="profile-form" novalidate>
+            <div class="form-group">
+              <label for="prof-username" class="form-label">Username</label>
+              <input type="text" id="prof-username" class="form-control" readonly disabled style="background:var(--color-bg-alt);cursor:not-allowed;">
+              <div class="form-help">Username is permanently assigned to your account.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="prof-email" class="form-label">Email Address</label>
+              <input type="email" id="prof-email" class="form-control" readonly disabled style="background:var(--color-bg-alt);cursor:not-allowed;">
+              <div class="form-help">Primary email address registered with this account.</div>
+            </div>
+
+            <div class="form-group">
+              <label for="prof-display-name" class="form-label">Display Name *</label>
+              <input type="text" id="prof-display-name" name="display_name" class="form-control" required maxlength="100" placeholder="e.g. Jane Doe">
+              <div class="form-help">The byline displayed publicly across all your articles.</div>
+              <div class="form-error" id="name-error"></div>
+            </div>
+
+            <div class="form-group">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+                <label for="prof-bio" class="form-label" style="margin-bottom:0;">Public Author Biography</label>
+                <span id="prof-bio-counter" style="font-size:0.8rem;color:var(--color-text-muted);">0 / 500</span>
+              </div>
+              <textarea id="prof-bio" name="bio" class="form-control" rows="5" maxlength="500" placeholder="Write a short summary about your background, publications, or topics you cover..."></textarea>
+              <div class="form-help">Displayed on your author profile and at the bottom of published articles.</div>
+              <div class="form-error" id="bio-error"></div>
+            </div>
+
+            <div style="display:flex;gap:var(--space-3);margin-top:var(--space-6);">
+              <button type="submit" id="save-profile-btn" class="btn btn-primary btn-lg">
+                <span>💾</span> Save Changes
+              </button>
+              <button type="button" id="reset-profile-btn" class="btn btn-secondary">
+                Reset
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Sidebar / Overview Column -->
+        <div style="display:flex;flex-direction:column;gap:var(--space-6);">
+          <!-- Account Overview Card -->
+          <div class="card" style="padding:var(--space-6);text-align:center;">
+            <div id="prof-avatar-circle" style="width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,var(--color-primary),#4f46e5);color:#fff;font-size:2.2rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto var(--space-4);box-shadow:var(--shadow-md);">
+              U
+            </div>
+            <h3 id="prof-card-name" style="font-size:1.25rem;font-weight:700;margin-bottom:var(--space-1);">Author</h3>
+            <span id="prof-card-role" class="badge badge-published" style="margin-bottom:var(--space-4);text-transform:uppercase;">AUTHOR</span>
+            <p id="prof-card-member" style="font-size:0.85rem;color:var(--color-text-muted);">Member since 2026</p>
+          </div>
+
+          <!-- Author Impact Card -->
+          <div class="card" style="padding:var(--space-6);">
+            <h4 style="font-size:1rem;font-weight:700;margin-bottom:var(--space-4);border-bottom:1px solid var(--color-border);padding-bottom:var(--space-2);">
+              Your Publishing Impact
+            </h4>
+            <div style="display:flex;flex-direction:column;gap:var(--space-3);font-size:0.9rem;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:var(--color-text-muted);">Published Articles:</span>
+                <strong id="impact-published">0</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:var(--color-text-muted);">Draft Articles:</span>
+                <strong id="impact-drafts">0</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="color:var(--color-text-muted);">Total Article Views:</span>
+                <strong id="impact-views" style="color:var(--color-primary);">0</strong>
+              </div>
+            </div>
+            <div style="margin-top:var(--space-5);">
+              <a href="posts.html" class="btn btn-outline btn-sm" style="width:100%;">Manage Your Articles &rarr;</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Author Hub.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { authService } from './assets/js/auth.js';
+    import { authorPostService } from './assets/js/author-posts.js';
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { showToast } from './assets/js/main.js';
+
+    let currentUser = null;
+    let authorDetails = null;
+
+    async function initProfile() {
+      const loadingEl = document.getElementById('profile-loading');
+      const contentEl = document.getElementById('profile-content');
+      const errEl = document.getElementById('profile-error');
+
+      loadingEl.style.display = 'flex';
+      contentEl.style.display = 'none';
+      errEl.style.display = 'none';
+
+      try {
+        currentUser = await authService.getCurrentUser();
+        if (!currentUser) {
+          window.location.href = 'login.html';
+          return;
+        }
+
+        // Fetch author's detailed public profile to get bio and stats
+        const res = await publicBlogService.getAuthor(currentUser.id);
+        authorDetails = res?.data || currentUser;
+
+        populateForm();
+        setupHandlers();
+
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        errEl.textContent = 'Failed to load profile: ' + err.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    function populateForm() {
+      const u = authorDetails || currentUser;
+      document.getElementById('prof-username').value = u.username || currentUser.username || '';
+      document.getElementById('prof-email').value = u.email || currentUser.email || '';
+      document.getElementById('prof-display-name').value = u.display_name || currentUser.display_name || '';
+      document.getElementById('prof-bio').value = u.bio || '';
+
+      // Update counter
+      updateCounter();
+
+      // Card details
+      const initial = (u.display_name || currentUser.username || 'A').charAt(0).toUpperCase();
+      document.getElementById('prof-avatar-circle').textContent = initial;
+      document.getElementById('prof-card-name').textContent = u.display_name || currentUser.username;
+      document.getElementById('prof-card-role').textContent = u.role || currentUser.role || 'AUTHOR';
+
+      const dateStr = u.created_at ? new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '2026';
+      document.getElementById('prof-card-member').textContent = `Member since ${dateStr}`;
+
+      // View live button
+      const liveBtn = document.getElementById('view-public-profile-btn');
+      liveBtn.href = `author.html?id=${u.id || currentUser.id}`;
+
+      // Stats
+      document.getElementById('impact-published').textContent = (u.published_posts || 0).toLocaleString();
+      document.getElementById('impact-drafts').textContent = ((u.total_posts || 0) - (u.published_posts || 0)).toLocaleString();
+      document.getElementById('impact-views').textContent = (u.total_views || 0).toLocaleString();
+    }
+
+    function updateCounter() {
+      const bio = document.getElementById('prof-bio');
+      const counter = document.getElementById('prof-bio-counter');
+      counter.textContent = `${bio.value.length} / 500`;
+    }
+
+    function setupHandlers() {
+      const bio = document.getElementById('prof-bio');
+      bio.oninput = updateCounter;
+
+      document.getElementById('reset-profile-btn').onclick = () => {
+        populateForm();
+        showToast('Form reset to current saved values.', 'info');
+      };
+
+      const form = document.getElementById('profile-form');
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        document.getElementById('name-error').textContent = '';
+        document.getElementById('bio-error').textContent = '';
+
+        const displayName = document.getElementById('prof-display-name').value.trim();
+        const bioVal = bio.value.trim();
+
+        if (!displayName) {
+          document.getElementById('name-error').textContent = 'Display name cannot be empty.';
+          return;
+        }
+
+        const saveBtn = document.getElementById('save-profile-btn');
+        saveBtn.disabled = true;
+
+        try {
+          const res = await authorPostService.updateProfile({
+            display_name: displayName,
+            bio: bioVal,
+          });
+
+          showToast('Profile updated successfully!', 'success');
+
+          // Refresh details
+          if (res?.data) {
+            authorDetails.display_name = res.data.display_name;
+            authorDetails.bio = res.data.bio;
+            populateForm();
+          }
+        } catch (err) {
+          if (err.fields) {
+            if (err.fields.display_name) document.getElementById('name-error').textContent = err.fields.display_name;
+            if (err.fields.bio) document.getElementById('bio-error').textContent = err.fields.bio;
+          }
+          showToast(err.message || 'Failed to update profile.', 'danger');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      };
+    }
+
+    initProfile();
+  </script>
+</body>
+</html>

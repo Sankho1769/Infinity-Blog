@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authors Directory — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/public.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <!-- Hero / Directory Header -->
+    <div class="blog-hero" style="margin-bottom:var(--space-8);">
+      <h1 class="hero-title">Authors &amp; Contributors</h1>
+      <p class="hero-subtitle">Meet the thinkers, engineers, and writers shaping ideas on Infinity Blog.</p>
+      <div style="margin-top:var(--space-4);">
+        <a href="index.html" class="btn btn-outline">&larr; Back to Articles</a>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="authors-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading authors directory...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="authors-error" class="alert alert-danger" style="display:none;"></div>
+
+    <!-- Empty State -->
+    <div id="authors-empty" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">👥</div>
+      <h3 class="empty-state-title">No Authors Found</h3>
+      <p class="empty-state-desc">There are currently no active author accounts on Infinity Blog.</p>
+    </div>
+
+    <!-- Authors Grid -->
+    <div id="authors-grid" class="authors-grid" style="display:none;"></div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Creative Community.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { escapeHtml } from './assets/js/main.js';
+
+    async function loadAuthors() {
+      const loadingEl = document.getElementById('authors-loading');
+      const emptyEl = document.getElementById('authors-empty');
+      const gridEl = document.getElementById('authors-grid');
+      const errEl = document.getElementById('authors-error');
+
+      loadingEl.style.display = 'flex';
+      emptyEl.style.display = 'none';
+      gridEl.style.display = 'none';
+      errEl.style.display = 'none';
+
+      try {
+        const res = await publicBlogService.getAuthors();
+        const authors = res?.data || [];
+
+        loadingEl.style.display = 'none';
+
+        if (authors.length === 0) {
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        gridEl.innerHTML = '';
+        authors.forEach(author => {
+          const card = document.createElement('div');
+          card.className = 'author-card';
+
+          const initial = (author.display_name || 'A').charAt(0).toUpperCase();
+          const bio = author.bio && author.bio.trim() 
+            ? (author.bio.length > 120 ? author.bio.substring(0, 120) + '...' : author.bio)
+            : 'Infinity Blog contributor sharing ideas and insights.';
+
+          card.innerHTML = `
+            <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--color-primary),#4f46e5);color:#fff;font-size:1.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;margin-bottom:var(--space-4);box-shadow:var(--shadow-sm);">
+              ${escapeHtml(initial)}
+            </div>
+            <h3 style="font-size:1.25rem;font-weight:700;margin-bottom:var(--space-1);">
+              <a href="author.html?id=${author.id}" style="color:inherit;text-decoration:none;">${escapeHtml(author.display_name)}</a>
+            </h3>
+            <span class="badge" style="margin-bottom:var(--space-3);text-transform:capitalize;">${escapeHtml(author.role || 'author')}</span>
+            <p style="color:var(--color-text-muted);font-size:0.875rem;line-height:1.5;margin-bottom:var(--space-5);flex:1;">
+              ${escapeHtml(bio)}
+            </p>
+            <div style="display:flex;justify-content:space-around;width:100%;border-top:1px solid var(--color-border);padding-top:var(--space-4);margin-bottom:var(--space-4);font-size:0.8rem;color:var(--color-text-muted);">
+              <div>
+                <strong style="display:block;font-size:1.1rem;color:var(--color-text);">${(author.published_posts || 0).toLocaleString()}</strong>
+                <span>Articles</span>
+              </div>
+              <div>
+                <strong style="display:block;font-size:1.1rem;color:var(--color-primary);">${(author.total_views || 0).toLocaleString()}</strong>
+                <span>Views</span>
+              </div>
+            </div>
+            <a href="author.html?id=${author.id}" class="btn btn-outline btn-sm" style="width:100%;">View Profile &amp; Articles &rarr;</a>
+          `;
+
+          gridEl.appendChild(card);
+        });
+
+        gridEl.style.display = 'grid';
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        errEl.textContent = 'Failed to load authors: ' + err.message;
+        errEl.style.display = 'block';
+      }
+    }
+
+    loadAuthors();
+  </script>
+</body>
+</html>

@@ -50,8 +50,8 @@
         <span class="stat-card-value" id="stat-draft-posts" style="color:var(--color-warning);">0</span>
       </div>
       <div class="stat-card">
-        <span class="stat-card-title">Role Permissions</span>
-        <span class="stat-card-value" id="stat-role" style="font-size:1.5rem;text-transform:capitalize;color:var(--color-primary);">-</span>
+        <span class="stat-card-title">Total Views</span>
+        <span class="stat-card-value" id="stat-total-views" style="color:var(--color-primary);">0</span>
       </div>
     </div>
 
@@ -83,6 +83,7 @@
                 <th>Title</th>
                 <th>Category</th>
                 <th>Status</th>
+                <th>Views</th>
                 <th>Date</th>
                 <th>Actions</th>
               </tr>
@@ -105,6 +106,9 @@
             </a>
             <a href="categories.html" class="btn btn-secondary" style="justify-content:flex-start;">
               <span>🏷️</span> View Categories
+            </a>
+            <a href="profile.html" class="btn btn-secondary" style="justify-content:flex-start;">
+              <span>👤</span> My Profile &amp; Bio
             </a>
             <a href="index.html" class="btn btn-outline" style="justify-content:flex-start;">
               <span>🌐</span> View Public Website
@@ -145,7 +149,6 @@
       }
 
       document.getElementById('author-greeting').textContent = `Welcome back, ${user.display_name}!`;
-      document.getElementById('stat-role').textContent = user.role;
 
       // Load Author Posts & Stats
       try {
@@ -156,6 +159,7 @@
         document.getElementById('stat-total-posts').textContent = stats.total_posts || posts.length;
         document.getElementById('stat-published-posts').textContent = stats.published_posts || 0;
         document.getElementById('stat-draft-posts').textContent = stats.draft_posts || 0;
+        document.getElementById('stat-total-views').textContent = stats.total_views || 0;
 
         document.getElementById('recent-posts-loading').style.display = 'none';
 
@@ -183,6 +187,9 @@
             </td>
             <td>
               <span class="badge ${badgeClass}">${escapeHtml(p.status)}</span>
+            </td>
+            <td>
+              <span style="font-size:0.85rem;font-weight:600;color:var(--color-primary);">👁️ ${p.views || 0}</span>
             </td>
             <td style="color:var(--color-text-muted);font-size:0.85rem;">
               ${escapeHtml(formattedDate)}

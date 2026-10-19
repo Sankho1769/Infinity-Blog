@@ -73,6 +73,24 @@ if (!in_array('date_of_birth', $userColumns, true)) {
     echo "Migrating users table: Adding 'date_of_birth' column...\n";
     $pdo->exec("ALTER TABLE `users` ADD COLUMN `date_of_birth` DATE NULL AFTER `gender`;");
 }
+if (!in_array('bio', $userColumns, true)) {
+    echo "Migrating users table: Adding 'bio' column...\n";
+    $pdo->exec("ALTER TABLE `users` ADD COLUMN `bio` TEXT NULL AFTER `date_of_birth`;");
+}
+
+$postColumns = $pdo->query("SHOW COLUMNS FROM `posts`")->fetchAll(PDO::FETCH_COLUMN);
+if (!in_array('featured_image', $postColumns, true)) {
+    echo "Migrating posts table: Adding 'featured_image' column...\n";
+    $pdo->exec("ALTER TABLE `posts` ADD COLUMN `featured_image` VARCHAR(255) NULL AFTER `content`;");
+}
+if (!in_array('tags', $postColumns, true)) {
+    echo "Migrating posts table: Adding 'tags' column...\n";
+    $pdo->exec("ALTER TABLE `posts` ADD COLUMN `tags` VARCHAR(255) NULL AFTER `featured_image`;");
+}
+if (!in_array('views', $postColumns, true)) {
+    echo "Migrating posts table: Adding 'views' column...\n";
+    $pdo->exec("ALTER TABLE `posts` ADD COLUMN `views` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `tags`;");
+}
 
 // 4. Resolve administrator and author credentials
 $adminPassword = Env::get('ADMIN_DEFAULT_PASSWORD');

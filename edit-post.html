@@ -65,11 +65,30 @@
           </div>
 
           <div class="form-group">
+            <label for="post-tags" class="form-label">Tags</label>
+            <input type="text" id="post-tags" name="tags" class="form-control" placeholder="e.g. technology, php, design (comma separated)" maxlength="255">
+            <div class="form-help">Add keywords separated by commas to help readers discover your post.</div>
+            <div class="form-error" id="tags-error"></div>
+          </div>
+
+          <div class="form-group">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
               <label for="post-content" class="form-label" style="margin-bottom:0;">Article Body Content *</label>
               <span id="content-word-count" style="font-size:0.8rem;color:var(--color-text-muted);">0 words</span>
             </div>
-            <textarea id="post-content" name="content" class="form-control" rows="18" required style="font-family:var(--font-family-sans);line-height:1.6;resize:vertical;"></textarea>
+
+            <!-- Formatting Toolbar -->
+            <div class="editor-toolbar">
+              <button type="button" class="toolbar-btn" data-action="bold" title="Bold"><strong>B</strong></button>
+              <button type="button" class="toolbar-btn" data-action="italic" title="Italic"><em>I</em></button>
+              <button type="button" class="toolbar-btn" data-action="heading" title="Heading">H2</button>
+              <button type="button" class="toolbar-btn" data-action="list" title="Bullet List">• List</button>
+              <button type="button" class="toolbar-btn" data-action="quote" title="Quote">” Quote</button>
+              <button type="button" class="toolbar-btn" data-action="code" title="Code Block">&lt;/&gt;</button>
+              <button type="button" class="toolbar-btn" data-action="link" title="Link">🔗 Link</button>
+            </div>
+
+            <textarea id="post-content" name="content" class="form-control editor-with-toolbar" rows="18" required style="font-family:var(--font-family-sans);line-height:1.6;resize:vertical;"></textarea>
             <div class="form-error" id="content-error"></div>
           </div>
         </div>
@@ -78,6 +97,30 @@
         <div class="editor-sidebar">
           <div class="settings-panel">
             <h3 class="settings-panel-title">Post Settings</h3>
+
+            <!-- Featured Image Upload -->
+            <div class="form-group">
+              <label class="form-label">Featured Image</label>
+              <input type="file" id="post-image-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none;">
+              <input type="hidden" id="post-featured-image" value="">
+
+              <div id="image-preview-wrapper" class="image-upload-wrapper" style="display:none;">
+                <div class="image-preview-container">
+                  <img id="image-preview-img" class="image-preview-img" src="" alt="Featured Preview">
+                </div>
+                <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2);">
+                  <button type="button" id="change-image-btn" class="btn btn-outline btn-sm">Change Image</button>
+                  <button type="button" id="remove-image-btn" class="btn btn-danger btn-sm">Remove</button>
+                </div>
+              </div>
+
+              <div id="image-upload-prompt" style="display:block;">
+                <button type="button" id="upload-image-trigger" class="btn btn-outline" style="width:100%;border-style:dashed;">
+                  <span>🖼️</span> Upload Featured Image
+                </button>
+                <div class="form-help">JPG, PNG, WEBP, GIF up to 2MB.</div>
+              </div>
+            </div>
 
             <!-- Status -->
             <div class="form-group">
@@ -213,9 +256,28 @@
         // Prepopulate Form
         document.getElementById('post-title').value = currentPost.title || '';
         document.getElementById('post-content').value = currentPost.content || '';
+        document.getElementById('post-tags').value = currentPost.tags || '';
         
         if (currentPost.category_id) {
           document.getElementById('post-category').value = currentPost.category_id;
+        }
+
+        // Image Handling
+        const previewWrapper = document.getElementById('image-preview-wrapper');
+        const promptWrapper = document.getElementById('image-upload-prompt');
+        const previewImg = document.getElementById('image-preview-img');
+        const hiddenImgInput = document.getElementById('post-featured-image');
+
+        if (currentPost.featured_image) {
+          hiddenImgInput.value = currentPost.featured_image;
+          previewImg.src = currentPost.featured_image;
+          previewWrapper.style.display = 'block';
+          promptWrapper.style.display = 'none';
+        } else {
+          hiddenImgInput.value = '';
+          previewImg.src = '';
+          previewWrapper.style.display = 'none';
+          promptWrapper.style.display = 'block';
         }
 
         // Radio Status
@@ -290,8 +352,97 @@
       document.getElementById('content-word-count').textContent = `${words} word${words === 1 ? '' : 's'}`;
     }
 
+    function insertFormatting(textarea, action) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = textarea.value.substring(start, end);
+      let replacement = '';
+
+      switch (action) {
+        case 'bold':
+          replacement = `**${selected || 'bold text'}**`;
+          break;
+        case 'italic':
+          replacement = `*${selected || 'italic text'}*`;
+          break;
+        case 'heading':
+          replacement = `\n## ${selected || 'Heading'}\n`;
+          break;
+        case 'list':
+          replacement = `\n- ${selected || 'List item'}\n`;
+          break;
+        case 'quote':
+          replacement = `\n> ${selected || 'Quote'}\n`;
+          break;
+        case 'code':
+          replacement = `\n\`\`\`\n${selected || 'code here'}\n\`\`\`\n`;
+          break;
+        case 'link':
+          replacement = `[${selected || 'link text'}](https://example.com)`;
+          break;
+        default:
+          return;
+      }
+
+      textarea.setRangeText(replacement, start, end, 'end');
+      textarea.focus();
+      textarea.dispatchEvent(new Event('input'));
+    }
+
     function setupHandlers() {
-      document.getElementById('post-content').oninput = updateWordCount;
+      const contentArea = document.getElementById('post-content');
+      contentArea.oninput = updateWordCount;
+
+      // Formatting Toolbar
+      document.querySelectorAll('.toolbar-btn').forEach(btn => {
+        btn.onclick = () => {
+          insertFormatting(contentArea, btn.dataset.action);
+        };
+      });
+
+      // Image Upload
+      const uploadTrigger = document.getElementById('upload-image-trigger');
+      const changeBtn = document.getElementById('change-image-btn');
+      const removeBtn = document.getElementById('remove-image-btn');
+      const imageFileInput = document.getElementById('post-image-file');
+      const previewWrapper = document.getElementById('image-preview-wrapper');
+      const promptWrapper = document.getElementById('image-upload-prompt');
+      const previewImg = document.getElementById('image-preview-img');
+      const hiddenImgInput = document.getElementById('post-featured-image');
+
+      if (uploadTrigger) uploadTrigger.onclick = () => imageFileInput.click();
+      if (changeBtn) changeBtn.onclick = () => imageFileInput.click();
+
+      if (imageFileInput) {
+        imageFileInput.onchange = async () => {
+          const file = imageFileInput.files[0];
+          if (!file) return;
+
+          try {
+            showToast('Uploading image...', 'info');
+            const res = await authorPostService.uploadImage(file);
+            if (res?.data?.url) {
+              hiddenImgInput.value = res.data.url;
+              previewImg.src = res.data.url;
+              previewWrapper.style.display = 'block';
+              promptWrapper.style.display = 'none';
+              showToast('Featured image uploaded!', 'success');
+            }
+          } catch (err) {
+            showToast('Image upload failed: ' + err.message, 'danger');
+          }
+        };
+      }
+
+      if (removeBtn) {
+        removeBtn.onclick = () => {
+          imageFileInput.value = '';
+          hiddenImgInput.value = '';
+          previewImg.src = '';
+          previewWrapper.style.display = 'none';
+          promptWrapper.style.display = 'block';
+        };
+      }
 
       // Update Post
       document.getElementById('update-post-btn').onclick = async () => {
@@ -372,6 +523,8 @@
       const title = document.getElementById('post-title').value.trim();
       const content = document.getElementById('post-content').value.trim();
       const categoryId = document.getElementById('post-category').value;
+      const tags = document.getElementById('post-tags').value.trim();
+      const featuredImage = document.getElementById('post-featured-image').value.trim();
       const status = document.querySelector('input[name="post-status"]:checked').value;
 
       let clientErr = false;
@@ -395,6 +548,8 @@
           content,
           status,
           category_id: categoryId ? parseInt(categoryId, 10) : null,
+          tags: tags || null,
+          featured_image: featuredImage || null,
         };
 
         await authorPostService.updatePost(postId, payload);
@@ -410,6 +565,8 @@
         }
 
         showToast('Failed to update article: ' + err.message, 'danger');
+      } finally {
+        updateBtn.disabled = false;
       }
     }
 

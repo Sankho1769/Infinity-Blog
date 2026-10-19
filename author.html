@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Author Profile — Infinity Blog</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/public.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand-logo">
+        <span class="brand-badge">∞</span>
+        <span>Infinity Blog</span>
+      </a>
+      <nav>
+        <ul class="nav-menu"></ul>
+      </nav>
+      <div class="header-actions"></div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-wrapper">
+    <!-- Breadcrumb / Back Navigation -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-6);">
+      <div style="display:flex;gap:var(--space-3);align-items:center;">
+        <a href="authors.html" class="btn btn-secondary btn-sm">&larr; All Authors</a>
+        <a href="index.html" class="btn btn-outline btn-sm">Home</a>
+      </div>
+      <div id="author-owner-actions" style="display:none;">
+        <button type="button" id="edit-profile-btn" class="btn btn-primary btn-sm">
+          <span>✏️</span> Edit Profile
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading State -->
+    <div id="author-loading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Loading author profile...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="author-error" class="alert alert-danger" style="display:none;"></div>
+
+    <!-- Profile Hero -->
+    <div id="author-hero-container" style="display:none;">
+      <section class="author-profile-hero">
+        <div style="display:flex;gap:var(--space-6);align-items:flex-start;flex-wrap:wrap;">
+          <div id="author-avatar-badge" style="width:84px;height:84px;border-radius:50%;background:linear-gradient(135deg,var(--color-primary),#4f46e5);color:#fff;font-size:2.2rem;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);flex-shrink:0;">
+            A
+          </div>
+          <div style="flex:1;min-width:240px;">
+            <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-1);">
+              <h1 id="author-name" class="author-display-title">Author Name</h1>
+              <span id="author-role-badge" class="badge badge-published">Author</span>
+            </div>
+            <p id="author-meta-date" style="color:var(--color-text-muted);font-size:0.875rem;margin-bottom:var(--space-3);">Contributor since 2026</p>
+            <p id="author-bio" class="author-bio-text">No bio provided yet.</p>
+          </div>
+        </div>
+
+        <!-- Author Stats Row -->
+        <div class="author-stats-row">
+          <div class="author-stat-item">
+            <span id="stat-published" class="author-stat-num">0</span>
+            <span class="author-stat-lbl">Published Articles</span>
+          </div>
+          <div class="author-stat-item">
+            <span id="stat-total" class="author-stat-num">0</span>
+            <span class="author-stat-lbl">Total Submissions</span>
+          </div>
+          <div class="author-stat-item">
+            <span id="stat-views" class="author-stat-num">0</span>
+            <span class="author-stat-lbl">Article Views</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Published Articles Section -->
+      <section style="margin-top:var(--space-8);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-6);border-bottom:2px solid var(--color-border);padding-bottom:var(--space-3);">
+          <h2 id="author-articles-heading" style="font-size:1.5rem;font-weight:700;">Articles by Author</h2>
+          <span id="author-articles-count" class="badge">0 articles</span>
+        </div>
+
+        <div id="author-articles-empty" class="empty-state" style="display:none;">
+          <div class="empty-state-icon">✍️</div>
+          <h3 class="empty-state-title">No Articles Published Yet</h3>
+          <p class="empty-state-desc">This author has not published any public articles on Infinity Blog yet.</p>
+        </div>
+
+        <div id="author-posts-grid" class="post-grid"></div>
+      </section>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="modal-overlay" id="edit-profile-modal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Edit Your Profile</h3>
+          <button type="button" class="modal-close" id="profile-modal-close">&times;</button>
+        </div>
+        <form id="edit-profile-form" novalidate>
+          <div class="form-group">
+            <label for="profile-display-name" class="form-label">Display Name *</label>
+            <input type="text" id="profile-display-name" class="form-control" required maxlength="100">
+            <div class="form-error" id="profile-name-error"></div>
+          </div>
+          <div class="form-group">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-2);">
+              <label for="profile-bio" class="form-label" style="margin-bottom:0;">Bio / About You</label>
+              <span id="profile-bio-counter" style="font-size:0.8rem;color:var(--color-text-muted);">0 / 500</span>
+            </div>
+            <textarea id="profile-bio" class="form-control" rows="4" maxlength="500" placeholder="Tell readers about your expertise, interests, or background..."></textarea>
+            <div class="form-help">Max 500 characters.</div>
+            <div class="form-error" id="profile-bio-error"></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="profile-modal-cancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="profile-modal-save">Save Profile</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <p>&copy; 2026 Infinity Blog. Author Hub.</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script type="module" src="assets/js/main.js"></script>
+  <script type="module">
+    import { authService } from './assets/js/auth.js';
+    import { publicBlogService } from './assets/js/public-blog.js';
+    import { authorPostService } from './assets/js/author-posts.js';
+    import { escapeHtml, showToast } from './assets/js/main.js';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const authorId = urlParams.get('id');
+
+    let currentAuthor = null;
+    let loggedInUser = null;
+
+    async function initAuthorPage() {
+      loggedInUser = await authService.getCurrentUser();
+
+      if (!authorId) {
+        showError('No author ID was specified.');
+        return;
+      }
+
+      await loadAuthorProfile();
+      setupModalHandlers();
+    }
+
+    async function loadAuthorProfile() {
+      const loadingEl = document.getElementById('author-loading');
+      const heroContainer = document.getElementById('author-hero-container');
+
+      loadingEl.style.display = 'flex';
+      heroContainer.style.display = 'none';
+
+      try {
+        const res = await publicBlogService.getAuthor(authorId);
+        currentAuthor = res?.data;
+
+        if (!currentAuthor) {
+          throw new Error('Author not found.');
+        }
+
+        renderAuthorHero(currentAuthor);
+        renderAuthorArticles(currentAuthor.posts || []);
+
+        loadingEl.style.display = 'none';
+        heroContainer.style.display = 'block';
+
+        // Check if logged in user is this author or admin
+        if (loggedInUser && (loggedInUser.id === currentAuthor.id || loggedInUser.role === 'admin')) {
+          document.getElementById('author-owner-actions').style.display = 'block';
+        }
+      } catch (err) {
+        loadingEl.style.display = 'none';
+        showError(err.message || 'Failed to load author profile.');
+      }
+    }
+
+    function renderAuthorHero(author) {
+      document.title = `${author.display_name} — Author Profile — Infinity Blog`;
+      document.getElementById('author-name').textContent = author.display_name;
+      document.getElementById('author-avatar-badge').textContent = (author.display_name || 'A').charAt(0).toUpperCase();
+
+      const roleBadge = document.getElementById('author-role-badge');
+      roleBadge.textContent = author.role ? author.role.toUpperCase() : 'AUTHOR';
+
+      const dateStr = author.created_at ? new Date(author.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long' }) : '2026';
+      document.getElementById('author-meta-date').textContent = `Contributor since ${dateStr}`;
+
+      const bioEl = document.getElementById('author-bio');
+      if (author.bio && author.bio.trim()) {
+        bioEl.textContent = author.bio;
+        bioEl.style.fontStyle = 'normal';
+      } else {
+        bioEl.textContent = 'This author has not written a public bio yet.';
+        bioEl.style.fontStyle = 'italic';
+      }
+
+      document.getElementById('stat-published').textContent = (author.published_posts || 0).toLocaleString();
+      document.getElementById('stat-total').textContent = (author.total_posts || 0).toLocaleString();
+      document.getElementById('stat-views').textContent = (author.total_views || 0).toLocaleString();
+      document.getElementById('author-articles-heading').textContent = `Articles by ${author.display_name}`;
+    }
+
+    function renderAuthorArticles(posts) {
+      const countBadge = document.getElementById('author-articles-count');
+      const emptyEl = document.getElementById('author-articles-empty');
+      const gridEl = document.getElementById('author-posts-grid');
+
+      countBadge.textContent = `${posts.length} article${posts.length === 1 ? '' : 's'}`;
+
+      if (posts.length === 0) {
+        emptyEl.style.display = 'block';
+        gridEl.innerHTML = '';
+        return;
+      }
+
+      emptyEl.style.display = 'none';
+      gridEl.innerHTML = '';
+
+      posts.forEach(post => {
+        const card = document.createElement('article');
+        card.className = 'post-card';
+
+        const dateStr = post.published_at || post.created_at;
+        const formattedDate = dateStr ? new Date(dateStr).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+        const excerpt = post.summary || (post.content ? post.content.substring(0, 140) + '...' : '');
+
+        let imageHtml = '';
+        if (post.featured_image) {
+          imageHtml = `
+            <div class="card-featured-image-wrapper">
+              <img src="${escapeHtml(post.featured_image)}" alt="${escapeHtml(post.title)}" class="card-featured-image" loading="lazy">
+            </div>
+          `;
+        }
+
+        let tagsHtml = '';
+        if (post.tags) {
+          const tagsArray = post.tags.split(',').map(t => t.trim()).filter(Boolean);
+          if (tagsArray.length > 0) {
+            tagsHtml = `
+              <div class="card-tags-list">
+                ${tagsArray.map(tag => `<span class="tag-badge">#${escapeHtml(tag)}</span>`).join('')}
+              </div>
+            `;
+          }
+        }
+
+        card.innerHTML = `
+          ${imageHtml}
+          <div class="post-card-content">
+            <div class="post-card-meta">
+              ${post.category_name ? `<span class="badge badge-category">${escapeHtml(post.category_name)}</span>` : ''}
+              <span class="post-date">${escapeHtml(formattedDate)}</span>
+              <span class="post-views" title="View count">👁️ ${(post.views || 0).toLocaleString()}</span>
+            </div>
+            <h3 class="post-card-title">
+              <a href="post.html?id=${post.id}">${escapeHtml(post.title)}</a>
+            </h3>
+            <p class="post-card-excerpt">${escapeHtml(excerpt)}</p>
+            ${tagsHtml}
+            <div class="post-card-footer">
+              <a href="post.html?id=${post.id}" class="btn btn-outline btn-sm">Read Article &rarr;</a>
+            </div>
+          </div>
+        `;
+
+        gridEl.appendChild(card);
+      });
+    }
+
+    function setupModalHandlers() {
+      const modal = document.getElementById('edit-profile-modal');
+      const editBtn = document.getElementById('edit-profile-btn');
+      const closeBtn = document.getElementById('profile-modal-close');
+      const cancelBtn = document.getElementById('profile-modal-cancel');
+      const form = document.getElementById('edit-profile-form');
+      const nameInput = document.getElementById('profile-display-name');
+      const bioTextarea = document.getElementById('profile-bio');
+      const bioCounter = document.getElementById('profile-bio-counter');
+
+      const updateCounter = () => {
+        const len = bioTextarea.value.length;
+        bioCounter.textContent = `${len} / 500`;
+      };
+      bioTextarea.oninput = updateCounter;
+
+      if (editBtn) {
+        editBtn.onclick = () => {
+          nameInput.value = currentAuthor.display_name || '';
+          bioTextarea.value = currentAuthor.bio || '';
+          updateCounter();
+          modal.classList.add('active');
+        };
+      }
+
+      const closeModal = () => {
+        modal.classList.remove('active');
+        document.getElementById('profile-name-error').textContent = '';
+        document.getElementById('profile-bio-error').textContent = '';
+      };
+
+      closeBtn.onclick = closeModal;
+      cancelBtn.onclick = closeModal;
+
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        document.getElementById('profile-name-error').textContent = '';
+        document.getElementById('profile-bio-error').textContent = '';
+
+        const displayName = nameInput.value.trim();
+        const bio = bioTextarea.value.trim();
+
+        if (!displayName) {
+          document.getElementById('profile-name-error').textContent = 'Display name cannot be empty.';
+          return;
+        }
+
+        const saveBtn = document.getElementById('profile-modal-save');
+        saveBtn.disabled = true;
+
+        try {
+          await authorPostService.updateProfile({ display_name: displayName, bio });
+          showToast('Profile updated successfully!', 'success');
+          closeModal();
+          await loadAuthorProfile();
+        } catch (err) {
+          if (err.fields) {
+            if (err.fields.display_name) document.getElementById('profile-name-error').textContent = err.fields.display_name;
+            if (err.fields.bio) document.getElementById('profile-bio-error').textContent = err.fields.bio;
+          }
+          showToast(err.message || 'Failed to update profile.', 'danger');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      };
+    }
+
+    function showError(msg) {
+      const errEl = document.getElementById('author-error');
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+
+    initAuthorPage();
+  </script>
+</body>
+</html>

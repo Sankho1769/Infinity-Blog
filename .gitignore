@@ -11,3 +11,8 @@ tmp/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# User Uploads (preserve .htaccess and directory)
+assets/uploads/*
+!assets/uploads/.htaccess
+!assets/uploads/.gitkeep

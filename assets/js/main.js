@@ -95,6 +95,8 @@ export async function initAppShell() {
         let navHtml = `
             <li><a href="index.html" class="nav-link ${currentPath.endsWith('index.html') || currentPath.endsWith('/') ? 'active' : ''}">Home</a></li>
             <li><a href="categories.html" class="nav-link ${currentPath.includes('categories.html') ? 'active' : ''}">Categories</a></li>
+            <li><a href="authors.html" class="nav-link ${currentPath.includes('authors.html') ? 'active' : ''}">Authors</a></li>
+            <li><a href="index.html#about" class="nav-link">About</a></li>
         `;
 
         if (user) {
@@ -114,11 +116,13 @@ export async function initAppShell() {
     if (headerActions) {
         if (user) {
             headerActions.innerHTML = `
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="badge ${user.role === 'admin' ? 'badge-admin' : 'badge-published'}">${escapeHtml(user.role)}</span>
-                    <span style="font-size:0.9rem;font-weight:600;color:var(--color-text-main);">${escapeHtml(user.display_name)}</span>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <a href="profile.html" class="user-profile-pill" title="View & Edit Profile" style="text-decoration:none;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-sm);background:rgba(37,99,235,0.06);transition:background 0.15s ease;">
+                        <span class="badge ${user.role === 'admin' ? 'badge-admin' : 'badge-published'}">${escapeHtml(user.role)}</span>
+                        <span style="font-size:0.9rem;font-weight:600;color:var(--color-text-main);">${escapeHtml(user.display_name)}</span>
+                    </a>
+                    <button type="button" class="btn btn-secondary btn-sm" id="global-logout-btn">Logout</button>
                 </div>
-                <button type="button" class="btn btn-secondary btn-sm" id="global-logout-btn">Logout</button>
             `;
             const logoutBtn = document.getElementById('global-logout-btn');
             if (logoutBtn) {

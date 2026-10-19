@@ -24,5 +24,13 @@ export const publicBlogService = {
 
     async getCategories() {
         return await apiRequest('/categories', { method: 'GET' });
+    },
+
+    async getAuthors() {
+        return await apiRequest('/authors', { method: 'GET' });
+    },
+
+    async getAuthor(id) {
+        return await apiRequest(`/authors/${id}`, { method: 'GET' });
     }
 };

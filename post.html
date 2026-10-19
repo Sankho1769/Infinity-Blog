@@ -45,6 +45,11 @@
 
     <!-- Article Reading Container -->
     <article class="article-reading-container" id="article-container" style="display:none;">
+      <!-- Featured Image Banner -->
+      <div id="article-featured-image-container" style="display:none;margin-bottom:var(--space-6);border-radius:var(--radius-lg);overflow:hidden;max-height:400px;border:1px solid var(--color-border);">
+        <img id="article-featured-image" src="" alt="Featured Image" style="width:100%;height:100%;max-height:400px;object-fit:cover;">
+      </div>
+
       <header class="article-header">
         <div class="article-header-meta">
           <a href="#" class="badge badge-category" id="article-category" style="text-decoration:none;">Category</a>
@@ -54,9 +59,11 @@
         <div class="article-author-row">
           <div class="author-avatar-sm" id="article-author-avatar">A</div>
           <div>
-            <strong id="article-author-name">Author Name</strong>
+            <a href="#" id="article-author-link" style="text-decoration:none;color:inherit;font-weight:700;">Author Name</a>
             <span style="margin: 0 4px;">&bull;</span>
             <time id="article-date">Date</time>
+            <span style="margin: 0 4px;">&bull;</span>
+            <span id="article-views" style="color:var(--color-text-muted);">0 views</span>
           </div>
         </div>
       </header>
@@ -73,8 +80,20 @@
       <!-- Full Body Content -->
       <div class="article-content" id="article-content"></div>
 
+      <!-- Tags Section -->
+      <div id="article-tags-container" style="margin-top:var(--space-6);padding-top:var(--space-4);border-top:1px solid var(--color-border);display:none;">
+        <strong style="font-size:0.9rem;margin-right:8px;color:var(--color-text-muted);">Tags:</strong>
+        <div id="article-tags-list" style="display:inline-flex;flex-wrap:wrap;gap:4px;"></div>
+      </div>
+
+      <!-- Related Articles Section (Wireframe Page 2) -->
+      <div class="related-articles-section" id="related-articles-section" style="display:none;">
+        <h2 style="font-size:1.35rem;font-weight:700;margin-bottom:var(--space-4);color:var(--color-text-main);">Related Articles</h2>
+        <div class="related-grid" id="related-articles-grid"></div>
+      </div>
+
       <!-- Article Footer -->
-      <footer class="article-footer-nav">
+      <footer class="article-footer-nav" style="margin-top:var(--space-8);">
         <a href="index.html" class="btn btn-secondary">&larr; Back to All Posts</a>
         <button type="button" class="btn btn-outline btn-sm" onclick="window.scrollTo({top:0, behavior:'smooth'})">&uarr; Back to Top</button>
       </footer>
@@ -127,13 +146,25 @@
         document.title = `${post.title} — Infinity Blog`;
 
         // Fill Details
+        if (post.featured_image) {
+          const featImg = document.getElementById('article-featured-image');
+          featImg.src = post.featured_image;
+          document.getElementById('article-featured-image-container').style.display = 'block';
+        }
+
         const catBadge = document.getElementById('article-category');
         catBadge.textContent = post.category_name || 'General';
         if (post.category_id) {
           catBadge.href = `index.html?category_id=${post.category_id}`;
         }
-        document.getElementById('article-author-name').textContent = post.author_name || 'Author';
+        
+        const authorLink = document.getElementById('article-author-link');
+        authorLink.textContent = post.author_name || 'Author';
+        if (post.author_id) {
+          authorLink.href = `author.html?id=${post.author_id}`;
+        }
         document.getElementById('article-author-avatar').textContent = (post.author_name || 'A').charAt(0).toUpperCase();
+        document.getElementById('article-views').textContent = `${post.views || 0} views`;
 
         if (post.published_at) {
           const pubDate = new Date(post.published_at).toLocaleDateString('en-US', {
@@ -166,6 +197,60 @@
             contentContainer.appendChild(p);
           }
         });
+
+        // Render Tags
+        if (post.tags) {
+          const tagsContainer = document.getElementById('article-tags-container');
+          const tagsList = document.getElementById('article-tags-list');
+          tagsList.innerHTML = '';
+          post.tags.split(',').forEach(tag => {
+            const cleanTag = tag.trim();
+            if (cleanTag) {
+              const chip = document.createElement('a');
+              chip.className = 'tag-badge';
+              chip.style.textDecoration = 'none';
+              chip.href = `index.html?q=${encodeURIComponent(cleanTag)}`;
+              chip.textContent = `#${cleanTag}`;
+              tagsList.appendChild(chip);
+            }
+          });
+          tagsContainer.style.display = 'block';
+        }
+
+        // Render Related Articles (Wireframe Page 2)
+        if (post.related_posts && post.related_posts.length > 0) {
+          const relSection = document.getElementById('related-articles-section');
+          const relGrid = document.getElementById('related-articles-grid');
+          relGrid.innerHTML = '';
+
+          post.related_posts.forEach(rel => {
+            const card = document.createElement('div');
+            card.className = 'article-card';
+            const relThumb = rel.featured_image
+              ? `<div class="article-card-thumb" style="height:120px;overflow:hidden;"><img src="${escapeHtml(rel.featured_image)}" style="width:100%;height:100%;object-fit:cover;"></div>`
+              : `<div class="article-card-thumb" style="height:120px;"><span>📄</span></div>`;
+
+            card.innerHTML = `
+              ${relThumb}
+              <div class="article-card-body" style="padding:var(--space-4);">
+                <div class="article-card-meta">
+                  <span class="badge badge-category">${escapeHtml(rel.category_name || 'General')}</span>
+                  <span style="font-size:0.75rem;color:var(--color-text-muted);">👁️ ${rel.views || 0}</span>
+                </div>
+                <h4 style="font-size:1.05rem;font-weight:700;margin-bottom:var(--space-2);line-height:1.35;">
+                  <a href="post.html?id=${rel.id}">${escapeHtml(rel.title)}</a>
+                </h4>
+                <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:var(--space-3);line-height:1.4;">${escapeHtml(rel.excerpt || 'Read article...')}</p>
+                <div style="margin-top:auto;">
+                  <a href="post.html?id=${rel.id}" class="btn btn-outline btn-sm" style="width:100%;text-align:center;">Open Article &rarr;</a>
+                </div>
+              </div>
+            `;
+            relGrid.appendChild(card);
+          });
+
+          relSection.style.display = 'block';
+        }
 
         containerEl.style.display = 'block';
       } catch (err) {

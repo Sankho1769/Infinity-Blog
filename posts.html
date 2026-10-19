@@ -38,23 +38,43 @@
     <div class="manage-posts-toolbar">
       <!-- Status Tabs -->
       <div class="status-tabs">
-        <button type="button" class="status-tab active" data-status="">All Posts</button>
-        <button type="button" class="status-tab" data-status="published">Published</button>
-        <button type="button" class="status-tab" data-status="draft">Drafts</button>
+        <button type="button" class="status-tab active" data-status="">All Posts <span id="count-all" class="badge" style="margin-left:4px;">0</span></button>
+        <button type="button" class="status-tab" data-status="published">Published <span id="count-published" class="badge badge-published" style="margin-left:4px;">0</span></button>
+        <button type="button" class="status-tab" data-status="draft">Drafts <span id="count-draft" class="badge badge-draft" style="margin-left:4px;">0</span></button>
       </div>
 
       <!-- Filters Row -->
       <div class="filters-row">
         <div class="filter-input">
-          <input type="text" id="post-search-input" class="form-control" placeholder="Search by title...">
+          <input type="text" id="post-search-input" class="form-control" placeholder="Search by title or tags...">
         </div>
         <div style="min-width:180px;">
           <select id="category-filter-select" class="form-control">
             <option value="">All Categories</option>
           </select>
         </div>
+        <div style="min-width:160px;">
+          <select id="post-sort-select" class="form-control">
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="views">Most Viewed</option>
+            <option value="title">Title (A-Z)</option>
+          </select>
+        </div>
         <button type="button" id="apply-filter-btn" class="btn btn-secondary">Filter</button>
         <button type="button" id="reset-filter-btn" class="btn btn-outline">Reset</button>
+      </div>
+    </div>
+
+    <!-- Bulk Actions Bar -->
+    <div id="bulk-actions-bar" class="bulk-actions-bar" style="display:none;background:var(--color-bg-alt);padding:var(--space-2) var(--space-4);border-radius:var(--radius-md);margin-bottom:var(--space-3);align-items:center;justify-content:space-between;border:1px solid var(--color-border);">
+      <div style="display:flex;align-items:center;gap:var(--space-3);">
+        <span id="selected-count-label" style="font-weight:600;font-size:0.9rem;color:var(--color-text);">0 articles selected</span>
+      </div>
+      <div>
+        <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm">
+          <span>🗑️</span> Delete Selected
+        </button>
       </div>
     </div>
 
@@ -78,9 +98,11 @@
         <table class="table">
           <thead>
             <tr>
+              <th style="width:40px;"><input type="checkbox" id="select-all-posts" aria-label="Select all posts"></th>
               <th>Title</th>
               <th>Category</th>
               <th>Status</th>
+              <th>Views</th>
               <th>Date</th>
               <th style="text-align:right;">Actions</th>
             </tr>
@@ -112,7 +134,9 @@
     let currentStatus = '';
     let currentCategoryId = '';
     let currentSearch = '';
+    let currentSort = 'newest';
     let currentPage = 1;
+    let selectedPostIds = new Set();
 
     async function initPage() {
       const user = await authService.getCurrentUser();
@@ -142,6 +166,25 @@
       }
     }
 
+    function updateBulkBar() {
+      const bar = document.getElementById('bulk-actions-bar');
+      const label = document.getElementById('selected-count-label');
+      const selectAll = document.getElementById('select-all-posts');
+      const tbody = document.getElementById('posts-tbody');
+      const totalVisible = tbody.querySelectorAll('.post-checkbox').length;
+
+      if (selectedPostIds.size > 0) {
+        bar.style.display = 'flex';
+        label.textContent = `${selectedPostIds.size} article${selectedPostIds.size === 1 ? '' : 's'} selected`;
+      } else {
+        bar.style.display = 'none';
+      }
+
+      if (selectAll) {
+        selectAll.checked = totalVisible > 0 && selectedPostIds.size === totalVisible;
+      }
+    }
+
     async function loadPosts() {
       const loadingEl = document.getElementById('posts-loading');
       const emptyEl = document.getElementById('posts-empty');
@@ -154,17 +197,27 @@
       cardEl.style.display = 'none';
       paginationEl.style.display = 'none';
 
+      selectedPostIds.clear();
+      updateBulkBar();
+
       try {
         const response = await authorPostService.getAuthorPosts({
           status: currentStatus,
           category_id: currentCategoryId,
           q: currentSearch,
+          sort: currentSort,
           page: currentPage,
           per_page: 10,
         });
 
         const posts = response?.data || [];
         const meta = response?.meta || {};
+
+        if (meta.stats) {
+          document.getElementById('count-all').textContent = meta.stats.total_posts ?? 0;
+          document.getElementById('count-published').textContent = meta.stats.published_posts ?? 0;
+          document.getElementById('count-draft').textContent = meta.stats.draft_posts ?? 0;
+        }
 
         loadingEl.style.display = 'none';
 
@@ -183,14 +236,21 @@
 
           tr.innerHTML = `
             <td>
+              <input type="checkbox" class="post-checkbox" data-id="${p.id}" aria-label="Select post ${escapeHtml(p.title)}">
+            </td>
+            <td>
               <strong style="display:block;font-size:0.95rem;">${escapeHtml(p.title)}</strong>
               ${p.summary_status === 'stale' ? '<span class="badge badge-draft" style="font-size:0.7rem;">Summary Stale</span>' : ''}
+              ${p.tags ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">${p.tags.split(',').map(t => `<span class="tag-badge" style="font-size:0.7rem;padding:1px 6px;">#${escapeHtml(t.trim())}</span>`).join('')}</div>` : ''}
             </td>
             <td>
               <span class="badge badge-category">${escapeHtml(p.category_name || 'None')}</span>
             </td>
             <td>
               <span class="badge ${badgeClass}">${escapeHtml(p.status)}</span>
+            </td>
+            <td>
+              <span class="badge" style="background:rgba(100,116,139,0.1);color:var(--color-text-muted);font-weight:600;">👁️ ${(p.views || 0).toLocaleString()}</span>
             </td>
             <td style="color:var(--color-text-muted);font-size:0.85rem;">
               ${escapeHtml(formattedDate)}
@@ -204,6 +264,19 @@
             </td>
           `;
           tbody.appendChild(tr);
+        });
+
+        // Checkbox row handlers
+        tbody.querySelectorAll('.post-checkbox').forEach(cb => {
+          cb.onchange = () => {
+            const id = parseInt(cb.dataset.id, 10);
+            if (cb.checked) {
+              selectedPostIds.add(id);
+            } else {
+              selectedPostIds.delete(id);
+            }
+            updateBulkBar();
+          };
         });
 
         // Attach delete actions
@@ -268,6 +341,48 @@
     }
 
     function setupEventListeners() {
+      // Select All Checkbox
+      const selectAll = document.getElementById('select-all-posts');
+      if (selectAll) {
+        selectAll.onchange = () => {
+          const isChecked = selectAll.checked;
+          document.querySelectorAll('#posts-tbody .post-checkbox').forEach(cb => {
+            cb.checked = isChecked;
+            const id = parseInt(cb.dataset.id, 10);
+            if (isChecked) {
+              selectedPostIds.add(id);
+            } else {
+              selectedPostIds.delete(id);
+            }
+          });
+          updateBulkBar();
+        };
+      }
+
+      // Bulk Delete Button
+      const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+      if (bulkDeleteBtn) {
+        bulkDeleteBtn.onclick = () => {
+          if (selectedPostIds.size === 0) return;
+          showConfirmModal(
+            'Delete Multiple Articles?',
+            `Are you sure you want to permanently delete ${selectedPostIds.size} selected article(s)? This action cannot be undone.`,
+            'Delete Permanently',
+            async () => {
+              try {
+                const count = selectedPostIds.size;
+                await authorPostService.bulkDelete(Array.from(selectedPostIds));
+                showToast(`Successfully deleted ${count} article(s).`, 'success');
+                selectedPostIds.clear();
+                await loadPosts();
+              } catch (err) {
+                showToast('Bulk delete failed: ' + err.message, 'danger');
+              }
+            }
+          );
+        };
+      }
+
       // Status Tabs
       document.querySelectorAll('.status-tab').forEach(tab => {
         tab.onclick = () => {
@@ -278,6 +393,13 @@
           loadPosts();
         };
       });
+
+      // Sort Select
+      document.getElementById('post-sort-select').onchange = (e) => {
+        currentSort = e.target.value;
+        currentPage = 1;
+        loadPosts();
+      };
 
       // Filter Button
       document.getElementById('apply-filter-btn').onclick = () => {
@@ -291,8 +413,10 @@
       document.getElementById('reset-filter-btn').onclick = () => {
         document.getElementById('post-search-input').value = '';
         document.getElementById('category-filter-select').value = '';
+        document.getElementById('post-sort-select').value = 'newest';
         currentSearch = '';
         currentCategoryId = '';
+        currentSort = 'newest';
         currentPage = 1;
         loadPosts();
       };

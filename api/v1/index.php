@@ -79,27 +79,35 @@ if (($qPos = strpos($route, '?')) !== false) {
 }
 $route = rtrim($route, '/') ?: '/';
 
-// Enforce request body size limit (2MB max)
-$contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
-if ($contentLength > 2 * 1024 * 1024) {
-    Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold (2MB).', null, 413);
-}
+// Enforce request body size limit (2MB for JSON, 10MB for multipart file uploads)
+$contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+$isMultipart = str_contains(strtolower($contentType), 'multipart/form-data');
+$maxPayload = $isMultipart ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
 
-// Parse JSON Body with depth limit (32) to prevent stack overflow DoS
-$rawInput = file_get_contents('php://input', false, null, 0, 2097153);
-if (strlen($rawInput) > 2 * 1024 * 1024) {
-    Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold (2MB).', null, 413);
+$contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+if ($contentLength > $maxPayload) {
+    Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold.', null, 413);
 }
 
 $inputData = [];
-if (!empty($rawInput)) {
-    $inputData = json_decode($rawInput, true, 32);
-    if (json_last_error() !== JSON_ERROR_NONE && in_array($method, ['POST', 'PATCH', 'PUT'], true)) {
-        Response::error('MALFORMED_JSON', 'Invalid JSON payload received.', null, 400);
+if ($isMultipart) {
+    $inputData = $_POST;
+} else {
+    // Parse JSON Body with depth limit (32) to prevent stack overflow DoS
+    $rawInput = file_get_contents('php://input', false, null, 0, 2097153);
+    if (strlen($rawInput) > 2 * 1024 * 1024) {
+        Response::error('PAYLOAD_TOO_LARGE', 'Request payload exceeds the maximum allowed threshold (2MB).', null, 413);
     }
-}
-if (!is_array($inputData)) {
-    $inputData = [];
+
+    if (!empty($rawInput)) {
+        $inputData = json_decode($rawInput, true, 32);
+        if (json_last_error() !== JSON_ERROR_NONE && in_array($method, ['POST', 'PATCH', 'PUT'], true)) {
+            Response::error('MALFORMED_JSON', 'Invalid JSON payload received.', null, 400);
+        }
+    }
+    if (!is_array($inputData)) {
+        $inputData = [];
+    }
 }
 
 $pdo = Database::getConnection();
@@ -421,6 +429,86 @@ try {
         Response::success($stmt->fetchAll());
     }
 
+    // GET /authors (Public authors listing)
+    if ($method === 'GET' && $route === '/authors') {
+        $stmt = $pdo->query("
+            SELECT 
+                u.`id`, u.`display_name`, u.`username`, u.`bio`, u.`role`, u.`created_at`,
+                COUNT(p.`id`) AS `total_posts`,
+                COALESCE(SUM(CASE WHEN p.`status` = 'published' THEN 1 ELSE 0 END), 0) AS `published_posts`,
+                COALESCE(SUM(CASE WHEN p.`status` = 'published' THEN p.`views` ELSE 0 END), 0) AS `total_views`
+            FROM `users` u
+            LEFT JOIN `posts` p ON u.`id` = p.`author_id`
+            WHERE u.`status` = 'active'
+            GROUP BY u.`id`
+            ORDER BY `total_views` DESC, `published_posts` DESC, u.`display_name` ASC
+        ");
+        $authors = $stmt->fetchAll();
+        foreach ($authors as &$author) {
+            $author['id'] = (int)$author['id'];
+            $author['total_posts'] = (int)$author['total_posts'];
+            $author['published_posts'] = (int)$author['published_posts'];
+            $author['total_views'] = (int)$author['total_views'];
+        }
+        Response::success($authors);
+    }
+
+    // GET /authors/{id} (Public single author profile)
+    if ($method === 'GET' && preg_match('#^/authors/(\d+)$#', $route, $matches)) {
+        $authorId = (int)$matches[1];
+
+        $stmt = $pdo->prepare("
+            SELECT 
+                u.`id`, u.`display_name`, u.`username`, u.`bio`, u.`role`, u.`created_at`,
+                COUNT(p.`id`) AS `total_posts`,
+                COALESCE(SUM(CASE WHEN p.`status` = 'published' THEN 1 ELSE 0 END), 0) AS `published_posts`,
+                COALESCE(SUM(CASE WHEN p.`status` = 'published' THEN p.`views` ELSE 0 END), 0) AS `total_views`
+            FROM `users` u
+            LEFT JOIN `posts` p ON u.`id` = p.`author_id`
+            WHERE u.`id` = :id AND u.`status` = 'active'
+            GROUP BY u.`id`
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $authorId]);
+        $author = $stmt->fetch();
+
+        if (!$author) {
+            Response::error('NOT_FOUND', 'Author not found or account is inactive.', null, 404);
+        }
+
+        $author['id'] = (int)$author['id'];
+        $author['total_posts'] = (int)$author['total_posts'];
+        $author['published_posts'] = (int)$author['published_posts'];
+        $author['total_views'] = (int)$author['total_views'];
+
+        // Get author's published posts
+        $postStmt = $pdo->prepare("
+            SELECT 
+                p.`id`, p.`title`, p.`summary`, p.`summary_status`,
+                p.`featured_image`, p.`tags`, p.`views`,
+                p.`published_at`, p.`created_at`,
+                SUBSTRING(REGEXP_REPLACE(p.`content`, '<[^>]+>', ''), 1, 220) AS `excerpt`,
+                c.`id` AS `category_id`, c.`name` AS `category_name`, c.`slug` AS `category_slug`
+            FROM `posts` p
+            LEFT JOIN `categories` c ON p.`category_id` = c.`id`
+            WHERE p.`author_id` = :aid AND p.`status` = 'published'
+            ORDER BY p.`published_at` DESC, p.`id` DESC
+        ");
+        $postStmt->execute([':aid' => $authorId]);
+        $authorPosts = $postStmt->fetchAll();
+
+        foreach ($authorPosts as &$p) {
+            $p['id'] = (int)$p['id'];
+            $p['views'] = (int)$p['views'];
+            if ($p['summary_status'] !== 'ready') {
+                $p['summary'] = null;
+            }
+        }
+
+        $author['posts'] = $authorPosts;
+        Response::success($author);
+    }
+
     // GET /posts (Public published post list)
     if ($method === 'GET' && $route === '/posts') {
         $q = trim((string)($_GET['q'] ?? ''));
@@ -433,9 +521,10 @@ try {
         $params = [];
 
         if ($q !== '') {
-            $conditions[] = "(p.`title` LIKE :q1 OR p.`content` LIKE :q2)";
+            $conditions[] = "(p.`title` LIKE :q1 OR p.`content` LIKE :q2 OR p.`tags` LIKE :q3)";
             $params[':q1'] = "%{$q}%";
             $params[':q2'] = "%{$q}%";
+            $params[':q3'] = "%{$q}%";
         }
 
         if ($categoryId !== null) {
@@ -454,8 +543,10 @@ try {
         $sql = "
             SELECT 
                 p.`id`, p.`title`, p.`summary`, p.`summary_status`,
+                p.`featured_image`, p.`tags`, p.`views`,
                 p.`published_at`, p.`created_at`, p.`updated_at`,
                 SUBSTRING(REGEXP_REPLACE(p.`content`, '<[^>]+>', ''), 1, 220) AS `excerpt`,
+                u.`id` AS `author_id`,
                 u.`display_name` AS `author_name`,
                 c.`id` AS `category_id`, c.`name` AS `category_name`, c.`slug` AS `category_slug`
             FROM `posts` p
@@ -477,6 +568,9 @@ try {
 
         // Format summary only if current
         foreach ($posts as &$post) {
+            $post['id'] = (int)$post['id'];
+            $post['views'] = (int)$post['views'];
+            $post['author_id'] = (int)$post['author_id'];
             if ($post['summary_status'] !== 'ready') {
                 $post['summary'] = null;
             }
@@ -494,11 +588,15 @@ try {
     if ($method === 'GET' && preg_match('#^/posts/(\d+)$#', $route, $matches)) {
         $postId = (int)$matches[1];
 
+        // Increment views count atomically for published articles
+        $pdo->prepare("UPDATE `posts` SET `views` = `views` + 1 WHERE `id` = :id AND `status` = 'published'")->execute([':id' => $postId]);
+
         $stmt = $pdo->prepare("
             SELECT 
                 p.`id`, p.`title`, p.`content`, p.`summary`, p.`summary_status`,
+                p.`featured_image`, p.`tags`, p.`views`,
                 p.`published_at`, p.`created_at`, p.`updated_at`,
-                u.`id` AS `author_id`, u.`display_name` AS `author_name`,
+                u.`id` AS `author_id`, u.`display_name` AS `author_name`, u.`bio` AS `author_bio`,
                 c.`id` AS `category_id`, c.`name` AS `category_name`, c.`slug` AS `category_slug`
             FROM `posts` p
             JOIN `users` u ON p.`author_id` = u.`id`
@@ -513,9 +611,34 @@ try {
             Response::error('NOT_FOUND', 'Article not found or not currently published.', null, 404);
         }
 
+        $post['id'] = (int)$post['id'];
+        $post['views'] = (int)$post['views'];
+        $post['author_id'] = (int)$post['author_id'];
+
         if ($post['summary_status'] !== 'ready') {
             $post['summary'] = null;
         }
+
+        // Fetch up to 2 related published posts
+        $catId = $post['category_id'] !== null ? (int)$post['category_id'] : 0;
+        $relStmt = $pdo->prepare("
+            SELECT 
+                p.`id`, p.`title`, p.`featured_image`, p.`views`, p.`published_at`,
+                SUBSTRING(REGEXP_REPLACE(p.`content`, '<[^>]+>', ''), 1, 140) AS `excerpt`,
+                c.`id` AS `category_id`, c.`name` AS `category_name`
+            FROM `posts` p
+            LEFT JOIN `categories` c ON p.`category_id` = c.`id`
+            WHERE p.`status` = 'published' AND p.`id` != :cur_id
+            ORDER BY (CASE WHEN p.`category_id` = :cat_id THEN 0 ELSE 1 END), p.`published_at` DESC
+            LIMIT 2
+        ");
+        $relStmt->execute([':cur_id' => $postId, ':cat_id' => $catId]);
+        $related = $relStmt->fetchAll();
+        foreach ($related as &$r) {
+            $r['id'] = (int)$r['id'];
+            $r['views'] = (int)$r['views'];
+        }
+        $post['related_posts'] = $related;
 
         Response::success($post);
     }
@@ -524,6 +647,137 @@ try {
     // 3. AUTHOR POST ROUTES
     // ==========================================
 
+    // PATCH /author/profile (Update own display name and bio)
+    if ($method === 'PATCH' && $route === '/author/profile') {
+        $user = SessionManager::requireRole('author', 'admin');
+        SessionManager::requireCsrf();
+
+        $displayName = isset($inputData['display_name']) ? trim((string)$inputData['display_name']) : $user['display_name'];
+        $bio = array_key_exists('bio', $inputData) ? trim((string)$inputData['bio']) : null;
+
+        $errors = [];
+        if ($displayName === '') {
+            $errors['display_name'] = 'Display name cannot be empty.';
+        } elseif (mb_strlen($displayName) < 2 || mb_strlen($displayName) > 100) {
+            $errors['display_name'] = 'Display name must be between 2 and 100 characters.';
+        }
+
+        if ($bio !== null && mb_strlen($bio) > 1000) {
+            $errors['bio'] = 'Bio cannot exceed 1000 characters.';
+        }
+
+        if (!empty($errors)) {
+            Response::error('VALIDATION_ERROR', 'Validation failed.', $errors, 422);
+        }
+
+        $stmt = $pdo->prepare("UPDATE `users` SET `display_name` = :dn, `bio` = :bio WHERE `id` = :id");
+        $stmt->execute([
+            ':dn' => $displayName,
+            ':bio' => $bio !== '' ? $bio : null,
+            ':id' => $user['id'],
+        ]);
+
+        $_SESSION['user']['display_name'] = $displayName;
+        AuditLogger::log('USER_PROFILE_UPDATE', 'user', $user['id']);
+
+        Response::success([
+            'id' => (int)$user['id'],
+            'display_name' => $displayName,
+            'bio' => $bio,
+            'message' => 'Profile updated successfully.',
+        ]);
+    }
+
+    // POST /author/upload-image (Upload featured image)
+    if ($method === 'POST' && $route === '/author/upload-image') {
+        $user = SessionManager::requireRole('author', 'admin');
+        SessionManager::requireCsrf();
+
+        if (empty($_FILES['image']) || !isset($_FILES['image']['error'])) {
+            Response::error('VALIDATION_ERROR', 'No image file was uploaded.', ['image' => 'Image file is required.'], 422);
+        }
+
+        $file = $_FILES['image'];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            Response::error('UPLOAD_ERROR', 'File upload failed with error code: ' . $file['error'], null, 400);
+        }
+
+        if ($file['size'] > 2 * 1024 * 1024) {
+            Response::error('PAYLOAD_TOO_LARGE', 'Image size cannot exceed 2MB.', ['image' => 'File size exceeds 2MB limit.'], 413);
+        }
+
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $allowedMimes = [
+            'image/jpeg' => 'jpg',
+            'image/png'  => 'png',
+            'image/webp' => 'webp',
+            'image/gif'  => 'gif',
+        ];
+
+        if (!isset($allowedMimes[$mime])) {
+            Response::error('VALIDATION_ERROR', 'Only JPG, PNG, WEBP, and GIF images are permitted.', ['image' => 'Invalid image format.'], 422);
+        }
+
+        $ext = $allowedMimes[$mime];
+        $filename = 'img_' . bin2hex(random_bytes(12)) . '.' . $ext;
+        $uploadDir = __DIR__ . '/../../assets/uploads/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+        $destPath = $uploadDir . $filename;
+
+        if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+            Response::error('SERVER_ERROR', 'Failed to store uploaded image on server.', null, 500);
+        }
+
+        $url = 'assets/uploads/' . $filename;
+        AuditLogger::log('IMAGE_UPLOAD', 'file', null, ['filename' => $filename, 'url' => $url]);
+
+        Response::success([
+            'url' => $url,
+            'filename' => $filename,
+            'message' => 'Image uploaded successfully.',
+        ], null, 201);
+    }
+
+    // POST /author/posts/bulk-delete
+    if ($method === 'POST' && $route === '/author/posts/bulk-delete') {
+        $user = SessionManager::requireRole('author', 'admin');
+        SessionManager::requireCsrf();
+
+        $postIds = $inputData['post_ids'] ?? [];
+        if (!is_array($postIds) || empty($postIds)) {
+            Response::error('VALIDATION_ERROR', 'A non-empty array of post_ids is required.', ['post_ids' => 'Required.'], 422);
+        }
+
+        $cleanIds = array_values(array_filter(array_map('intval', $postIds)));
+        if (empty($cleanIds)) {
+            Response::error('VALIDATION_ERROR', 'No valid post IDs provided.', null, 422);
+        }
+
+        $placeholders = implode(',', array_fill(0, count($cleanIds), '?'));
+        // If author, must own all posts
+        if ($user['role'] === 'author') {
+            $checkStmt = $pdo->prepare("SELECT `id` FROM `posts` WHERE `id` IN ($placeholders) AND `author_id` != ?");
+            $params = array_merge($cleanIds, [(int)$user['id']]);
+            $checkStmt->execute($params);
+            if ($checkStmt->fetch()) {
+                Response::error('FORBIDDEN', 'You cannot delete posts belonging to another author.', null, 403);
+            }
+        }
+
+        $delStmt = $pdo->prepare("DELETE FROM `posts` WHERE `id` IN ($placeholders)");
+        $delStmt->execute($cleanIds);
+        $deletedCount = $delStmt->rowCount();
+
+        AuditLogger::log('POST_BULK_DELETE', 'post', null, ['count' => $deletedCount, 'ids' => $cleanIds]);
+        Response::success([
+            'deleted_count' => $deletedCount,
+            'message' => "Successfully deleted {$deletedCount} article(s).",
+        ]);
+    }
+
     // GET /author/posts (Author posts listing)
     if ($method === 'GET' && $route === '/author/posts') {
         $user = SessionManager::requireRole('author', 'admin');
@@ -531,6 +785,7 @@ try {
         $status = trim((string)($_GET['status'] ?? ''));
         $categoryId = isset($_GET['category_id']) && is_numeric($_GET['category_id']) ? (int)$_GET['category_id'] : null;
         $q = trim((string)($_GET['q'] ?? ''));
+        $sort = strtolower(trim((string)($_GET['sort'] ?? 'newest')));
         $page = max(1, (int)($_GET['page'] ?? 1));
         $perPage = min(50, max(1, (int)($_GET['per_page'] ?? 10)));
         $offset = ($page - 1) * $perPage;
@@ -555,18 +810,27 @@ try {
         }
 
         if ($q !== '') {
-            $conditions[] = "p.`title` LIKE :q";
-            $params[':q'] = "%{$q}%";
+            $conditions[] = "(p.`title` LIKE :q1 OR p.`tags` LIKE :q2)";
+            $params[':q1'] = "%{$q}%";
+            $params[':q2'] = "%{$q}%";
         }
 
         $whereClause = $conditions ? ('WHERE ' . implode(' AND ', $conditions)) : '';
+
+        $orderBy = match ($sort) {
+            'oldest' => 'p.`created_at` ASC, p.`id` ASC',
+            'views' => 'p.`views` DESC, p.`created_at` DESC',
+            'title' => 'p.`title` ASC',
+            default => 'p.`created_at` DESC, p.`id` DESC',
+        };
 
         // Counts summary for author dashboard
         $countsStmt = $pdo->prepare("
             SELECT 
                 COUNT(*) AS `total`,
                 SUM(CASE WHEN `status` = 'published' THEN 1 ELSE 0 END) AS `published`,
-                SUM(CASE WHEN `status` = 'draft' THEN 1 ELSE 0 END) AS `drafts`
+                SUM(CASE WHEN `status` = 'draft' THEN 1 ELSE 0 END) AS `drafts`,
+                COALESCE(SUM(`views`), 0) AS `total_views`
             FROM `posts`
             WHERE `author_id` = :uid
         ");
@@ -581,6 +845,7 @@ try {
         $sql = "
             SELECT 
                 p.`id`, p.`author_id`, p.`title`, p.`summary`, p.`summary_status`,
+                p.`featured_image`, p.`tags`, p.`views`,
                 p.`status`, p.`published_at`, p.`created_at`, p.`updated_at`,
                 u.`display_name` AS `author_name`,
                 c.`id` AS `category_id`, c.`name` AS `category_name`, c.`slug` AS `category_slug`
@@ -588,7 +853,7 @@ try {
             JOIN `users` u ON p.`author_id` = u.`id`
             LEFT JOIN `categories` c ON p.`category_id` = c.`id`
             {$whereClause}
-            ORDER BY p.`created_at` DESC, p.`id` DESC
+            ORDER BY {$orderBy}
             LIMIT :offset, :limit
         ";
 
@@ -601,6 +866,12 @@ try {
         $stmt->execute();
         $posts = $stmt->fetchAll();
 
+        foreach ($posts as &$post) {
+            $post['id'] = (int)$post['id'];
+            $post['author_id'] = (int)$post['author_id'];
+            $post['views'] = (int)$post['views'];
+        }
+
         Response::success($posts, [
             'total' => $total,
             'page' => $page,
@@ -610,6 +881,7 @@ try {
                 'total_posts' => (int)($stats['total'] ?? 0),
                 'published_posts' => (int)($stats['published'] ?? 0),
                 'draft_posts' => (int)($stats['drafts'] ?? 0),
+                'total_views' => (int)($stats['total_views'] ?? 0),
             ]
         ]);
     }
@@ -623,6 +895,8 @@ try {
         $content = trim((string)($inputData['content'] ?? ''));
         $status = strtolower(trim((string)($inputData['status'] ?? 'draft')));
         $categoryId = !empty($inputData['category_id']) ? (int)$inputData['category_id'] : null;
+        $tags = isset($inputData['tags']) ? trim((string)$inputData['tags']) : null;
+        $featuredImage = isset($inputData['featured_image']) ? trim((string)$inputData['featured_image']) : null;
 
         $errors = [];
         if ($title === '') {
@@ -637,6 +911,13 @@ try {
 
         if (!in_array($status, ['draft', 'published'], true)) {
             $errors['status'] = 'Status must be draft or published.';
+        }
+
+        if ($tags !== null && mb_strlen($tags) > 255) {
+            $errors['tags'] = 'Tags cannot exceed 255 characters.';
+        }
+        if ($featuredImage !== null && mb_strlen($featuredImage) > 255) {
+            $errors['featured_image'] = 'Featured image path cannot exceed 255 characters.';
         }
 
         // Category validation: optional, but if supplied must exist and (if published) be active
@@ -658,14 +939,16 @@ try {
         $publishedAt = ($status === 'published') ? date('Y-m-d H:i:s') : null;
 
         $stmt = $pdo->prepare("
-            INSERT INTO `posts` (`author_id`, `category_id`, `title`, `content`, `status`, `published_at`)
-            VALUES (:author_id, :cat_id, :title, :content, :status, :pub_at)
+            INSERT INTO `posts` (`author_id`, `category_id`, `title`, `content`, `featured_image`, `tags`, `status`, `published_at`)
+            VALUES (:author_id, :cat_id, :title, :content, :img, :tags, :status, :pub_at)
         ");
         $stmt->execute([
             ':author_id' => $user['id'],
             ':cat_id' => $categoryId,
             ':title' => $title,
             ':content' => $content,
+            ':img' => $featuredImage ?: null,
+            ':tags' => $tags ?: null,
             ':status' => $status,
             ':pub_at' => $publishedAt,
         ]);
@@ -678,6 +961,8 @@ try {
             'title' => $title,
             'status' => $status,
             'category_id' => $categoryId,
+            'featured_image' => $featuredImage,
+            'tags' => $tags,
             'published_at' => $publishedAt,
         ], null, 201);
     }
@@ -690,6 +975,7 @@ try {
         $stmt = $pdo->prepare("
             SELECT 
                 p.`id`, p.`author_id`, p.`title`, p.`content`, p.`summary`, p.`summary_status`,
+                p.`featured_image`, p.`tags`, p.`views`,
                 p.`status`, p.`published_at`, p.`created_at`, p.`updated_at`,
                 c.`id` AS `category_id`, c.`name` AS `category_name`, c.`slug` AS `category_slug`, c.`is_active` AS `category_is_active`
             FROM `posts` p
@@ -709,6 +995,10 @@ try {
             Response::error('FORBIDDEN', 'You are not authorized to view or edit this article.', null, 403);
         }
 
+        $post['id'] = (int)$post['id'];
+        $post['author_id'] = (int)$post['author_id'];
+        $post['views'] = (int)$post['views'];
+
         Response::success($post);
     }
 
@@ -718,7 +1008,7 @@ try {
         SessionManager::requireCsrf();
         $postId = (int)$matches[1];
 
-        $stmt = $pdo->prepare("SELECT `id`, `author_id`, `category_id`, `title`, `content`, `status`, `summary_status` FROM `posts` WHERE `id` = :id");
+        $stmt = $pdo->prepare("SELECT `id`, `author_id`, `category_id`, `title`, `content`, `featured_image`, `tags`, `status`, `summary_status` FROM `posts` WHERE `id` = :id");
         $stmt->execute([':id' => $postId]);
         $existing = $stmt->fetch();
 
@@ -733,6 +1023,8 @@ try {
         $title = isset($inputData['title']) ? trim((string)$inputData['title']) : $existing['title'];
         $content = isset($inputData['content']) ? trim((string)$inputData['content']) : $existing['content'];
         $status = isset($inputData['status']) ? strtolower(trim((string)$inputData['status'])) : $existing['status'];
+        $tags = array_key_exists('tags', $inputData) ? trim((string)$inputData['tags']) : $existing['tags'];
+        $featuredImage = array_key_exists('featured_image', $inputData) ? trim((string)$inputData['featured_image']) : $existing['featured_image'];
         $categoryId = array_key_exists('category_id', $inputData)
             ? ($inputData['category_id'] !== null && $inputData['category_id'] !== '' ? (int)$inputData['category_id'] : null)
             : ($existing['category_id'] !== null ? (int)$existing['category_id'] : null);
@@ -746,6 +1038,12 @@ try {
         }
         if (!in_array($status, ['draft', 'published'], true)) {
             $errors['status'] = 'Invalid status value.';
+        }
+        if ($tags !== null && mb_strlen($tags) > 255) {
+            $errors['tags'] = 'Tags cannot exceed 255 characters.';
+        }
+        if ($featuredImage !== null && mb_strlen($featuredImage) > 255) {
+            $errors['featured_image'] = 'Featured image path cannot exceed 255 characters.';
         }
 
         if ($categoryId !== null) {
@@ -773,6 +1071,8 @@ try {
         $params = [
             ':title' => $title,
             ':content' => $content,
+            ':img' => $featuredImage ?: null,
+            ':tags' => $tags ?: null,
             ':status' => $status,
             ':cat_id' => $categoryId,
             ':sum_stat' => $summaryStatus,
@@ -787,6 +1087,8 @@ try {
             UPDATE `posts`
             SET `title` = :title,
                 `content` = :content,
+                `featured_image` = :img,
+                `tags` = :tags,
                 `status` = :status,
                 `category_id` = :cat_id,
                 `summary_status` = :sum_stat
@@ -801,6 +1103,8 @@ try {
             'id' => $postId,
             'title' => $title,
             'status' => $status,
+            'featured_image' => $featuredImage,
+            'tags' => $tags,
             'summary_status' => $summaryStatus,
             'message' => 'Post updated successfully.',
         ]);

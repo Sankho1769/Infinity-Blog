@@ -168,6 +168,7 @@ class SecurityRegressionSuite {
         $this->testEndToEndBlogAndAdminLifecycle();
         $this->testSrsComplianceAndAcceptanceCriteria();
         $this->testUserRegistrationAndLifecycle();
+        $this->testWireframeEndpointsAndFeatures();
 
         echo "\n=======================================================\n";
         echo " AUDIT SUMMARY: {$this->passed} Passed, {$this->failed} Failed\n";
@@ -1067,6 +1068,126 @@ class SecurityRegressionSuite {
         $delUserStmt->execute([':id' => $regUserId]);
         $finalUserCount = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
         $this->assert($finalUserCount === $initialUserCount, 'Criterion 20: Test registration cleaned up, restoring user count');
+    }
+
+    private function testWireframeEndpointsAndFeatures(): void {
+        echo "\n17. Wireframe Endpoints, Author Profiles, Views & Bulk Actions:\n";
+        $pdo = Database::getConnection();
+
+        // 17.1 Public GET /authors
+        $authorsRes = $this->request('GET', '/authors');
+        $this->assert($authorsRes['status'] === 200, 'Public GET /authors returns HTTP 200');
+        $authorsData = $authorsRes['body']['data'] ?? null;
+        $this->assert(is_array($authorsData), 'GET /authors returns list of authors');
+        $this->assert(!empty($authorsData), 'At least one author found');
+        $firstAuthor = $authorsData[0] ?? [];
+        $this->assert(isset($firstAuthor['id'], $firstAuthor['display_name'], $firstAuthor['published_posts'], $firstAuthor['total_views']), 'Author object contains id, display_name, published_posts, and total_views');
+
+        // 17.2 Public GET /authors/{id}
+        $authorProfileRes = $this->request('GET', "/authors/{$firstAuthor['id']}");
+        $this->assert($authorProfileRes['status'] === 200, "Public GET /authors/{$firstAuthor['id']} returns HTTP 200");
+        $this->assert(isset($authorProfileRes['body']['data']['posts']), 'Author profile returns their published posts array');
+
+        // 17.3 View count increment and related posts on GET /posts/{id}
+        $pubPostStmt = $pdo->query("SELECT `id`, `views` FROM `posts` WHERE `status` = 'published' LIMIT 1");
+        $pubPost = $pubPostStmt->fetch();
+        if ($pubPost) {
+            $prevViews = (int)$pubPost['views'];
+            $postDetailRes = $this->request('GET', "/posts/{$pubPost['id']}");
+            $this->assert($postDetailRes['status'] === 200, "GET /posts/{$pubPost['id']} returns HTTP 200");
+            $this->assert((int)($postDetailRes['body']['data']['views'] ?? 0) === $prevViews + 1, 'GET /posts/{id} atomically increments view count by 1');
+            $this->assert(isset($postDetailRes['body']['data']['related_posts']) && is_array($postDetailRes['body']['data']['related_posts']), 'GET /posts/{id} includes related_posts array');
+        }
+
+        // 17.4 Author profile update via PATCH /author/profile
+        $this->clearCookies();
+        $loginRes = $this->request('POST', '/auth/login', [
+            'identifier' => 'john_doe',
+            'password' => 'Author@Infinity2026!',
+        ]);
+        $this->assert($loginRes['status'] === 200, 'Author logs in for wireframe feature tests');
+
+        $authorCsrf = $this->request('GET', '/auth/csrf')['body']['data']['csrf_token'] ?? '';
+        $origName = $loginRes['body']['data']['user']['display_name'] ?? 'John Doe';
+        $newDisplayName = 'John Doe Updated';
+        $newBio = 'Senior technical writer and software engineering enthusiast.';
+        $updateProfileRes = $this->request('PATCH', '/author/profile', [
+            'display_name' => $newDisplayName,
+            'bio' => $newBio,
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($updateProfileRes['status'] === 200, 'PATCH /author/profile returns HTTP 200');
+        $this->assert(($updateProfileRes['body']['data']['display_name'] ?? '') === $newDisplayName, 'Display name updated in profile response');
+
+        // Restore original display name
+        $this->request('PATCH', '/author/profile', [
+            'display_name' => $origName,
+            'bio' => null,
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+
+        // 17.5 Create post with tags & featured image
+        $createTaggedRes = $this->request('POST', '/author/posts', [
+            'title' => 'Wireframe Feature Post ' . time(),
+            'content' => 'Comprehensive content exploring web wireframes and full-stack integration patterns in modern CMS.',
+            'status' => 'draft',
+            'tags' => 'php, wireframe, mysql',
+            'featured_image' => 'assets/uploads/test_sample.jpg',
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($createTaggedRes['status'] === 201, 'Author creates post with tags and featured_image (HTTP 201)');
+        $this->assert(($createTaggedRes['body']['data']['tags'] ?? '') === 'php, wireframe, mysql', 'Post tags verified in response');
+        $this->assert(($createTaggedRes['body']['data']['featured_image'] ?? '') === 'assets/uploads/test_sample.jpg', 'Featured image verified in response');
+        $taggedPostId = (int)($createTaggedRes['body']['data']['id'] ?? 0);
+
+        // 17.6 Bulk Delete via POST /author/posts/bulk-delete
+        $createSecondRes = $this->request('POST', '/author/posts', [
+            'title' => 'Second Bulk Post ' . time(),
+            'content' => 'Another article for testing bulk deletion functionality cleanly.',
+            'status' => 'draft',
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $secondPostId = (int)($createSecondRes['body']['data']['id'] ?? 0);
+
+        $bulkDelRes = $this->request('POST', '/author/posts/bulk-delete', [
+            'post_ids' => [$taggedPostId, $secondPostId],
+        ], ["X-CSRF-Token: {$authorCsrf}"]);
+        $this->assert($bulkDelRes['status'] === 200, 'POST /author/posts/bulk-delete returns HTTP 200');
+        $this->assert((int)($bulkDelRes['body']['data']['deleted_count'] ?? 0) === 2, 'Exactly 2 posts deleted via bulk delete');
+
+        $checkDel = $pdo->prepare("SELECT COUNT(*) FROM `posts` WHERE `id` IN (?, ?)");
+        $checkDel->execute([$taggedPostId, $secondPostId]);
+        $this->assert((int)$checkDel->fetchColumn() === 0, 'Bulk deleted posts no longer exist in MySQL');
+
+        // 17.7 Featured Image Upload via POST /author/upload-image
+        $tmpImg = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'test_' . uniqid() . '.png';
+        // Minimal valid 1x1 PNG bytes
+        $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+        file_put_contents($tmpImg, $pngBytes);
+
+        $ch = curl_init("{$this->baseUrl}/author/upload-image");
+        $cfile = new \CURLFile($tmpImg, 'image/png', 'sample.png');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, ['image' => $cfile]);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Accept: application/json',
+            "X-CSRF-Token: {$authorCsrf}",
+        ]);
+        curl_setopt($ch, CURLOPT_COOKIEJAR, $this->cookieFile);
+        curl_setopt($ch, CURLOPT_COOKIEFILE, $this->cookieFile);
+        $rawUp = curl_exec($ch);
+        $upCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        @unlink($tmpImg);
+
+        $upJson = json_decode((string)$rawUp, true);
+        $this->assert($upCode === 201, 'POST /author/upload-image returns HTTP 201 Created');
+        $this->assert(isset($upJson['data']['url']) && str_starts_with($upJson['data']['url'], 'assets/uploads/'), 'Upload response returns valid assets/uploads/ image URL');
+
+        // Clean up created upload file
+        if (!empty($upJson['data']['filename'])) {
+            $uploadedPath = __DIR__ . '/../assets/uploads/' . basename($upJson['data']['filename']);
+            if (file_exists($uploadedPath)) {
+                @unlink($uploadedPath);
+            }
+        }
     }
 }
 

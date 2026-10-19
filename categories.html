@@ -166,7 +166,7 @@
           tr.innerHTML = `
             <td>${idx + 1}</td>
             <td>
-              <strong>${escapeHtml(c.name)}</strong>
+              <a href="index.html?category_id=${c.id}" style="text-decoration:none;color:inherit;font-weight:600;" class="table-link"><strong>${escapeHtml(c.name)}</strong></a>
             </td>
             <td><code>${escapeHtml(c.slug)}</code></td>
             <td style="color:var(--color-text-muted);font-size:0.875rem;">${escapeHtml(c.description || '—')}</td>
