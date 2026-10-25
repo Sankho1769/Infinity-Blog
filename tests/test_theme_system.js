@@ -181,12 +181,13 @@ async function run() {
         const initialPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
         const hasDarkClass = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
         const storedPref = await evalExpr(cdp, `localStorage.getItem('ib_theme_preference')`);
-        const initialIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const initialIconHtml = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.innerHTML?.trim() || ''`);
+        const initialIsSun = initialIconHtml.includes('theme-svg-sun') || initialIconHtml.includes('☀️');
 
         assert(initialTheme === 'light', `Initial data-theme is "light" (got "${initialTheme}")`);
         assert(initialPref === 'light', `Initial data-theme-preference is "light" (got "${initialPref}")`);
         assert(hasDarkClass === false, 'Initial <html> does not have .theme-dark class');
-        assert(initialIcon === '☀️', `Initial header toggle icon is "☀️" (got "${initialIcon}")`);
+        assert(initialIsSun === true, `Initial header toggle icon is Sun icon (got "${initialIconHtml.substring(0, 30)}...")`);
 
         // Check background color is light
         const bodyBgLight = await evalExpr(cdp, `window.getComputedStyle(document.body).backgroundColor`);
@@ -218,7 +219,8 @@ async function run() {
         const darkPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
         const darkHasClass = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
         const darkStorage = await evalExpr(cdp, `localStorage.getItem('ib_theme_preference')`);
-        const darkIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const darkIconHtml = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.innerHTML?.trim() || ''`);
+        const darkIsMoon = darkIconHtml.includes('theme-svg-moon') || darkIconHtml.includes('🌙');
         const darkTitle = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('title')`);
         const darkAria = await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').getAttribute('aria-label')`);
 
@@ -226,7 +228,7 @@ async function run() {
         assert(darkPref === 'dark', `Active data-theme-preference is "dark" (got "${darkPref}")`);
         assert(darkHasClass === true, '<html> has .theme-dark class');
         assert(darkStorage === 'dark', `localStorage stores "dark" (got "${darkStorage}")`);
-        assert(darkIcon === '🌙', `Header toggle icon updated immediately to "🌙" (got "${darkIcon}")`);
+        assert(darkIsMoon === true, `Header toggle icon updated immediately to Moon icon`);
         assert(darkTitle === 'Switch to Light Mode', `Title updated to "Switch to Light Mode" (got "${darkTitle}")`);
         assert(darkAria === 'Switch to Light Mode', `aria-label updated to "Switch to Light Mode" (got "${darkAria}")`);
 
@@ -235,9 +237,10 @@ async function run() {
         await sleep(300);
 
         const backLightTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
-        const backLightIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const backLightIconHtml = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.innerHTML?.trim() || ''`);
+        const backLightIsSun = backLightIconHtml.includes('theme-svg-sun') || backLightIconHtml.includes('☀️');
         assert(backLightTheme === 'light', `Clicking again immediately switches back to "light" (got "${backLightTheme}")`);
-        assert(backLightIcon === '☀️', `Header toggle icon updated back to "☀️" (got "${backLightIcon}")`);
+        assert(backLightIsSun === true, `Header toggle icon updated back to Sun icon`);
 
         // Switch to Dark again for persistence test
         await evalExpr(cdp, `document.getElementById('header-theme-toggle-btn').click()`);
@@ -259,12 +262,13 @@ async function run() {
         const reloadedTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
         const reloadedPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
         const reloadedClass = await evalExpr(cdp, `document.documentElement.classList.contains('theme-dark')`);
-        const reloadedIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const reloadedIconHtml = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.innerHTML?.trim() || ''`);
+        const reloadedIsMoon = reloadedIconHtml.includes('theme-svg-moon') || reloadedIconHtml.includes('🌙');
 
         assert(reloadedTheme === 'dark', `Persisted data-theme after reload is "dark"`);
         assert(reloadedPref === 'dark', `Persisted data-theme-preference after reload is "dark"`);
         assert(reloadedClass === true, 'Persisted <html> has .theme-dark class');
-        assert(reloadedIcon === '🌙', `Persisted header toggle icon is "🌙"`);
+        assert(reloadedIsMoon === true, `Persisted header toggle icon is Moon icon`);
 
         // Navigate to /explore and return to verify persistence
         console.log('  Navigating to /explore and verifying theme persistence...');
@@ -300,12 +304,13 @@ async function run() {
         const normalizedTheme = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme')`);
         const normalizedPref = await evalExpr(cdp, `document.documentElement.getAttribute('data-theme-preference')`);
         const normalizedStorage = await evalExpr(cdp, `localStorage.getItem('ib_theme_preference')`);
-        const normalizedIcon = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.textContent?.trim()`);
+        const normalizedIconHtml = await evalExpr(cdp, `document.getElementById('header-theme-current-icon')?.innerHTML?.trim() || ''`);
+        const normalizedIsSun = normalizedIconHtml.includes('theme-svg-sun') || normalizedIconHtml.includes('☀️');
 
         assert(normalizedTheme === 'light', `Legacy "device" preference normalized to effective theme "light" (got "${normalizedTheme}")`);
         assert(normalizedPref === 'light', `Legacy "device" preference normalized in DOM attribute to "light" (got "${normalizedPref}")`);
         assert(normalizedStorage === 'light', `Legacy "device" in localStorage immediately rewritten to "light" (got "${normalizedStorage}")`);
-        assert(normalizedIcon === '☀️', `Header toggle icon reflects Light theme "☀️" (got "${normalizedIcon}")`);
+        assert(normalizedIsSun === true, `Header toggle icon reflects Light theme Sun icon`);
 
         // Verify independent dropdowns: notifications menu opens independently
         console.log('  Verifying notifications dropdown works independently...');

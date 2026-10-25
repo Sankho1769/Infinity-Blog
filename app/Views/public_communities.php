@@ -63,12 +63,14 @@
 
           <!-- Community Icon & Title -->
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
-            <div style="width: 42px; height: 42px; border-radius: 12px; background: linear-gradient(135deg, #3b82f6, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.25rem; font-weight: 800; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); flex-shrink: 0;">
-              #
-            </div>
+            <a href="/community/<?= $slug ?>" style="text-decoration: none; display: inline-flex;" aria-label="Open <?= $name ?> community discussions">
+              <?= \InfinityBlog\Community\CommunityLogoHelper::renderLogoHtml($comm, 44) ?>
+            </a>
             <div>
               <h3 style="font-size: 1.2rem; font-weight: 700; color: var(--text-dark); margin: 0; line-height: 1.3;">
-                <?= $name ?>
+                <a href="/community/<?= $slug ?>" style="color: inherit; text-decoration: none;" class="community-title-link">
+                  <?= $name ?>
+                </a>
               </h3>
               <span style="font-size: 0.78rem; color: var(--text-muted);">slug: <?= $slug ?></span>
             </div>
@@ -81,32 +83,34 @@
         </div>
 
         <!-- Action Row -->
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 16px; border-top: 1px solid var(--glass-border);">
-          <?php if ($isMember): ?>
-            <button type="button"
-                    class="btn btn-secondary btn-sm btn-pill btn-community-join joined"
-                    data-slug="<?= $slug ?>"
-                    data-room-id="<?= (int) $comm['id'] ?>"
-                    data-is-member="1"
-                    title="You are a member of this community">
-              ✓ Joined
-            </button>
-            <a href="/chat/<?= $slug ?>" class="btn btn-primary btn-sm btn-pill" title="Open <?= $name ?> chat room">
-              Open Chat →
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--glass-border);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <?php if ($isMember): ?>
+              <button type="button"
+                      class="btn btn-secondary btn-sm btn-pill btn-community-join joined"
+                      data-slug="<?= $slug ?>"
+                      data-room-id="<?= (int) $comm['id'] ?>"
+                      data-is-member="1"
+                      title="You are a member of this community. Click to open discussions.">
+                ✓ Joined
+              </button>
+            <?php else: ?>
+              <button type="button"
+                      class="btn btn-primary btn-sm btn-pill btn-community-join"
+                      data-slug="<?= $slug ?>"
+                      data-room-id="<?= (int) $comm['id'] ?>"
+                      data-is-member="0"
+                      title="Join this community and open discussion">
+                + Join
+              </button>
+            <?php endif; ?>
+            <a href="/community/<?= $slug ?>" class="btn btn-primary btn-sm btn-pill" title="View <?= $name ?> discussion posts and comments">
+              Discussion Feed →
             </a>
-          <?php else: ?>
-            <button type="button"
-                    class="btn btn-primary btn-sm btn-pill btn-community-join"
-                    data-slug="<?= $slug ?>"
-                    data-room-id="<?= (int) $comm['id'] ?>"
-                    data-is-member="0"
-                    title="Join this community">
-              Join Community
-            </button>
-            <a href="/chat/<?= $slug ?>" class="btn btn-secondary btn-sm btn-pill community-open-chat-link" style="display: none;" title="Open <?= $name ?> chat room">
-              Open Chat →
-            </a>
-          <?php endif; ?>
+          </div>
+          <a href="/chat/<?= $slug ?>" class="btn btn-secondary btn-sm btn-pill community-open-chat-link" title="Open <?= $name ?> live text chat room">
+            💬 Live Chat
+          </a>
         </div>
       </div>
     <?php endforeach; ?>

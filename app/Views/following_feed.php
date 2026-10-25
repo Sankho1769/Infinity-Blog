@@ -35,21 +35,48 @@
                  role="article"
                  aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
                  style="display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border);">
-          <div style="height: 180px; overflow: hidden; position: relative;">
-            <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;">
-            <?php if (!empty($post['category_name'])): ?>
-              <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; text-decoration: none;">
-                <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
-              </a>
-            <?php endif; ?>
-          </div>
+          <?php if (!empty($thumb)): ?>
+            <div style="height: 180px; overflow: hidden; position: relative;">
+              <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.parentElement.style.display='none';">
+              <?php if (!empty($post['category_name'])): ?>
+                <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; text-decoration: none;">
+                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                </a>
+              <?php endif; ?>
+            </div>
+          <?php endif; ?>
 
           <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
-            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+              <?php
+                $authorAvatar = $post['author_avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($post['avatar_path'] ?? ($post['author_avatar_path'] ?? null));
+                $authorInitial = strtoupper(mb_substr($post['author_name'] ?? 'A', 0, 1));
+              ?>
+              <a href="/author/<?= $authorId ?>" class="feed-author-avatar-link" title="View <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>'s profile" style="text-decoration: none; display: inline-flex; align-items: center;">
+                <?php if (!empty($authorAvatar)): ?>
+                  <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                       alt="<?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>"
+                       class="feed-author-avatar-img"
+                       width="28" height="28" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;"
+                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                  <div class="user-avatar" style="display: none; width: 28px; height: 28px; font-size: 0.75rem; text-decoration: none;">
+                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php else: ?>
+                  <div class="user-avatar" style="width: 28px; height: 28px; font-size: 0.75rem; text-decoration: none;">
+                    <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                  </div>
+                <?php endif; ?>
+              </a>
               <a href="/author/<?= $authorId ?>" class="feed-author-name" style="font-size: 0.82rem; font-weight: 700; color: var(--text-main); text-decoration: none;">
                 <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
               </a>
               <span style="font-size: 0.75rem; color: var(--text-muted);">● <?= date('M j, Y', strtotime($post['published_at'])) ?></span>
+              <?php if (empty($thumb) && !empty($post['category_name'])): ?>
+                <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="margin-left: auto; font-size: 0.78rem; text-decoration: none;">
+                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                </a>
+              <?php endif; ?>
             </div>
 
             <h3 style="font-size: 1.18rem; font-weight: 700; margin: 0 0 10px; line-height: 1.35;">

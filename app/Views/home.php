@@ -296,7 +296,7 @@
                       <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
                            alt="<?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>"
                            class="feed-author-avatar-img"
-                           width="34" height="34" loading="lazy"
+                           width="34" height="34"
                            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                       <div class="user-avatar feed-avatar-fallback" style="display: none; width: 34px; height: 34px; font-size: 0.85rem; font-weight: 700;">
                         <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
@@ -316,7 +316,10 @@
                       <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
                     <?php endif; ?>
 
-                    <span class="feed-author-handle">@<?= htmlspecialchars($post['author_username'] ?? 'author', ENT_QUOTES, 'UTF-8') ?></span>
+                    <?php
+                      $feedAuthorHandle = $post['author_handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($post['author_username'] ?? null, $post['author_name'] ?? null);
+                    ?>
+                    <span class="feed-author-handle"><?= htmlspecialchars($feedAuthorHandle, ENT_QUOTES, 'UTF-8') ?></span>
 
                     <span class="feed-meta-dot">·</span>
 
@@ -382,7 +385,7 @@
                              alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
                              class="feed-card-featured-img feed-card-thumb-img"
                              loading="lazy"
-                             onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
+                             onerror="this.onerror=null; this.closest('.feed-card-media').style.display='none';">
                       </a>
                     </div>
                   <?php elseif ($hasInlineImage): ?>
@@ -405,9 +408,14 @@
                     <span class="engagement-count-val" data-post-id="<?= $postId ?>"><?= $scoreCount ?></span>
                   </span>
                   <span class="engagement-dot">·</span>
-                  <span class="engagement-summary-stat">
+                  <span class="engagement-summary-stat comments-stat-trigger"
+                        data-post-id="<?= $postId ?>"
+                        role="button"
+                        tabindex="0"
+                        title="View discussion"
+                        onclick="openCommentsDrawer(event, <?= $postId ?>)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span><?= $commentCount ?> <?= $commentCount === 1 ? 'comment' : 'comments' ?></span>
+                    <span class="engagement-comments-count-val" data-post-id="<?= $postId ?>"><?= $commentCount ?> <?= $commentCount === 1 ? 'comment' : 'comments' ?></span>
                   </span>
                 </div>
 
@@ -437,11 +445,16 @@
                   </button>
 
                   <!-- Comments / Discussion -->
-                  <a href="/article/<?= $postId ?>#commentsSection" class="feed-action-btn feed-comments-btn" title="View discussion">
+                  <a href="/article/<?= $postId ?>#commentsSection"
+                     class="feed-action-btn feed-comments-btn"
+                     data-post-id="<?= $postId ?>"
+                     data-open-comments="1"
+                     title="View discussion"
+                     onclick="openCommentsDrawer(event, <?= $postId ?>)">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                     </svg>
-                    <span><?= $commentCount ?></span>
+                    <span class="feed-comment-counter" data-post-id="<?= $postId ?>"><?= $commentCount ?></span>
                   </a>
 
                   <!-- Share Button (Opens Share Modal with Contacts & WhatsApp) -->
@@ -518,6 +531,10 @@
         <div class="sidebar-item-list">
           <?php foreach ($sidebarAuthors as $author): ?>
             <?php
+              // Server-side invariant: ensure viewer cannot appear in recommendations under any circumstance
+              if (!empty($currentUser) && (int) ($author['id'] ?? 0) === (int) ($currentUser['id'] ?? 0)) {
+                  continue;
+              }
               $authorAvatar = $author['avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($author['avatar_path'] ?? null);
               $authorInitial = strtoupper(mb_substr($author['display_name'] ?? 'A', 0, 1));
               $isFollowing = !empty($author['is_following']);
@@ -529,7 +546,7 @@
                   <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
                        alt="<?= htmlspecialchars($author['display_name'], ENT_QUOTES, 'UTF-8') ?>"
                        class="sidebar-avatar-img"
-                       width="42" height="42" loading="lazy"
+                       width="42" height="42"
                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                   <div class="user-avatar sidebar-avatar-fallback" style="display: none; width: 42px; height: 42px; font-size: 0.95rem; font-weight: 700;">
                     <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
@@ -551,7 +568,7 @@
                   <?php endif; ?>
                 </div>
                 <div class="sidebar-row-meta">
-                  <span class="sidebar-row-sub">@<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?></span>
+                  <span class="sidebar-row-sub"><?= htmlspecialchars($author['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($author['username'] ?? null, $author['display_name'] ?? null), ENT_QUOTES, 'UTF-8') ?></span>
                   <span class="sidebar-meta-dot">·</span>
                   <span class="sidebar-follower-meta"><span class="author-follower-count" data-author-id="<?= (int) $author['id'] ?>"><?= $followerCount ?></span> <?= $followerCount === 1 ? 'follower' : 'followers' ?></span>
                 </div>
@@ -604,12 +621,12 @@
               $commCleanName = \InfinityBlog\Community\CommunityNameFormatter::format($comm['name'] ?? '');
             ?>
             <div class="sidebar-row sidebar-community-row" data-room-id="<?= (int) $comm['id'] ?>" data-slug="<?= htmlspecialchars($comm['slug'], ENT_QUOTES, 'UTF-8') ?>">
-              <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-community-icon-tile" aria-label="Open <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?> room">
-                <span>#</span>
+              <a href="/community/<?= urlencode($comm['slug']) ?>" class="sidebar-community-icon-tile" style="padding: 0; background: transparent; border: none; box-shadow: none;" aria-label="Open <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?> community discussion">
+                <?= \InfinityBlog\Community\CommunityLogoHelper::renderLogoHtml($comm, 38) ?>
               </a>
 
               <div class="sidebar-row-info">
-                <a href="/chat/<?= urlencode($comm['slug']) ?>" class="sidebar-row-title" title="<?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>">
+                <a href="/community/<?= urlencode($comm['slug']) ?>" class="sidebar-row-title" title="<?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>">
                   <?= htmlspecialchars($commCleanName, ENT_QUOTES, 'UTF-8') ?>
                 </a>
                 <?php if (!empty($comm['description'])): ?>

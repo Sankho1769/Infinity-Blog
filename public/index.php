@@ -220,6 +220,20 @@ try {
             echo $webResult['body'];
             return;
         }
+        if ($request->path === '/api/studio/ai-assist') {
+            $webResult = $webController->studioAiAssist($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if ($request->path === '/api/studio/data') {
+            $webResult = $webController->studioData($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
         if ($request->path === '/api/feed/quick-post') {
             $webResult = $webController->quickPost($request);
             http_response_code($webResult['status']);
@@ -269,6 +283,71 @@ try {
             echo $webResult['body'];
             return;
         }
+
+        // eBook Library POST endpoints
+        if ($request->path === '/ebooks/upload') {
+            $webResult = $webController->processEbookUpload($request);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/ebooks/([0-9]+)/delete$#D', $request->path, $m)) {
+            $webResult = $webController->ebookDelete($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/api/ebooks/([0-9]+)/progress$#D', $request->path, $m)) {
+            $webResult = $webController->ebookSaveProgress($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/api/ebooks/([0-9]+)/save$#D', $request->path, $m)) {
+            $webResult = $webController->ebookSaveToggle($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/api/ebooks/([0-9]+)/report$#D', $request->path, $m)) {
+            $webResult = $webController->ebookSubmitReport($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/reports/ebooks/([0-9]+)/status$#D', $request->path, $m)) {
+            $webResult = $webController->adminUpdateEbookReportStatus($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/ebooks/([0-9]+)/approve$#D', $request->path, $m)) {
+            $webResult = $webController->adminApproveEbook($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/ebooks/([0-9]+)/reject$#D', $request->path, $m)) {
+            $webResult = $webController->adminRejectEbook($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
+        if (preg_match('#^/admin/ebooks/([0-9]+)/status$#D', $request->path, $m)) {
+            $webResult = $webController->adminUpdateEbookStatus($request, (int) $m[1]);
+            http_response_code($webResult['status']);
+            header('Content-Type: ' . $webResult['type']);
+            echo $webResult['body'];
+            return;
+        }
     }
 
     // Web Browser Views (HTML)
@@ -293,10 +372,22 @@ try {
             (bool) preg_match('#^/(?:author|authors)/([^/]+)$#D', $request->path, $m) => $webController->authorProfile($request, $m[1]),
             $request->path === '/explore' => $webController->explore($request),
             $request->path === '/library' => $webController->library($request),
+            $request->path === '/ebooks' => $webController->ebooksIndex($request),
+            $request->path === '/ebooks/upload' => $webController->ebooksUpload($request),
+            $request->path === '/ebooks/manage' => $webController->ebooksManage($request),
+            (bool) preg_match('#^/ebooks/([0-9]+)$#D', $request->path, $m) => $webController->ebookDetail($request, (int) $m[1]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/read$#D', $request->path, $m) => $webController->ebookReader($request, (int) $m[1]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/read-file$#D', $request->path, $m) => $webController->ebookReadFile($request, (int) $m[1]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/download$#D', $request->path, $m) => $webController->ebookDownload($request, (int) $m[1]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/manifest$#D', $request->path, $m) => $webController->ebookManifest($request, (int) $m[1]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/chapter/([0-9]+)$#D', $request->path, $m) => $webController->ebookChapter($request, (int) $m[1], (int) $m[2]),
+            (bool) preg_match('#^/ebooks/([0-9]+)/epub-asset$#D', $request->path, $m) => $webController->ebookEpubAsset($request, (int) $m[1]),
             $request->path === '/following' => $webController->followingFeed($request),
             $request->path === '/communities' || $request->path === '/community' => $webController->publicCommunities($request),
+            (bool) preg_match('#^/(?:chat|community)/([a-zA-Z0-9_\-]+)/join$#D', $request->path, $m) => $webController->joinCommunityWeb($request, $m[1]),
+            (bool) preg_match('#^/community/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->communityDetail($request, $m[1]),
             $request->path === '/chat' => $webController->chat($request),
-            (bool) preg_match('#^/(?:chat|community)/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
+            (bool) preg_match('#^/chat/([a-zA-Z0-9_\-]+)$#D', $request->path, $m) => $webController->chat($request, $m[1]),
             $request->path === '/sitemap.xml' => $webController->sitemap($request),
             $request->path === '/robots.txt' => $webController->robots($request),
             $request->path === '/messages' => $webController->messages($request),
@@ -311,6 +402,8 @@ try {
             $request->path === '/admin/audit-logs-page' => $webController->adminAuditLogs($request),
             $request->path === '/admin/contact-messages-page' => $webController->adminContactMessages($request),
             $request->path === '/admin/reported-posts-page' => $webController->adminReportedPosts($request),
+            $request->path === '/admin/reported-ebooks-page' => $webController->adminReportedEbooks($request),
+            $request->path === '/admin/ebook-moderation' || $request->path === '/admin/ebook-moderation-page' => $webController->adminEbookModeration($request),
             $request->path === '/logout' => $webController->logout($request),
             default => null,
         };
@@ -353,7 +446,7 @@ try {
         $controller = new CategoryController(new CategoryRepository($pdo), $guard, $sessions, $mediaService);
     } elseif ($request->path === '/admin/users' || str_starts_with($request->path, '/admin/users/')) {
         $controller = new AdminUserController(new AdminUserRepository($pdo), $guard, $sessions);
-    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/') || str_starts_with($request->path, '/api/notifications') || $request->path === '/api/users/mention-search' || $request->path === '/api/me/following' || str_starts_with($request->path, '/api/share/')) {
+    } elseif (str_starts_with($request->path, '/api/messages') || str_starts_with($request->path, '/api/authors/') || str_starts_with($request->path, '/api/notifications') || str_starts_with($request->path, '/api/users/') || $request->path === '/api/me/following' || str_starts_with($request->path, '/api/share/')) {
         $controller = new SocialController($follows, $messages, $guard, $sessions, $users, new \InfinityBlog\Social\NotificationRepository($pdo));
     } elseif (preg_match('#^/(author|admin)/posts/[0-9]+/summary$#D', $request->path) === 1) {
         try {

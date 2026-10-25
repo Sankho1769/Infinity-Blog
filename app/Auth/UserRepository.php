@@ -134,14 +134,34 @@ final class UserRepository
         }
 
         try {
-            $normalized = self::normalizeIdentifier($email);
+            $normalizedIdentifier = self::normalizeIdentifier($email);
+            $isEmail = str_contains($email, '@');
+
+            if (!$isEmail) {
+                $username = $normalizedIdentifier;
+                $emailVal = isset($profile['email']) && is_string($profile['email']) ? self::normalizeIdentifier($profile['email']) : $normalizedIdentifier;
+            } else {
+                $emailVal = $normalizedIdentifier;
+                if (!empty($profile['username']) && is_string($profile['username'])) {
+                    $cleanCandidate = \InfinityBlog\Support\UserIdentityHelper::cleanHandle($profile['username']);
+                } else {
+                    $cleanCandidate = null;
+                }
+
+                if (empty($cleanCandidate)) {
+                    $username = \InfinityBlog\Support\UserIdentityHelper::generateHandle($this->pdo, $displayName);
+                } else {
+                    $username = \InfinityBlog\Support\UserIdentityHelper::ensureUniqueHandle($this->pdo, $cleanCandidate);
+                }
+            }
+
             $statement = $this->pdo->prepare(
                 'INSERT INTO users (username, email, display_name, password_hash, role, status, auth_version, must_change_password) ' .
                 "VALUES (:username, :email, :display_name, :password_hash, 'user', 'active', 1, 0)"
             );
             $statement->execute([
-                'username' => $normalized,
-                'email' => $normalized,
+                'username' => $username,
+                'email' => $emailVal,
                 'display_name' => trim($displayName),
                 'password_hash' => $passwordHash,
             ]);
@@ -346,6 +366,112 @@ final class UserRepository
             }
         }
 
+        if (array_key_exists('instagram_url', $fields)) {
+            $raw = is_string($fields['instagram_url']) ? trim($fields['instagram_url']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeSocialUrl($raw, 'instagram');
+                if ($norm === null || strlen($norm) > 255) {
+                    $errors['instagram_url'] = 'Instagram must be a valid handle (e.g. @username) or URL.';
+                } else {
+                    $updates[] = 'instagram_url = :instagram_url';
+                    $params['instagram_url'] = $norm;
+                }
+            } else {
+                $updates[] = 'instagram_url = :instagram_url';
+                $params['instagram_url'] = null;
+            }
+        }
+
+        if (array_key_exists('facebook_url', $fields)) {
+            $raw = is_string($fields['facebook_url']) ? trim($fields['facebook_url']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeSocialUrl($raw, 'facebook');
+                if ($norm === null || strlen($norm) > 255) {
+                    $errors['facebook_url'] = 'Facebook must be a valid handle or URL.';
+                } else {
+                    $updates[] = 'facebook_url = :facebook_url';
+                    $params['facebook_url'] = $norm;
+                }
+            } else {
+                $updates[] = 'facebook_url = :facebook_url';
+                $params['facebook_url'] = null;
+            }
+        }
+
+        if (array_key_exists('github_url', $fields)) {
+            $raw = is_string($fields['github_url']) ? trim($fields['github_url']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeSocialUrl($raw, 'github');
+                if ($norm === null || strlen($norm) > 255) {
+                    $errors['github_url'] = 'GitHub must be a valid username or URL.';
+                } else {
+                    $updates[] = 'github_url = :github_url';
+                    $params['github_url'] = $norm;
+                }
+            } else {
+                $updates[] = 'github_url = :github_url';
+                $params['github_url'] = null;
+            }
+        }
+
+        if (!array_key_exists('twitter_url', $fields) && array_key_exists('x_url', $fields)) {
+            $fields['twitter_url'] = $fields['x_url'];
+        }
+
+        if (array_key_exists('twitter_url', $fields)) {
+            $raw = is_string($fields['twitter_url']) ? trim($fields['twitter_url']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeSocialUrl($raw, 'twitter');
+                if ($norm === null || strlen($norm) > 255) {
+                    $errors['twitter_url'] = 'X / Twitter must be a valid handle (e.g. @username) or URL.';
+                } else {
+                    $updates[] = 'twitter_url = :twitter_url';
+                    $params['twitter_url'] = $norm;
+                }
+            } else {
+                $updates[] = 'twitter_url = :twitter_url';
+                $params['twitter_url'] = null;
+            }
+        }
+
+        if (array_key_exists('linkedin_url', $fields)) {
+            $raw = is_string($fields['linkedin_url']) ? trim($fields['linkedin_url']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeSocialUrl($raw, 'linkedin');
+                if ($norm === null || strlen($norm) > 255) {
+                    $errors['linkedin_url'] = 'LinkedIn must be a valid profile handle (e.g. in/username) or URL.';
+                } else {
+                    $updates[] = 'linkedin_url = :linkedin_url';
+                    $params['linkedin_url'] = $norm;
+                }
+            } else {
+                $updates[] = 'linkedin_url = :linkedin_url';
+                $params['linkedin_url'] = null;
+            }
+        }
+
+        if (array_key_exists('whatsapp_number', $fields)) {
+            $raw = is_string($fields['whatsapp_number']) ? trim($fields['whatsapp_number']) : null;
+            if ($raw !== null && $raw !== '') {
+                $norm = \InfinityBlog\Support\UserIdentityHelper::normalizeWhatsAppNumber($raw);
+                if ($norm === null) {
+                    $errors['whatsapp_number'] = 'WhatsApp number must include country code in international format (e.g. +14155552671).';
+                } else {
+                    $updates[] = 'whatsapp_number = :whatsapp_number';
+                    $params['whatsapp_number'] = $norm;
+                }
+            } else {
+                $updates[] = 'whatsapp_number = :whatsapp_number';
+                $params['whatsapp_number'] = null;
+            }
+        }
+
+        if (array_key_exists('whatsapp_public', $fields)) {
+            $isPublic = !empty($fields['whatsapp_public']) && ($fields['whatsapp_public'] === true || $fields['whatsapp_public'] === 1 || $fields['whatsapp_public'] === '1' || $fields['whatsapp_public'] === 'on');
+            $updates[] = 'whatsapp_public = :whatsapp_public';
+            $params['whatsapp_public'] = $isPublic ? 1 : 0;
+        }
+
         if (array_key_exists('phone', $fields) || array_key_exists('mobile_number', $fields)) {
             $rawPhone = $fields['mobile_number'] ?? $fields['phone'] ?? null;
             $rawPhone = is_string($rawPhone) ? trim($rawPhone) : null;
@@ -398,6 +524,12 @@ final class UserRepository
                 $updates[] = 'profile_visibility = :profile_visibility';
                 $params['profile_visibility'] = $visibility;
             }
+        }
+
+        if (array_key_exists('show_in_recommendations', $fields)) {
+            $showInRec = !empty($fields['show_in_recommendations']) && ($fields['show_in_recommendations'] === true || $fields['show_in_recommendations'] === 1 || $fields['show_in_recommendations'] === '1');
+            $updates[] = 'show_in_recommendations = :show_in_recommendations';
+            $params['show_in_recommendations'] = $showInRec ? 1 : 0;
         }
 
         if ($errors !== []) {
@@ -513,19 +645,29 @@ final class UserRepository
             );
             $statement->execute($params);
 
-            return array_map(static fn (array $row): array => [
-                'id' => (int) $row['id'],
-                'display_name' => (string) $row['display_name'],
-                'username' => (string) $row['username'],
-                'role' => (string) $row['role'],
-                'post_count' => (int) $row['post_count'],
-                'bio' => isset($row['bio']) && is_string($row['bio']) ? $row['bio'] : null,
-                'location' => isset($row['location']) && is_string($row['location']) ? $row['location'] : null,
-                'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
-                'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
-                'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
-                'banner_path' => isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null,
-            ], $statement->fetchAll(PDO::FETCH_ASSOC));
+            return array_map(static function (array $row): array {
+                $displayName = (string) $row['display_name'];
+                $username = (string) $row['username'];
+                $avatarPath = isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null;
+                $bannerPath = isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null;
+
+                return [
+                    'id' => (int) $row['id'],
+                    'display_name' => $displayName,
+                    'username' => $username,
+                    'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($username, $displayName),
+                    'role' => (string) $row['role'],
+                    'post_count' => (int) $row['post_count'],
+                    'bio' => isset($row['bio']) && is_string($row['bio']) ? $row['bio'] : null,
+                    'location' => isset($row['location']) && is_string($row['location']) ? $row['location'] : null,
+                    'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
+                    'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
+                    'avatar_path' => $avatarPath,
+                    'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($avatarPath),
+                    'banner_path' => $bannerPath,
+                    'banner_url' => \InfinityBlog\Support\UserIdentityHelper::resolveBannerUrl($bannerPath),
+                ];
+            }, $statement->fetchAll(PDO::FETCH_ASSOC));
         } catch (Throwable) {
             // Fallback for schemas without profile columns
             $statement = $this->pdo->prepare(
@@ -539,32 +681,63 @@ final class UserRepository
             );
             $statement->execute($params);
 
-            return array_map(static fn (array $row): array => [
-                'id' => (int) $row['id'],
-                'display_name' => (string) $row['display_name'],
-                'username' => (string) $row['username'],
-                'role' => (string) $row['role'],
-                'post_count' => (int) $row['post_count'],
-                'bio' => null,
-                'location' => null,
-                'interests' => null,
-                'website' => null,
-                'avatar_path' => null,
-                'banner_path' => null,
-            ], $statement->fetchAll(PDO::FETCH_ASSOC));
+            return array_map(static function (array $row): array {
+                $displayName = (string) $row['display_name'];
+                $username = (string) $row['username'];
+                return [
+                    'id' => (int) $row['id'],
+                    'display_name' => $displayName,
+                    'username' => $username,
+                    'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($username, $displayName),
+                    'role' => (string) $row['role'],
+                    'post_count' => (int) $row['post_count'],
+                    'bio' => null,
+                    'location' => null,
+                    'interests' => null,
+                    'website' => null,
+                    'avatar_path' => null,
+                    'avatar_url' => null,
+                    'banner_path' => null,
+                    'banner_url' => null,
+                ];
+            }, $statement->fetchAll(PDO::FETCH_ASSOC));
         }
     }
 
-    /** @return array{id: int, display_name: string, username: string, role: string, post_count: int, bio: ?string, location: ?string, interests: ?string, website: ?string, avatar_path: ?string, banner_path: ?string}|null */
     public function findPublicAuthor(int $id): ?array
     {
+        $cols = $this->getUserColumnNames();
+        $hasSocial = in_array('instagram_url', $cols, true);
+        $hasLinkedin = in_array('linkedin_url', $cols, true);
+        $hasProfile = in_array('bio', $cols, true);
+        $hasVisibility = in_array('profile_visibility', $cols, true);
+
+        $linkedinSelect = $hasLinkedin ? ', u.linkedin_url' : '';
+        $socialSelect = $hasSocial
+            ? "u.instagram_url, u.facebook_url, u.github_url, u.whatsapp_number, u.whatsapp_public, u.twitter_url{$linkedinSelect}, "
+            : '';
+        $profileSelect = $hasProfile
+            ? 'u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, '
+            : '';
+        $visibilityWhere = $hasVisibility
+            ? " AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private')"
+            : '';
+
+        $groupBy = 'u.id, u.display_name, u.username, u.role';
+        if ($hasProfile) {
+            $groupBy .= ', u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path';
+        }
+        if ($hasSocial) {
+            $groupBy .= ", u.instagram_url, u.facebook_url, u.github_url, u.whatsapp_number, u.whatsapp_public, u.twitter_url{$linkedinSelect}";
+        }
+
         try {
             $statement = $this->pdo->prepare(
-                "SELECT u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path, COUNT(p.id) AS post_count " .
+                "SELECT u.id, u.display_name, u.username, u.role, {$profileSelect}{$socialSelect}COUNT(p.id) AS post_count " .
                 "FROM users u " .
                 "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-                "WHERE u.id = :id AND u.status = 'active' AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private') " .
-                "GROUP BY u.id, u.display_name, u.username, u.role, u.bio, u.location, u.interests, u.website, u.avatar_path, u.banner_path LIMIT 1"
+                "WHERE u.id = :id AND u.status = 'active'{$visibilityWhere} " .
+                "GROUP BY {$groupBy} LIMIT 1"
             );
             $statement->execute(['id' => $id]);
             $row = $statement->fetch(PDO::FETCH_ASSOC);
@@ -572,46 +745,202 @@ final class UserRepository
                 return null;
             }
 
+            $displayName = (string) $row['display_name'];
+            $username = (string) $row['username'];
+            $avatarPath = isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null;
+            $bannerPath = isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null;
+            $whatsappPublic = !empty($row['whatsapp_public']);
+            $whatsappNumber = isset($row['whatsapp_number']) && is_string($row['whatsapp_number']) ? $row['whatsapp_number'] : null;
+            $whatsappLink = ($whatsappPublic && !empty($whatsappNumber))
+                ? \InfinityBlog\Support\UserIdentityHelper::formatWhatsAppLink($whatsappNumber)
+                : null;
+
             return [
                 'id' => (int) $row['id'],
-                'display_name' => (string) $row['display_name'],
-                'username' => (string) $row['username'],
+                'display_name' => $displayName,
+                'username' => $username,
+                'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($username, $displayName),
                 'role' => (string) $row['role'],
                 'post_count' => (int) $row['post_count'],
                 'bio' => isset($row['bio']) && is_string($row['bio']) ? $row['bio'] : null,
                 'location' => isset($row['location']) && is_string($row['location']) ? $row['location'] : null,
                 'interests' => isset($row['interests']) && is_string($row['interests']) ? $row['interests'] : null,
                 'website' => isset($row['website']) && is_string($row['website']) ? $row['website'] : null,
-                'avatar_path' => isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null,
-                'banner_path' => isset($row['banner_path']) && is_string($row['banner_path']) ? $row['banner_path'] : null,
+                'instagram_url' => isset($row['instagram_url']) && is_string($row['instagram_url']) ? $row['instagram_url'] : null,
+                'facebook_url' => isset($row['facebook_url']) && is_string($row['facebook_url']) ? $row['facebook_url'] : null,
+                'github_url' => isset($row['github_url']) && is_string($row['github_url']) ? $row['github_url'] : null,
+                'whatsapp_number' => $whatsappPublic ? $whatsappNumber : null,
+                'whatsapp_public' => $whatsappPublic,
+                'whatsapp_link' => $whatsappLink,
+                'twitter_url' => isset($row['twitter_url']) && is_string($row['twitter_url']) ? $row['twitter_url'] : null,
+                'x_url' => isset($row['twitter_url']) && is_string($row['twitter_url']) ? $row['twitter_url'] : null,
+                'linkedin_url' => isset($row['linkedin_url']) && is_string($row['linkedin_url']) ? $row['linkedin_url'] : null,
+                'avatar_path' => $avatarPath,
+                'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($avatarPath),
+                'banner_path' => $bannerPath,
+                'banner_url' => \InfinityBlog\Support\UserIdentityHelper::resolveBannerUrl($bannerPath),
             ];
         } catch (Throwable) {
-            $statement = $this->pdo->prepare(
-                "SELECT u.id, u.display_name, u.username, u.role, COUNT(p.id) AS post_count " .
-                "FROM users u " .
-                "LEFT JOIN posts p ON p.author_id = u.id AND p.status = 'published' " .
-                "WHERE u.id = :id AND u.status = 'active' AND u.role IN ('user', 'author') " .
-                "GROUP BY u.id, u.display_name, u.username, u.role LIMIT 1"
-            );
-            $statement->execute(['id' => $id]);
-            $row = $statement->fetch(PDO::FETCH_ASSOC);
-            if (!$row) {
-                return null;
+            return null;
+        }
+    }
+
+    /**
+     * Get suggested users for discovery (e.g. "People You Know"), strictly excluding the viewer by ID.
+     *
+     * @param ?int $viewerId Current authenticated user ID (excluded if provided)
+     * @param int $limit Max number of suggestions (default 5)
+     * @return list<array{
+     *     id: int,
+     *     display_name: string,
+     *     username: string,
+     *     handle: string,
+     *     role: string,
+     *     bio: ?string,
+     *     avatar_path: ?string,
+     *     avatar_url: ?string,
+     *     banner_path: ?string,
+     *     post_count: int,
+     *     follower_count: int,
+     *     is_following: bool
+     * }>
+     */
+    public function getSuggestedUsers(?int $viewerId, int $limit = 5): array
+    {
+        $followRepo = new \InfinityBlog\Social\FollowRepository($this->pdo);
+        return $followRepo->getSuggestedUsers($viewerId, $limit);
+    }
+
+    /**
+     * Search registered active users for starting or opening a private chat.
+     *
+     * Supports:
+     * - Full display name and partial display name
+     * - Exact username and partial username (with or without leading @)
+     * - Case-insensitive partial matching
+     * - Excluding the authenticated viewer
+     * - Respecting profile visibility and user blocks
+     * - Never returning emails or sensitive credentials
+     *
+     * @return list<array{
+     *     id: int,
+     *     username: string,
+     *     display_name: string,
+     *     handle: string,
+     *     avatar_path: ?string,
+     *     avatar_url: ?string,
+     *     bio: ?string,
+     *     role: string,
+     *     has_conversation: bool
+     * }>
+     */
+    public function searchUsersForChat(string $query, int $viewerUserId, int $limit = 15): array
+    {
+        $limit = max(1, min(50, $limit));
+        $clean = trim($query);
+        $cleanNoAt = ltrim($clean, '@');
+
+        // Check if user_blocks table exists
+        $hasBlocks = false;
+        try {
+            $test = $this->pdo->query('SELECT 1 FROM user_blocks LIMIT 0');
+            $hasBlocks = ($test !== false);
+        } catch (\Throwable) {
+            $hasBlocks = false;
+        }
+
+        $blockClause = '';
+        if ($hasBlocks) {
+            $blockClause = ' AND NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE (ub.user_id = :me_block1 AND ub.blocked_user_id = u.id) OR (ub.user_id = u.id AND ub.blocked_user_id = :me_block2))';
+        }
+
+        $cols = $this->getUserColumnNames();
+        $hasBio = in_array('bio', $cols, true);
+        $hasAvatar = in_array('avatar_path', $cols, true);
+        $hasVisibility = in_array('profile_visibility', $cols, true);
+
+        $bioCol = $hasBio ? 'u.bio' : 'NULL AS bio';
+        $avatarCol = $hasAvatar ? 'u.avatar_path' : 'NULL AS avatar_path';
+        $visClause = $hasVisibility ? " AND (u.profile_visibility IS NULL OR u.profile_visibility <> 'private')" : '';
+
+        $sql = "SELECT u.id, u.username, u.display_name, u.role, {$bioCol}, {$avatarCol} " .
+               "FROM users u " .
+               "WHERE u.status = 'active' AND u.id <> :viewer_id{$visClause}{$blockClause}";
+
+        $params = [
+            ':viewer_id' => $viewerUserId,
+        ];
+        if ($hasBlocks) {
+            $params[':me_block1'] = $viewerUserId;
+            $params[':me_block2'] = $viewerUserId;
+        }
+
+        if ($cleanNoAt !== '') {
+            $sql .= ' AND (LOWER(u.display_name) LIKE :q1 OR LOWER(u.username) LIKE :q2)';
+            $like = '%' . strtolower($cleanNoAt) . '%';
+            $params[':q1'] = $like;
+            $params[':q2'] = $like;
+
+            // Prioritize: 1. Exact username match, 2. Exact display name match, 3. Starts with username, 4. Starts with display name, 5. Alphabetical
+            $sql .= ' ORDER BY ' .
+                    'CASE ' .
+                    '  WHEN LOWER(u.username) = :exact1 THEN 0 ' .
+                    '  WHEN LOWER(u.display_name) = :exact2 THEN 1 ' .
+                    '  WHEN LOWER(u.username) LIKE :prefix1 THEN 2 ' .
+                    '  WHEN LOWER(u.display_name) LIKE :prefix2 THEN 3 ' .
+                    '  ELSE 4 ' .
+                    'END, u.display_name ASC ';
+            $params[':exact1'] = strtolower($cleanNoAt);
+            $params[':exact2'] = strtolower($cleanNoAt);
+            $params[':prefix1'] = strtolower($cleanNoAt) . '%';
+            $params[':prefix2'] = strtolower($cleanNoAt) . '%';
+        } else {
+            $sql .= ' ORDER BY u.display_name ASC ';
+        }
+
+        $sql .= 'LIMIT :lim';
+
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($params as $k => $v) {
+                $stmt->bindValue($k, $v, is_int($v) ? PDO::PARAM_INT : PDO::PARAM_STR);
+            }
+            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fetch list of existing conversation partner IDs for viewer
+            $convPartners = [];
+            try {
+                $cpStmt = $this->pdo->prepare(
+                    'SELECT DISTINCT CASE WHEN sender_id = :u1 THEN recipient_id ELSE sender_id END AS partner_id ' .
+                    'FROM direct_messages WHERE sender_id = :u2 OR recipient_id = :u3'
+                );
+                $cpStmt->execute([':u1' => $viewerUserId, ':u2' => $viewerUserId, ':u3' => $viewerUserId]);
+                $convPartners = array_map('intval', $cpStmt->fetchAll(PDO::FETCH_COLUMN));
+            } catch (\Throwable) {
             }
 
-            return [
-                'id' => (int) $row['id'],
-                'display_name' => (string) $row['display_name'],
-                'username' => (string) $row['username'],
-                'role' => (string) $row['role'],
-                'post_count' => (int) $row['post_count'],
-                'bio' => null,
-                'location' => null,
-                'interests' => null,
-                'website' => null,
-                'avatar_path' => null,
-                'banner_path' => null,
-            ];
+            return array_map(function (array $r) use ($convPartners): array {
+                $uId = (int) $r['id'];
+                $dName = (string) $r['display_name'];
+                $uName = (string) $r['username'];
+                $avatarPath = isset($r['avatar_path']) && is_string($r['avatar_path']) ? $r['avatar_path'] : null;
+
+                return [
+                    'id' => $uId,
+                    'username' => $uName,
+                    'display_name' => $dName,
+                    'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($uName, $dName),
+                    'avatar_path' => $avatarPath,
+                    'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($avatarPath),
+                    'bio' => isset($r['bio']) && is_string($r['bio']) ? $r['bio'] : null,
+                    'role' => (string) $r['role'],
+                    'has_conversation' => in_array($uId, $convPartners, true),
+                ];
+            }, $rows);
+        } catch (\Throwable) {
+            return [];
         }
     }
 
@@ -663,6 +992,14 @@ final class UserRepository
         $mobileCipher = isset($row['mobile_number_ciphertext']) && is_string($row['mobile_number_ciphertext']) ? (string) $row['mobile_number_ciphertext'] : null;
         $mobileHash = isset($row['mobile_number_hash']) && is_string($row['mobile_number_hash']) ? (string) $row['mobile_number_hash'] : null;
         $mobileVerifiedAt = isset($row['mobile_number_verified_at']) && is_string($row['mobile_number_verified_at']) ? (string) $row['mobile_number_verified_at'] : null;
+        $instagramUrl = isset($row['instagram_url']) && is_string($row['instagram_url']) ? (string) $row['instagram_url'] : null;
+        $facebookUrl = isset($row['facebook_url']) && is_string($row['facebook_url']) ? (string) $row['facebook_url'] : null;
+        $githubUrl = isset($row['github_url']) && is_string($row['github_url']) ? (string) $row['github_url'] : null;
+        $whatsappNumber = isset($row['whatsapp_number']) && is_string($row['whatsapp_number']) ? (string) $row['whatsapp_number'] : null;
+        $whatsappPublic = !empty($row['whatsapp_public']);
+        $twitterUrl = isset($row['twitter_url']) && is_string($row['twitter_url']) ? (string) $row['twitter_url'] : null;
+        $linkedinUrl = isset($row['linkedin_url']) && is_string($row['linkedin_url']) ? (string) $row['linkedin_url'] : null;
+        $showInRecommendations = !isset($row['show_in_recommendations']) || (int) $row['show_in_recommendations'] === 1;
 
         return new UserAccount(
             (int) $id,
@@ -684,7 +1021,15 @@ final class UserRepository
             $createdAt,
             $mobileCipher,
             $mobileHash,
-            $mobileVerifiedAt
+            $mobileVerifiedAt,
+            $instagramUrl,
+            $facebookUrl,
+            $githubUrl,
+            $whatsappNumber,
+            $whatsappPublic,
+            $twitterUrl,
+            $linkedinUrl,
+            $showInRecommendations
         );
     }
 }

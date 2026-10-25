@@ -69,7 +69,7 @@
               </h3>
               <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                 <span style="font-size: 0.82rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; display: inline-block;">
-                  @<?= htmlspecialchars($author['username'], ENT_QUOTES, 'UTF-8') ?>
+                  <?= htmlspecialchars($author['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($author['username'] ?? null, $author['display_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                 </span>
                 <?php if (!empty($author['is_self'])): ?>
                   <span class="badge" style="background: rgba(99, 102, 241, 0.1); color: var(--primary-color); font-size: 0.72rem; padding: 1px 8px; flex-shrink: 0;">You</span>

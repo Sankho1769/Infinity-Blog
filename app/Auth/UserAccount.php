@@ -18,6 +18,13 @@ final class UserAccount
     public ?string $location;
     public ?string $interests;
     public ?string $website;
+    public ?string $instagramUrl;
+    public ?string $facebookUrl;
+    public ?string $githubUrl;
+    public ?string $whatsappNumber;
+    public bool $whatsappPublic;
+    public ?string $twitterUrl;
+    public ?string $linkedinUrl;
     public ?string $phone;
     public ?string $mobileNumberCiphertext;
     public ?string $mobileNumberHash;
@@ -25,6 +32,7 @@ final class UserAccount
     public ?string $avatarPath;
     public ?string $bannerPath;
     public string $profileVisibility;
+    public bool $showInRecommendations;
     public ?string $createdAt;
     private string $passwordHash;
 
@@ -48,7 +56,15 @@ final class UserAccount
         ?string $createdAt = null,
         ?string $mobileNumberCiphertext = null,
         ?string $mobileNumberHash = null,
-        ?string $mobileNumberVerifiedAt = null
+        ?string $mobileNumberVerifiedAt = null,
+        ?string $instagramUrl = null,
+        ?string $facebookUrl = null,
+        ?string $githubUrl = null,
+        ?string $whatsappNumber = null,
+        bool $whatsappPublic = false,
+        ?string $twitterUrl = null,
+        ?string $linkedinUrl = null,
+        bool $showInRecommendations = true
     ) {
         $this->id = $id;
         $this->username = $username;
@@ -69,7 +85,15 @@ final class UserAccount
         $this->avatarPath = $avatarPath;
         $this->bannerPath = $bannerPath;
         $this->profileVisibility = $profileVisibility;
+        $this->showInRecommendations = $showInRecommendations;
         $this->createdAt = $createdAt;
+        $this->instagramUrl = $instagramUrl;
+        $this->facebookUrl = $facebookUrl;
+        $this->githubUrl = $githubUrl;
+        $this->whatsappNumber = $whatsappNumber;
+        $this->whatsappPublic = $whatsappPublic;
+        $this->twitterUrl = $twitterUrl;
+        $this->linkedinUrl = $linkedinUrl;
     }
 
     public function isActive(): bool
@@ -105,19 +129,38 @@ final class UserAccount
     /** @return array<string, mixed> */
     public function toPublicArray(): array
     {
+        $whatsappLink = null;
+        if ($this->whatsappPublic && !empty($this->whatsappNumber)) {
+            $digits = preg_replace('/\D+/', '', $this->whatsappNumber);
+            if (!empty($digits)) {
+                $whatsappLink = 'https://wa.me/' . $digits;
+            }
+        }
+
         return [
             'id' => $this->id,
             'username' => $this->username,
+            'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($this->username, $this->displayName),
             'display_name' => $this->displayName,
             'role' => $this->role,
             'bio' => $this->bio,
             'location' => $this->location,
             'interests' => $this->interests,
             'website' => $this->website,
+            'instagram_url' => $this->instagramUrl,
+            'facebook_url' => $this->facebookUrl,
+            'github_url' => $this->githubUrl,
+            'whatsapp_number' => $this->whatsappPublic ? $this->whatsappNumber : null,
+            'whatsapp_public' => $this->whatsappPublic,
+            'whatsapp_link' => $whatsappLink,
+            'twitter_url' => $this->twitterUrl,
+            'x_url' => $this->twitterUrl,
+            'linkedin_url' => $this->linkedinUrl,
             'avatar_path' => $this->avatarPath,
             'banner_path' => $this->bannerPath,
             'avatar_url' => ArticleImageHelper::resolveAvatarUrl($this->avatarPath),
             'banner_url' => ArticleImageHelper::resolveBannerUrl($this->bannerPath),
+            'show_in_recommendations' => $this->showInRecommendations,
         ];
     }
 
@@ -130,9 +173,18 @@ final class UserAccount
             : ($this->phone !== null && str_starts_with($this->phone, '+') ? $this->phone : null);
         $maskedMobile = $decryptedMobile !== null ? $mobileService->mask($decryptedMobile) : null;
 
+        $whatsappLink = null;
+        if (!empty($this->whatsappNumber)) {
+            $digits = preg_replace('/\D+/', '', $this->whatsappNumber);
+            if (!empty($digits)) {
+                $whatsappLink = 'https://wa.me/' . $digits;
+            }
+        }
+
         return [
             'id' => $this->id,
             'username' => $this->username,
+            'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($this->username, $this->displayName),
             'email' => $this->email,
             'display_name' => $this->displayName,
             'role' => $this->role,
@@ -141,6 +193,15 @@ final class UserAccount
             'location' => $this->location,
             'interests' => $this->interests,
             'website' => $this->website,
+            'instagram_url' => $this->instagramUrl,
+            'facebook_url' => $this->facebookUrl,
+            'github_url' => $this->githubUrl,
+            'whatsapp_number' => $this->whatsappNumber,
+            'whatsapp_public' => $this->whatsappPublic,
+            'whatsapp_link' => $whatsappLink,
+            'twitter_url' => $this->twitterUrl,
+            'x_url' => $this->twitterUrl,
+            'linkedin_url' => $this->linkedinUrl,
             'phone' => $decryptedMobile ?? $this->phone,
             'mobile_number' => $decryptedMobile,
             'mobile_number_masked' => $maskedMobile,
@@ -150,6 +211,7 @@ final class UserAccount
             'avatar_url' => ArticleImageHelper::resolveAvatarUrl($this->avatarPath),
             'banner_url' => ArticleImageHelper::resolveBannerUrl($this->bannerPath),
             'profile_visibility' => $this->profileVisibility,
+            'show_in_recommendations' => $this->showInRecommendations,
             'created_at' => $this->createdAt,
         ];
     }

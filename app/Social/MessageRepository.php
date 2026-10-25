@@ -9,23 +9,49 @@ use PDO;
 final class MessageRepository
 {
     private PDO $pdo;
+    private ?bool $hasClientMsgId = null;
 
     public function __construct(PDO $pdo)
     {
         $this->pdo = $pdo;
     }
 
+    private function hasClientMsgIdColumn(): bool
+    {
+        if ($this->hasClientMsgId !== null) {
+            return $this->hasClientMsgId;
+        }
+
+        try {
+            $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $cols = $this->pdo->query('PRAGMA table_info(direct_messages)')->fetchAll(PDO::FETCH_ASSOC);
+                $names = array_map('strtolower', array_column($cols, 'name'));
+                $this->hasClientMsgId = in_array('client_msg_id', $names, true);
+            } else {
+                $stmt = $this->pdo->query("SHOW COLUMNS FROM direct_messages LIKE 'client_msg_id'");
+                $this->hasClientMsgId = ($stmt && $stmt->fetch() !== false);
+            }
+        } catch (\Throwable) {
+            $this->hasClientMsgId = false;
+        }
+
+        return $this->hasClientMsgId;
+    }
+
     /**
      * Send a direct message between two users.
      *
-     * @return array{id: int, sender_id: int, recipient_id: int, body: string, created_at: string}
+     * @return array{id: int, sender_id: int, recipient_id: int, body: string, created_at: string, client_msg_id?: ?string}
      */
-    public function sendMessage(int $senderId, int $recipientId, string $body): array
+    public function sendMessage(int $senderId, int $recipientId, string $body, ?string $clientMsgId = null): array
     {
-        $cleanBody = trim($body);
-        if ($cleanBody === '') {
+        if (trim($body) === '') {
             throw new InvalidArgumentException('Message body cannot be empty.');
         }
+
+        // Normalize line breaks to standard \n without trimming spaces or stripping punctuation/emoji
+        $cleanBody = str_replace(["\r\n", "\r"], "\n", $body);
 
         if (mb_strlen($cleanBody) > 5000) {
             throw new InvalidArgumentException('Message exceeds maximum length of 5000 characters.');
@@ -45,9 +71,14 @@ final class MessageRepository
 
         // Enforce user blocking: if either party blocked the other, refuse communication
         $blockStmt = $this->pdo->prepare(
-            'SELECT id FROM user_blocks WHERE (user_id = :recip AND blocked_user_id = :sender) OR (user_id = :sender AND blocked_user_id = :recip) LIMIT 1'
+            'SELECT id FROM user_blocks WHERE (user_id = :recip1 AND blocked_user_id = :sender1) OR (user_id = :sender2 AND blocked_user_id = :recip2) LIMIT 1'
         );
-        $blockStmt->execute([':recip' => $recipientId, ':sender' => $senderId]);
+        $blockStmt->execute([
+            ':recip1' => $recipientId,
+            ':sender1' => $senderId,
+            ':sender2' => $senderId,
+            ':recip2' => $recipientId,
+        ]);
         if ($blockStmt->fetch()) {
             throw new InvalidArgumentException('Cannot send direct message: communication between these users is blocked.');
         }
@@ -63,15 +94,75 @@ final class MessageRepository
             throw new InvalidArgumentException('Rate limit exceeded: please slow down before sending more direct messages.');
         }
 
+        $sanitizedClientMsgId = ($clientMsgId !== null && trim($clientMsgId) !== '')
+            ? substr(trim($clientMsgId), 0, 64)
+            : null;
+
+        // Idempotency: If client_msg_id is provided and already exists for this sender, return the persisted message
+        if ($sanitizedClientMsgId !== null && $this->hasClientMsgIdColumn()) {
+            $idempotentStmt = $this->pdo->prepare(
+                'SELECT id, sender_id, recipient_id, body, created_at, client_msg_id FROM direct_messages WHERE sender_id = :sender AND client_msg_id = :cid LIMIT 1'
+            );
+            $idempotentStmt->execute([':sender' => $senderId, ':cid' => $sanitizedClientMsgId]);
+            $existing = $idempotentStmt->fetch(PDO::FETCH_ASSOC);
+            if ($existing) {
+                return [
+                    'id' => (int) $existing['id'],
+                    'sender_id' => (int) $existing['sender_id'],
+                    'recipient_id' => (int) $existing['recipient_id'],
+                    'body' => (string) $existing['body'],
+                    'created_at' => (string) $existing['created_at'],
+                    'client_msg_id' => $existing['client_msg_id'] ?? $sanitizedClientMsgId,
+                    'is_mine' => true,
+                ];
+            }
+        } elseif ($sanitizedClientMsgId === null) {
+            // Fallback duplicate protection for callers not supplying client_msg_id:
+            // suppress accidental double-clicks within 2 seconds
+            $timeCheckSql = $driver === 'sqlite'
+                ? 'SELECT id, sender_id, recipient_id, body, created_at FROM direct_messages WHERE sender_id = :sender AND recipient_id = :recip AND body = :body AND created_at >= datetime(\'now\', \'-2 seconds\') ORDER BY id DESC LIMIT 1'
+                : 'SELECT id, sender_id, recipient_id, body, created_at FROM direct_messages WHERE sender_id = :sender AND recipient_id = :recip AND body = :body AND created_at >= NOW() - INTERVAL 2 SECOND ORDER BY id DESC LIMIT 1';
+            $dupStmt = $this->pdo->prepare($timeCheckSql);
+            $dupStmt->execute([
+                ':sender' => $senderId,
+                ':recip' => $recipientId,
+                ':body' => $cleanBody,
+            ]);
+            $existing = $dupStmt->fetch(PDO::FETCH_ASSOC);
+            if ($existing) {
+                return [
+                    'id' => (int) $existing['id'],
+                    'sender_id' => (int) $existing['sender_id'],
+                    'recipient_id' => (int) $existing['recipient_id'],
+                    'body' => (string) $existing['body'],
+                    'created_at' => (string) $existing['created_at'],
+                    'client_msg_id' => null,
+                    'is_mine' => true,
+                ];
+            }
+        }
+
         $timeExpr = $driver === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()';
-        $insert = $this->pdo->prepare(
-            "INSERT INTO direct_messages (sender_id, recipient_id, body, created_at) VALUES (:sender_id, :recipient_id, :body, {$timeExpr})"
-        );
-        $insert->execute([
-            'sender_id' => $senderId,
-            'recipient_id' => $recipientId,
-            'body' => $cleanBody,
-        ]);
+        if ($sanitizedClientMsgId !== null && $this->hasClientMsgIdColumn()) {
+            $insert = $this->pdo->prepare(
+                "INSERT INTO direct_messages (sender_id, recipient_id, client_msg_id, body, created_at) VALUES (:sender_id, :recipient_id, :cid, :body, {$timeExpr})"
+            );
+            $insert->execute([
+                'sender_id' => $senderId,
+                'recipient_id' => $recipientId,
+                'cid' => $sanitizedClientMsgId,
+                'body' => $cleanBody,
+            ]);
+        } else {
+            $insert = $this->pdo->prepare(
+                "INSERT INTO direct_messages (sender_id, recipient_id, body, created_at) VALUES (:sender_id, :recipient_id, :body, {$timeExpr})"
+            );
+            $insert->execute([
+                'sender_id' => $senderId,
+                'recipient_id' => $recipientId,
+                'body' => $cleanBody,
+            ]);
+        }
 
         $messageId = (int) $this->pdo->lastInsertId();
 
@@ -93,8 +184,9 @@ final class MessageRepository
             // Ignore notification failure
         }
 
+        $clientMsgIdCol = $this->hasClientMsgIdColumn() ? ', client_msg_id' : '';
         $fetch = $this->pdo->prepare(
-            'SELECT id, sender_id, recipient_id, body, created_at FROM direct_messages WHERE id = :id LIMIT 1'
+            "SELECT id, sender_id, recipient_id, body, created_at{$clientMsgIdCol} FROM direct_messages WHERE id = :id LIMIT 1"
         );
         $fetch->execute(['id' => $messageId]);
         $row = $fetch->fetch(PDO::FETCH_ASSOC);
@@ -105,6 +197,8 @@ final class MessageRepository
             'recipient_id' => (int) $row['recipient_id'],
             'body' => (string) $row['body'],
             'created_at' => (string) $row['created_at'],
+            'client_msg_id' => $row['client_msg_id'] ?? $sanitizedClientMsgId,
+            'is_mine' => true,
         ];
     }
 
@@ -173,6 +267,7 @@ final class MessageRepository
                     'username' => (string) $userRow['username'],
                     'display_name' => (string) $userRow['display_name'],
                     'avatar_path' => $userRow['avatar_path'] !== null ? (string) $userRow['avatar_path'] : null,
+                    'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($userRow['avatar_path'] !== null ? (string) $userRow['avatar_path'] : null),
                 ],
                 'last_message' => [
                     'body' => $lastMsg ? (string) $lastMsg['body'] : '',
@@ -198,7 +293,12 @@ final class MessageRepository
      */
     public function getThread(int $currentUserId, int $otherUserId, int $limit = 50, ?int $afterId = null): array
     {
-        $sql = 'SELECT id, sender_id, recipient_id, body, read_at, created_at ' .
+        $selectCols = 'id, sender_id, recipient_id, body, read_at, created_at';
+        if ($this->hasClientMsgIdColumn()) {
+            $selectCols .= ', client_msg_id';
+        }
+
+        $sql = "SELECT {$selectCols} " .
             'FROM direct_messages ' .
             'WHERE ((sender_id = :me1 AND recipient_id = :other1) OR (sender_id = :other2 AND recipient_id = :me2)) ';
 
@@ -226,6 +326,7 @@ final class MessageRepository
             'body' => (string) $r['body'],
             'read_at' => $r['read_at'] !== null ? (string) $r['read_at'] : null,
             'created_at' => (string) $r['created_at'],
+            'client_msg_id' => isset($r['client_msg_id']) && is_string($r['client_msg_id']) ? $r['client_msg_id'] : null,
             'is_mine' => ((int) $r['sender_id'] === $currentUserId),
         ], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }

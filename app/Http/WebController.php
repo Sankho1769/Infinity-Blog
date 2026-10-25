@@ -58,6 +58,8 @@ final class WebController
     private ?PostReportRepository $postReports;
     private ?MailerService $mailer;
     private ?\InfinityBlog\Reviews\ReviewRepository $reviews;
+    private ?\InfinityBlog\Ebooks\EbookRepository $ebooks;
+    private ?\InfinityBlog\Ebooks\EbookFileService $ebookFileService;
 
     public function __construct(
         PostRepository $posts,
@@ -81,7 +83,9 @@ final class WebController
         ?ContactRepository $contactRepo = null,
         ?PostReportRepository $postReports = null,
         ?MailerService $mailer = null,
-        ?\InfinityBlog\Reviews\ReviewRepository $reviews = null
+        ?\InfinityBlog\Reviews\ReviewRepository $reviews = null,
+        ?\InfinityBlog\Ebooks\EbookRepository $ebooks = null,
+        ?\InfinityBlog\Ebooks\EbookFileService $ebookFileService = null
     ) {
         $this->posts = $posts;
         $this->categories = $categories;
@@ -116,6 +120,8 @@ final class WebController
         $this->postReports = $postReports;
         $this->mailer = $mailer ?? new MailerService();
         $this->reviews = $reviews ?? new \InfinityBlog\Reviews\ReviewRepository($this->users->getPdo(), $this->scores);
+        $this->ebooks = $ebooks ?? new \InfinityBlog\Ebooks\EbookRepository($this->users->getPdo());
+        $this->ebookFileService = $ebookFileService ?? new \InfinityBlog\Ebooks\EbookFileService();
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -242,8 +248,12 @@ final class WebController
                 $aid = (int) $fp['author_id'];
                 $pid = (int) $fp['id'];
                 $fp['author_has_badge'] = !empty($authorBadgeMap[$aid]);
-                $fp['author_avatar_url'] = $authorDetails[$aid]['avatar_url'] ?? null;
-                $fp['author_username'] = $authorDetails[$aid]['username'] ?? 'author';
+                $fp['author_avatar_url'] = $authorDetails[$aid]['avatar_url'] ?? ($fp['author_avatar_url'] ?? null);
+                $fp['author_username'] = $authorDetails[$aid]['username'] ?? ($fp['author_username'] ?? 'author');
+                $fp['author_handle'] = \InfinityBlog\Support\UserIdentityHelper::formatHandle(
+                    $authorDetails[$aid]['username'] ?? ($fp['author_username'] ?? null),
+                    $authorDetails[$aid]['display_name'] ?? ($fp['author_name'] ?? null)
+                );
                 $fp['thumbnail_url'] = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($fp);
                 $fp['is_bookmarked'] = !empty($bookmarkedPostIds[$pid]);
                 $fp['user_score'] = $userScores[$pid] ?? null;
@@ -265,33 +275,48 @@ final class WebController
         $trendingResult = $this->posts->listPublic(['sort' => 'popular'], 1, 3);
         $trendingPosts = $trendingResult['posts'] ?? [];
 
-        // 1. Sidebar: Authors You May Know (up to 5 eligible authors, excluding current signed-in user)
+        // 1. Sidebar: Authors You May Know (up to 5 eligible authors, strictly excluding current signed-in user)
         $sidebarAuthors = [];
-        try {
-            $allAuthors = $this->users->listPublicAuthors();
-            foreach ($allAuthors as $author) {
-                if ($account !== null && (int) $author['id'] === (int) $account->id) {
-                    continue;
-                }
-                $author['avatar_url'] = $this->resolveAvatarUrl($author['avatar_path'] ?? null);
-                $author['follower_count'] = $this->follows !== null ? $this->follows->getFollowerCount((int) $author['id']) : 0;
-                $author['is_following'] = ($this->follows !== null && $account !== null) ? $this->follows->isFollowing($account->id, (int) $author['id']) : false;
-                $sidebarAuthors[] = $author;
-                if (count($sidebarAuthors) >= 5) {
-                    break;
-                }
-            }
+        $rawSessionUserId = $this->sessions->currentUserId();
 
-            if (!empty($sidebarAuthors)) {
-                $authorIds = array_map(static fn(array $a): int => (int) $a['id'], $sidebarAuthors);
-                $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
-                $badgeMap = $badgeService->getBadgeStatusesForUsers($authorIds);
-                foreach ($sidebarAuthors as &$author) {
-                    $author['has_author_badge'] = !empty($badgeMap[(int) $author['id']]);
+        // Fail-safe: if session contains an authenticated user ID but account cannot be resolved safely, do not return an unfiltered list
+        if ($account === null && $rawSessionUserId !== null && $rawSessionUserId > 0) {
+            $sidebarAuthors = [];
+        } else {
+            try {
+                if ($this->follows !== null) {
+                    $sidebarAuthors = $this->follows->getSuggestedUsers($account?->id, 5);
+                } else {
+                    $sidebarAuthors = $this->users->getSuggestedUsers($account?->id, 5);
                 }
-                unset($author);
+
+                if (!empty($sidebarAuthors)) {
+                    // Strict server-side invariant: Exclude authenticated user by canonical database ID
+                    if ($account !== null) {
+                        $canonicalViewerId = (int) $account->id;
+                        $sidebarAuthors = array_values(array_filter(
+                            $sidebarAuthors,
+                            static fn(array $a): bool => (int) ($a['id'] ?? 0) !== $canonicalViewerId
+                        ));
+                    }
+
+                    // Strict server-side invariant: Exclude non-discoverable accounts
+                    $sidebarAuthors = array_values(array_filter(
+                        $sidebarAuthors,
+                        static fn(array $a): bool => (int) ($a['show_in_recommendations'] ?? 1) === 1
+                    ));
+
+                    $authorIds = array_map(static fn(array $a): int => (int) $a['id'], $sidebarAuthors);
+                    $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+                    $badgeMap = $badgeService->getBadgeStatusesForUsers($authorIds);
+                    foreach ($sidebarAuthors as &$author) {
+                        $author['has_author_badge'] = !empty($badgeMap[(int) $author['id']]);
+                    }
+                    unset($author);
+                }
+            } catch (\Throwable) {
+                $sidebarAuthors = [];
             }
-        } catch (\Throwable) {
         }
 
         // 2. Sidebar: Popular Communities (up to 5 active communities with member count & membership state)
@@ -325,7 +350,7 @@ final class WebController
         $featuredCommunities = array_slice($sidebarCommunities, 0, 4);
         $featuredAuthors = array_slice($sidebarAuthors, 0, 4);
 
-        return $this->render('home', [
+        $res = $this->render('home', [
             'pageTitle' => 'Ideas. Stories. Perspectives.',
             'metaDescription' => 'Discover insightful articles on web development, artificial intelligence, software engineering, and creative perspectives on Infinity Blog.',
             'activeNav' => 'home',
@@ -346,6 +371,11 @@ final class WebController
             'guestFollowing' => $guestFollowing,
             'timeGreeting' => $timeGreeting,
         ]);
+        $res['headers'] = [
+            'Cache-Control' => 'no-cache, private, must-revalidate',
+            'Pragma' => 'no-cache',
+        ];
+        return $res;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -423,6 +453,13 @@ final class WebController
         $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
         $authorHasBadge = $authorId > 0 && $badgeService->qualifiesForAuthorBadge($authorId);
         $post['author_has_badge'] = $authorHasBadge;
+        if ($authorId > 0 && (empty($post['author_avatar_url']) || empty($post['author_handle']))) {
+            $authorObj = $this->users->findById($authorId);
+            if ($authorObj !== null) {
+                $post['author_avatar_url'] = $post['author_avatar_url'] ?? \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($authorObj->avatarPath);
+                $post['author_handle'] = $post['author_handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($authorObj->username, $authorObj->displayName);
+            }
+        }
 
         $reviewsData = $this->reviews !== null
             ? $this->reviews->getReviewsForPost($id, $account?->id, 1, 10)
@@ -548,12 +585,17 @@ final class WebController
         ];
     }
 
-    /** @return array{status: int, type: string, body: string} */
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
     public function messages(Request $request, ?int $activeUserId = null): array
     {
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return $this->redirect('/login?redirect=' . urlencode($request->path));
+        }
+
+        // Prevent self-messaging
+        if ($activeUserId !== null && $activeUserId === $account->id) {
+            return $this->redirect('/messages');
         }
 
         $conversations = $this->messages !== null ? $this->messages->listConversations($account->id) : [];
@@ -593,9 +635,12 @@ final class WebController
             }
         }
 
-        $allAuthors = $this->users->listPublicAuthors();
+        $allAuthors = array_values(array_filter(
+            $this->users->listPublicAuthors(),
+            static fn(array $author): bool => (int) ($author['id'] ?? 0) !== (int) $account->id
+        ));
 
-        return $this->render('messages', [
+        $res = $this->render('messages', [
             'pageTitle' => 'Direct Messages',
             'metaDescription' => 'Private user-to-user messaging and conversations on Infinity Blog.',
             'activeNav' => 'messages',
@@ -603,7 +648,13 @@ final class WebController
             'activeUser' => $activeUser,
             'threadMessages' => $threadMessages,
             'allAuthors' => $allAuthors,
+            'currentUserId' => $account->id,
         ]);
+        $res['headers'] = [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ];
+        return $res;
     }
 
     private function slugify(string $text): string
@@ -756,6 +807,148 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function joinCommunityWeb(Request $request, string $slug): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode('/community/' . $slug));
+        }
+
+        $room = $this->community?->getChatRoomBySlug(trim($slug));
+        if ($room !== null && !empty($room['is_active'])) {
+            try {
+                $this->community->joinRoom((int) $room['id'], $account->id);
+            } catch (\Throwable) {
+            }
+        }
+
+        return $this->redirect('/community/' . urlencode(trim($slug)));
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function communityDetail(Request $request, string $slug): array
+    {
+        $cleanSlug = trim($slug);
+        $room = $this->community?->getChatRoomBySlug($cleanSlug);
+        if ($room === null || empty($room['is_active'])) {
+            return $this->notFound('The requested community could not be found.');
+        }
+
+        $account = $this->guard->currentAccount();
+        $roomId = (int) $room['id'];
+        $isMember = false;
+        if ($account !== null && $this->community !== null) {
+            $isMember = $this->community->isMember($roomId, $account->id);
+        }
+
+        $memberCount = $this->community !== null ? $this->community->getRoomMemberCount($roomId) : 0;
+
+        // Fetch posts for this community (by category_id if associated)
+        $posts = [];
+        $totalPosts = 0;
+        $categoryId = !empty($room['category_id']) ? (int) $room['category_id'] : null;
+
+        if ($categoryId !== null) {
+            $postsResult = $this->posts->listPublic(['category_id' => $categoryId], 1, 20);
+            $posts = $postsResult['posts'] ?? [];
+            $totalPosts = (int) ($postsResult['total'] ?? count($posts));
+        }
+
+        // Enrich posts with comments, scores, authors
+        if (!empty($posts)) {
+            $authorIds = array_values(array_unique(array_map(fn($p) => (int) $p['author_id'], $posts)));
+            $badgeService = new \InfinityBlog\Social\AuthorBadgeService($this->users->getPdo());
+            $authorBadgeMap = $badgeService->getBadgeStatusesForUsers($authorIds);
+
+            $authorDetails = [];
+            foreach ($authorIds as $aid) {
+                $u = $this->users->findById($aid);
+                if ($u !== null) {
+                    $authorDetails[$aid] = [
+                        'username' => $u->username,
+                        'display_name' => $u->displayName,
+                        'avatar_url' => !empty($u->avatarPath) ? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($u->avatarPath) : null,
+                    ];
+                }
+            }
+
+            $userScores = [];
+            if ($account !== null && $this->scores !== null) {
+                try {
+                    foreach ($posts as $p) {
+                        $pid = (int) $p['id'];
+                        $score = $this->scores->getUserScore($pid, $account->id);
+                        if ($score !== null) {
+                            $userScores[$pid] = $score;
+                        }
+                    }
+                } catch (\Throwable) {}
+            }
+
+            foreach ($posts as &$fp) {
+                $aid = (int) $fp['author_id'];
+                $pid = (int) $fp['id'];
+                $fp['author_has_badge'] = !empty($authorBadgeMap[$aid]);
+                $fp['author_avatar_url'] = $authorDetails[$aid]['avatar_url'] ?? ($fp['author_avatar_url'] ?? null);
+                $fp['author_username'] = $authorDetails[$aid]['username'] ?? ($fp['author_username'] ?? 'author');
+                $fp['author_handle'] = \InfinityBlog\Support\UserIdentityHelper::formatHandle(
+                    $authorDetails[$aid]['username'] ?? ($fp['author_username'] ?? null),
+                    $authorDetails[$aid]['display_name'] ?? ($fp['author_name'] ?? null)
+                );
+                $fp['thumbnail_url'] = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($fp);
+                $fp['user_score'] = $userScores[$pid] ?? null;
+                $fp['relative_time'] = self::formatRelativeTime($fp['published_at'] ?? $fp['created_at'] ?? null);
+                $fp['comment_count'] = $this->community !== null ? $this->community->getCommentCount($pid) : 0;
+                $fp['reader_score_count'] = $this->scores !== null ? (int) ($this->scores->getSummary($pid)['count'] ?? 0) : 0;
+
+                // Fetch top 3 latest published comments for discussion preview
+                $fp['recent_comments'] = [];
+                if ($this->community !== null && $fp['comment_count'] > 0) {
+                    try {
+                        $cList = $this->community->getPostComments($pid, $account?->id);
+                        $fp['recent_comments'] = array_slice($cList, 0, 3);
+                    } catch (\Throwable) {}
+                }
+            }
+            unset($fp);
+        }
+
+        // Live chat message count for this room
+        $chatMessageCount = 0;
+        try {
+            $cStmt = $this->users->getPdo()->prepare('SELECT COUNT(*) FROM chat_room_messages WHERE room_id = :rid');
+            $cStmt->execute([':rid' => $roomId]);
+            $chatMessageCount = (int) $cStmt->fetchColumn();
+        } catch (\Throwable) {}
+
+        $cleanName = \InfinityBlog\Community\CommunityNameFormatter::format($room['name'] ?? '');
+
+        $res = $this->render('community_detail', [
+            'pageTitle' => "{$cleanName} — Community Discussions & Feed",
+            'metaDescription' => !empty($room['description']) ? $room['description'] : "Explore {$cleanName} community posts, discussions, and conversations on Infinity Blog.",
+            'activeNav' => 'communities',
+            'community' => $room,
+            'isMember' => $isMember,
+            'memberCount' => $memberCount,
+            'posts' => $posts,
+            'totalPosts' => $totalPosts,
+            'chatMessageCount' => $chatMessageCount,
+            'currentUser' => $account !== null ? [
+                'id' => $account->id,
+                'username' => $account->username,
+                'display_name' => $account->displayName,
+                'avatar_path' => $account->avatarPath,
+                'avatar_url' => \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($account->avatarPath),
+            ] : null,
+        ]);
+        $res['headers'] = [
+            'Cache-Control' => 'no-cache, private, must-revalidate',
+            'Pragma' => 'no-cache',
+        ];
+        return $res;
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function authorProfile(Request $request, int|string $idOrUsername): array
     {
         $id = is_numeric($idOrUsername) ? (int) $idOrUsername : null;
@@ -773,19 +966,9 @@ final class WebController
         if ($author === null) {
             $user = $this->users->findById($id);
             if ($user !== null && $user->role !== 'admin' && $user->status === 'active' && $user->profileVisibility !== 'private') {
-                $author = [
-                    'id' => $user->id,
-                    'display_name' => $user->displayName,
-                    'username' => $user->username,
-                    'role' => $user->role,
+                $author = array_merge($user->toPublicArray(), [
                     'post_count' => 0,
-                    'bio' => $user->bio,
-                    'location' => $user->location,
-                    'interests' => $user->interests,
-                    'website' => $user->website,
-                    'avatar_path' => $user->avatarPath,
-                    'banner_path' => $user->bannerPath,
-                ];
+                ]);
             } else {
                 return $this->notFound('The requested author was not found.');
             }
@@ -1081,13 +1264,20 @@ final class WebController
             }
         }
 
+        $studioService = new \InfinityBlog\Posts\StudioDataService($this->users->getPdo());
+        $studioData = $studioService->getStudioData($account->id, 'new');
+        $authorPostsRes = $this->posts->listForAuthor($account->id, [], 1, 15);
+
         return $this->render('post_editor', [
-            'pageTitle' => $remixPost !== null ? 'Remix: ' . $remixPost['title'] : 'Create New Post',
-            'metaDescription' => 'Write, format, embed media, and publish a new article or remix on Infinity Blog.',
-            'activeNav' => 'posts',
+            'pageTitle' => $remixPost !== null ? 'Remix: ' . $remixPost['title'] : 'Writing Studio — Create New Post',
+            'metaDescription' => 'Professional Writing Studio for composing, formatting, and publishing articles on Infinity Blog.',
+            'activeNav' => 'posts_studio',
+            'isStudioPage' => true,
             'post' => $initialPost,
             'remixSource' => $remixPost,
             'categories' => $activeCategories,
+            'studioData' => $studioData,
+            'authorPosts' => $authorPostsRes['posts'] ?? [],
         ]);
     }
 
@@ -1108,13 +1298,19 @@ final class WebController
         }
 
         $activeCategories = $this->categories->listActive();
+        $studioService = new \InfinityBlog\Posts\StudioDataService($this->users->getPdo());
+        $studioData = $studioService->getStudioData($account->id, (string) $id, (int) $id);
+        $authorPostsRes = $this->posts->listForAuthor($account->id, [], 1, 15);
 
         return $this->render('post_editor', [
-            'pageTitle' => 'Edit Post: ' . $post['title'],
-            'metaDescription' => 'Update article content, category, cover artwork, and publication status.',
-            'activeNav' => 'posts',
+            'pageTitle' => 'Writing Studio — ' . $post['title'],
+            'metaDescription' => 'Update article content, category, cover artwork, and publication status in Writing Studio.',
+            'activeNav' => 'posts_studio',
+            'isStudioPage' => true,
             'post' => $post,
             'categories' => $activeCategories,
+            'studioData' => $studioData,
+            'authorPosts' => $authorPostsRes['posts'] ?? [],
         ]);
     }
 
@@ -1454,6 +1650,8 @@ final class WebController
         $userData['avatar_url'] = $this->resolveAvatarUrl($user->avatarPath);
         $userData['banner_url'] = $this->resolveBannerUrl($user->bannerPath);
 
+        $activeCategories = $this->categories->listActive();
+
         if ($request->method === 'POST') {
             $csrf = $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
             if (!$this->sessions->validateCsrfToken($csrf)) {
@@ -1461,6 +1659,7 @@ final class WebController
                     'pageTitle' => 'Edit Profile',
                     'activeNav' => 'profile',
                     'user' => $userData,
+                    'categories' => $activeCategories,
                     'errors' => ['general' => 'Security token invalid or expired. Please refresh and try again.'],
                 ]);
             }
@@ -1473,6 +1672,7 @@ final class WebController
                     'pageTitle' => 'Edit Profile',
                     'activeNav' => 'profile',
                     'user' => $userData,
+                    'categories' => $activeCategories,
                     'errors' => $e->errors,
                 ]);
             }
@@ -1482,6 +1682,7 @@ final class WebController
             'pageTitle' => 'Edit Profile',
             'activeNav' => 'profile',
             'user' => $userData,
+            'categories' => $activeCategories,
             'errors' => [],
         ]);
     }
@@ -1960,6 +2161,9 @@ final class WebController
 
         $body = $request->json();
         $content = isset($body['content']) && is_string($body['content']) ? $body['content'] : '';
+        $title = isset($body['title']) && is_string($body['title']) && trim($body['title']) !== '' ? trim($body['title']) : 'Untitled Article';
+        $category = isset($body['category']) && is_string($body['category']) && trim($body['category']) !== '' ? trim($body['category']) : 'General';
+        $coverPath = isset($body['cover_image']) && is_string($body['cover_image']) && trim($body['cover_image']) !== '' ? trim($body['cover_image']) : null;
 
         $signedUrlsMap = [];
         if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
@@ -1973,9 +2177,131 @@ final class WebController
         }
 
         $renderer = new ArticleContentRenderer($signedUrlsMap);
-        $html = $renderer->render($content);
+        $renderedBody = trim($content) !== '' ? $renderer->render($content) : '';
+
+        $wordCount = str_word_count(strip_tags($content));
+        $readTime = max(1, (int) ceil($wordCount / 200));
+        $avatarUrl = $this->resolveAvatarUrl($account->avatarPath);
+        $handle = \InfinityBlog\Support\UserIdentityHelper::formatHandle($account->username, $account->displayName);
+
+        $html = '<div class="studio-live-preview-sheet" style="max-width: 780px; margin: 0 auto; padding: 24px 0;">';
+        
+        if (!empty($coverPath)) {
+            $coverUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveCoverUrl($coverPath);
+            $html .= '<div style="margin-bottom: 28px; border-radius: 16px; overflow: hidden; max-height: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">'
+                . '<img src="' . htmlspecialchars($coverUrl, ENT_QUOTES, 'UTF-8') . '" alt="Article Cover" style="width: 100%; height: 100%; object-fit: cover;">'
+                . '</div>';
+        }
+
+        $html .= '<div style="margin-bottom: 14px;"><span class="category-pill" style="font-size: 0.8rem; padding: 4px 12px;">' . htmlspecialchars($category, ENT_QUOTES, 'UTF-8') . '</span></div>';
+        $html .= '<h1 style="font-size: 2.3rem; font-weight: 800; color: var(--text-heading); margin-bottom: 18px; line-height: 1.25; letter-spacing: -0.02em;">' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h1>';
+
+        // Author Bar
+        $html .= '<div style="display: flex; align-items: center; gap: 14px; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--studio-border);">';
+        if (!empty($avatarUrl)) {
+            $html .= '<img src="' . htmlspecialchars($avatarUrl, ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars($account->displayName, ENT_QUOTES, 'UTF-8') . '" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">';
+        } else {
+            $initial = strtoupper(substr($account->displayName, 0, 1));
+            $html .= '<div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem;">' . $initial . '</div>';
+        }
+        $html .= '<div>'
+            . '<div style="font-size: 0.95rem; font-weight: 700; color: var(--text-heading);">' . htmlspecialchars($account->displayName, ENT_QUOTES, 'UTF-8') . '</div>'
+            . '<div style="font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 8px;">'
+            . '<span>' . htmlspecialchars($handle, ENT_QUOTES, 'UTF-8') . '</span>'
+            . '<span>·</span>'
+            . '<span>' . date('M d, Y') . '</span>'
+            . '<span>·</span>'
+            . '<span>' . $readTime . ' min read (' . $wordCount . ' words)</span>'
+            . '</div>'
+            . '</div>'
+            . '</div>';
+
+        if ($renderedBody !== '') {
+            $html .= '<div class="article-content" style="font-size: 1.05rem; line-height: 1.8; color: var(--text-body);">' . $renderedBody . '</div>';
+        } else {
+            $html .= '<div style="padding: 56px 24px; text-align: center; border: 2px dashed var(--studio-border); border-radius: 20px; background: rgba(99, 102, 241, 0.03);">'
+                . '<div style="font-size: 2.5rem; margin-bottom: 12px;">✍️</div>'
+                . '<h3 style="font-size: 1.25rem; font-weight: 800; color: var(--text-heading); margin-bottom: 8px;">Draft has no content yet</h3>'
+                . '<p style="font-size: 0.92rem; color: var(--text-muted); max-width: 460px; margin: 0 auto; line-height: 1.55;">Write paragraphs in the editor, insert images or code snippets, or use the AI Writing Assistant. Your live formatted article will render here seamlessly.</p>'
+                . '</div>';
+        }
+
+        $html .= '</div>';
 
         return $this->jsonResponse(200, ['data' => ['html' => $html]]);
+    }
+
+    public function studioAiAssist(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to use the AI Writing Assistant.']]);
+        }
+
+        $input = $request->input();
+        $csrf = $request->header('X-CSRF-Token') ?? ($input['csrf_token'] ?? ($_POST['csrf_token'] ?? null));
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+        }
+
+        $action = trim((string) ($input['action'] ?? ''));
+        $text = (string) ($input['text'] ?? '');
+        $options = isset($input['options']) && is_array($input['options']) ? $input['options'] : [];
+
+        if ($action === '' || trim($text) === '') {
+            return $this->jsonResponse(422, ['error' => ['code' => 'VALIDATION_ERROR', 'message' => 'Both action and text are required.']]);
+        }
+
+        try {
+            $aiConfig = null;
+            try {
+                $aiConfig = \InfinityBlog\Summaries\AiProviderConfig::fromEnvironment();
+            } catch (Throwable) {}
+
+            $service = new \InfinityBlog\Posts\StudioAiService($aiConfig);
+            $res = $service->assist($action, $text, $options);
+            return $this->jsonResponse(200, ['data' => $res]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonResponse(422, ['error' => ['code' => 'INVALID_ARGUMENT', 'message' => $e->getMessage()]]);
+        } catch (Throwable $e) {
+            return $this->jsonResponse(500, ['error' => ['code' => 'STUDIO_AI_ERROR', 'message' => $e->getMessage() ?: 'Could not process AI request.']]);
+        }
+    }
+
+    public function studioData(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in.']]);
+        }
+
+        $service = new \InfinityBlog\Posts\StudioDataService($this->users->getPdo());
+
+        if ($request->method === 'POST') {
+            $input = $request->input();
+            $csrf = $request->header('X-CSRF-Token') ?? ($input['csrf_token'] ?? ($_POST['csrf_token'] ?? null));
+            if (!$this->sessions->validateCsrfToken($csrf)) {
+                return $this->jsonResponse(403, ['error' => ['code' => 'CSRF_INVALID', 'message' => 'Security token invalid or expired.']]);
+            }
+
+            $draftKey = trim((string) ($input['draft_key'] ?? 'default'));
+            $postId = !empty($input['post_id']) && is_numeric($input['post_id']) ? (int) $input['post_id'] : null;
+            $subtitle = isset($input['subtitle']) ? (string) $input['subtitle'] : null;
+            $researchNotes = isset($input['research_notes']) ? (string) $input['research_notes'] : null;
+            $quickNotes = isset($input['quick_notes']) && is_array($input['quick_notes']) ? $input['quick_notes'] : null;
+            $targetWords = !empty($input['target_words']) && is_numeric($input['target_words']) ? (int) $input['target_words'] : null;
+            $settings = isset($input['settings']) && is_array($input['settings']) ? $input['settings'] : null;
+
+            $service->saveStudioData($account->id, $draftKey, $postId, $subtitle, $researchNotes, $quickNotes, $targetWords, $settings);
+            return $this->jsonResponse(200, ['data' => ['saved' => true]]);
+        }
+
+        // GET request
+        $draftKey = trim((string) ($_GET['draft_key'] ?? 'default'));
+        $postId = !empty($_GET['post_id']) && is_numeric($_GET['post_id']) ? (int) $_GET['post_id'] : null;
+
+        $data = $service->getStudioData($account->id, $draftKey, $postId);
+        return $this->jsonResponse(200, ['data' => $data]);
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -2165,6 +2491,7 @@ final class WebController
         $data['gaMeasurementId'] = $this->seo->getGaMeasurementId();
         $data['gscVerificationCode'] = $this->seo->getGscVerificationCode();
 
+        $httpStatusCode = $status;
         extract($data);
 
         ob_start();
@@ -2176,7 +2503,7 @@ final class WebController
         $html = ob_get_clean();
 
         return [
-            'status' => $status,
+            'status' => $httpStatusCode,
             'type' => 'text/html; charset=utf-8',
             'body' => (string) $html,
         ];
@@ -2210,36 +2537,12 @@ final class WebController
 
     public function resolveAvatarUrl(?string $path): ?string
     {
-        if ($path === null || $path === '') {
-            return null;
-        }
-        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
-            return $path;
-        }
-        if (str_starts_with($path, 'uploads/')) {
-            return '/' . $path;
-        }
-        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
-            return $this->media->resolvePublicUrl($this->media->getConfig()->bucketAvatars, $path);
-        }
-        return ArticleImageHelper::resolveAvatarUrl($path);
+        return \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($path);
     }
 
     public function resolveBannerUrl(?string $path): ?string
     {
-        if ($path === null || $path === '') {
-            return null;
-        }
-        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://') || str_starts_with($path, '/')) {
-            return $path;
-        }
-        if (str_starts_with($path, 'uploads/')) {
-            return '/' . $path;
-        }
-        if ($this->media !== null && $this->media->getConfig()->isConfigured()) {
-            return $this->media->resolvePublicUrl($this->media->getConfig()->bucketBanners, $path);
-        }
-        return ArticleImageHelper::resolveBannerUrl($path);
+        return \InfinityBlog\Support\UserIdentityHelper::resolveBannerUrl($path);
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -2250,7 +2553,7 @@ final class WebController
             return $this->redirect('/login?redirect=' . urlencode('/library'));
         }
 
-        $tab = isset($_GET['tab']) && in_array($_GET['tab'], ['bookmarks', 'history', 'collections', 'notes', 'preferences'], true)
+        $tab = isset($_GET['tab']) && in_array($_GET['tab'], ['bookmarks', 'history', 'collections', 'notes', 'preferences', 'ebooks'], true)
             ? $_GET['tab']
             : 'bookmarks';
         $searchQuery = isset($_GET['q']) && is_string($_GET['q']) ? trim($_GET['q']) : null;
@@ -2260,6 +2563,8 @@ final class WebController
         $collections = $this->library !== null ? $this->library->getCollections($account->id, $account->id) : [];
         $notes = $this->library !== null ? $this->library->getUserNotes($account->id, $searchQuery) : [];
         $topicPreferences = $this->library !== null ? $this->library->getTopicPreferences($account->id) : [];
+        $savedEbooks = $this->ebooks !== null ? $this->ebooks->getSavedBooks($account->id, $searchQuery) : [];
+        $ebookReadingHistory = $this->ebooks !== null ? $this->ebooks->getContinueReading($account->id, 20) : [];
 
         return $this->render('library', [
             'pageTitle' => 'My Library — Personal Knowledge Base',
@@ -2272,6 +2577,8 @@ final class WebController
             'collections' => $collections,
             'notes' => $notes,
             'topicPreferences' => $topicPreferences,
+            'savedEbooks' => $savedEbooks,
+            'ebookReadingHistory' => $ebookReadingHistory,
             'currentUser' => [
                 'id' => $account->id,
                 'username' => $account->username,
@@ -2305,9 +2612,18 @@ final class WebController
         ]);
     }
 
-    /** @return array{status: int, type: string, body: string} */
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
     public function chat(Request $request, ?string $slug = null): array
     {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode($request->path));
+        }
+
+        if ($this->community !== null) {
+            $this->community->ensureCategoryChatRooms();
+        }
+
         $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
         if (empty($rooms) && $this->community !== null) {
             $adminId = $this->users->findFirstAdminId();
@@ -2338,17 +2654,13 @@ final class WebController
         $isMember = false;
         $memberCount = 0;
         if ($activeRoom !== null && $this->community !== null) {
-            $messages = $this->community->getChatMessages((int) $activeRoom['id'], 50);
+            $messages = $this->community->getChatMessages((int) $activeRoom['id'], 50, null, $account->id);
             $memberCount = $this->community->getRoomMemberCount((int) $activeRoom['id']);
-        }
-
-        $account = $this->guard->currentAccount();
-        if ($activeRoom !== null && $account !== null && $this->community !== null) {
             $isMember = $this->community->isMember((int) $activeRoom['id'], $account->id);
         }
 
-        return $this->render('chat', [
-            'pageTitle' => 'Public Text Chat Rooms — Community Discussions',
+        $res = $this->render('chat', [
+            'pageTitle' => 'Category Communities & Chat Rooms',
             'metaDescription' => 'Join topic-based text channels to exchange ideas with writers and readers in real-time.',
             'activeNav' => 'chat',
             'rooms' => $rooms,
@@ -2356,13 +2668,18 @@ final class WebController
             'messages' => $messages,
             'isMember' => $isMember,
             'memberCount' => $memberCount,
-            'currentUser' => $account !== null ? [
+            'currentUser' => [
                 'id' => $account->id,
                 'username' => $account->username,
                 'display_name' => $account->displayName,
                 'role' => $account->role,
-            ] : null,
+            ],
         ]);
+        $res['headers'] = [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ];
+        return $res;
     }
 
     /** @return array{status: int, type: string, body: string} */
@@ -2573,5 +2890,844 @@ final class WebController
             'type' => 'application/json; charset=utf-8',
             'body' => (string) json_encode($data, JSON_UNESCAPED_SLASHES),
         ];
+    }
+
+    // ==========================================
+    // eBook Library Web & API Endpoints
+    // ==========================================
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebooksIndex(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+
+        $searchParam = $request->query('search') ?? ($_GET['search'] ?? null);
+        $search = is_string($searchParam) ? trim($searchParam) : null;
+        if ($search === '') {
+            $search = null;
+        }
+
+        $categorySlug = $request->query('category') ?? ($_GET['category'] ?? null);
+        $categorySlug = is_string($categorySlug) ? trim($categorySlug) : null;
+        if ($categorySlug === '') {
+            $categorySlug = null;
+        }
+
+        $format = $request->query('format') ?? ($_GET['format'] ?? null);
+        $format = is_string($format) ? strtolower(trim($format)) : null;
+        if (!in_array($format, ['pdf', 'epub'], true)) {
+            $format = null;
+        }
+
+        $sort = $request->query('sort') ?? ($_GET['sort'] ?? 'latest');
+        $sort = is_string($sort) && in_array($sort, ['latest', 'popular', 'title'], true) ? $sort : 'latest';
+
+        $page = max(1, (int) ($request->query('page') ?? ($_GET['page'] ?? 1)));
+
+        $activeCategories = $this->categories->listActive();
+        $activeCategoryId = null;
+        if ($categorySlug !== null) {
+            foreach ($activeCategories as $cat) {
+                if ($cat['slug'] === $categorySlug || (string) $cat['id'] === $categorySlug) {
+                    $activeCategoryId = (int) $cat['id'];
+                    break;
+                }
+            }
+        }
+
+        $filters = [];
+        if ($search !== null) {
+            $filters['search'] = $search;
+        }
+        if ($activeCategoryId !== null) {
+            $filters['category_id'] = $activeCategoryId;
+        }
+        if ($format !== null) {
+            $filters['format'] = $format;
+        }
+        $filters['sort'] = $sort;
+
+        $ebooksResult = $this->ebooks->listPublic($filters, $page, 12);
+        $continueReading = $viewerId !== null ? $this->ebooks->getContinueReading($viewerId, 6) : [];
+        $featuredBooks = ($page === 1 && $search === null && $activeCategoryId === null && $format === null) ? $this->ebooks->getFeatured(4) : [];
+        $popularBooks = ($page === 1 && $search === null && $activeCategoryId === null && $format === null) ? $this->ebooks->getPopular(4) : [];
+
+        return $this->render('ebooks_index', [
+            'pageTitle' => 'eBook Library — Public Community Books',
+            'metaDescription' => 'Discover, read, and share community electronic books across programming, design, science, fiction, and more.',
+            'activeNav' => 'ebooks',
+            'categories' => $activeCategories,
+            'activeCategorySlug' => $categorySlug,
+            'activeCategoryId' => $activeCategoryId,
+            'books' => $ebooksResult['items'],
+            'pagination' => $ebooksResult['pagination'],
+            'continueReading' => $continueReading,
+            'featuredBooks' => $featuredBooks,
+            'popularBooks' => $popularBooks,
+            'search' => $search,
+            'format' => $format,
+            'sort' => $sort,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebooksUpload(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        $categories = $this->categories->listActive();
+        $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+
+        $submitted = isset($_GET['submitted']) && $_GET['submitted'] === '1';
+        $submissionRef = isset($_GET['ref']) ? trim(strip_tags((string) $_GET['ref'])) : null;
+
+        return $this->render('ebooks_upload', [
+            'pageTitle' => 'Upload an eBook — Community Library',
+            'metaDescription' => 'Share a digital book with the Infinity Blog reading community.',
+            'activeNav' => 'ebooks',
+            'categories' => $categories,
+            'communities' => $rooms,
+            'account' => $account,
+            'isAnonymous' => $account === null,
+            'submitted' => $submitted,
+            'submissionRef' => $submissionRef,
+            'errors' => [],
+            'formData' => [],
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function processEbookUpload(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        $isAjax = $request->isJson() || str_contains((string) $request->header('Accept'), 'application/json');
+
+        // Anti-abuse Honeypot verification (empty field for humans, filled by bots)
+        $honeypot = trim((string) ($request->post('website_hp') ?? $_POST['website_hp'] ?? ''));
+        if ($honeypot !== '') {
+            if ($isAjax) {
+                return $this->jsonResponse(200, ['success' => true, 'message' => 'Submission received.']);
+            }
+            return $this->redirect('/ebooks/upload?submitted=1&ref=EB-VERIFIED');
+        }
+
+        // Anti-abuse sliding-window rate limiting for anonymous guests
+        $clientIp = $request->clientIp() ?? $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        if ($account === null && !\InfinityBlog\Ebooks\EbookFileService::checkUploadRateLimit($this->ebooks->getPdo(), $clientIp)) {
+            $limitErr = ['general' => 'Too many submissions received from your connection recently. Please wait a bit before uploading again.'];
+            if ($isAjax) {
+                return $this->jsonResponse(429, ['errors' => $limitErr]);
+            }
+            return $this->render('ebooks_upload', [
+                'pageTitle' => 'Upload an eBook — Community Library',
+                'metaDescription' => 'Share a digital book with the Infinity Blog reading community.',
+                'activeNav' => 'ebooks',
+                'categories' => $this->categories->listActive(),
+                'communities' => $this->community !== null ? $this->community->getChatRooms() : [],
+                'account' => $account,
+                'isAnonymous' => true,
+                'submitted' => false,
+                'submissionRef' => null,
+                'errors' => $limitErr,
+                'formData' => $_POST,
+            ], 429);
+        }
+
+        $csrfToken = (string) ($request->post('csrf_token') ?? $_POST['csrf_token'] ?? $request->header('X-CSRF-Token') ?? '');
+        if (!$this->sessions->validateCsrfToken($csrfToken)) {
+            if ($isAjax) {
+                return $this->jsonResponse(403, ['error' => 'Invalid or expired CSRF token. Please refresh the page and try again.']);
+            }
+            $categories = $this->categories->listActive();
+            $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+            return $this->render('ebooks_upload', [
+                'pageTitle' => 'Upload an eBook — Community Library',
+                'metaDescription' => 'Share a digital book with the Infinity Blog community.',
+                'activeNav' => 'ebooks',
+                'categories' => $categories,
+                'communities' => $rooms,
+                'account' => $account,
+                'isAnonymous' => $account === null,
+                'submitted' => false,
+                'submissionRef' => null,
+                'errors' => ['csrf' => 'Invalid or expired security token.'],
+                'formData' => $_POST,
+            ], 403);
+        }
+
+        $errors = [];
+        $title = trim((string) ($request->post('title') ?? $_POST['title'] ?? ''));
+        $authorName = trim((string) ($request->post('author_name') ?? $_POST['author_name'] ?? ''));
+        $description = trim((string) ($request->post('description') ?? $_POST['description'] ?? ''));
+        $categoryId = (int) ($request->post('category_id') ?? $_POST['category_id'] ?? 0);
+        $communityId = !empty($_POST['community_id']) ? (int) $_POST['community_id'] : null;
+        $tags = trim((string) ($request->post('tags') ?? $_POST['tags'] ?? ''));
+        $language = trim((string) ($request->post('language') ?? $_POST['language'] ?? 'en'));
+        $allowDownload = isset($_POST['allow_download']) ? 1 : 0;
+        $copyrightConfirmed = !empty($_POST['copyright_confirmed']);
+
+        // Optional anonymous contact details (protected from public display)
+        $submitterName = trim((string) ($request->post('submitter_name') ?? $_POST['submitter_name'] ?? ''));
+        $submitterEmail = trim((string) ($request->post('submitter_email') ?? $_POST['submitter_email'] ?? ''));
+
+        if ($account === null && $submitterEmail !== '' && !filter_var($submitterEmail, FILTER_VALIDATE_EMAIL)) {
+            $errors['submitter_email'] = 'Please enter a valid email address or leave the field blank.';
+        }
+
+        if ($title === '') {
+            $errors['title'] = 'Please enter a book title.';
+        } elseif (mb_strlen($title) > 255) {
+            $errors['title'] = 'Title cannot exceed 255 characters.';
+        }
+
+        if ($authorName === '') {
+            $errors['author_name'] = 'Please specify the author name.';
+        } elseif (mb_strlen($authorName) > 255) {
+            $errors['author_name'] = 'Author name cannot exceed 255 characters.';
+        }
+
+        if ($description === '') {
+            $errors['description'] = 'Please provide a synopsis or description for the book.';
+        } elseif (mb_strlen($description) < 10) {
+            $errors['description'] = 'Description must be at least 10 characters long.';
+        }
+
+        if ($categoryId <= 0) {
+            $errors['category_id'] = 'Please select a valid category.';
+        }
+
+        if (!$copyrightConfirmed) {
+            $errors['copyright_confirmed'] = 'You must confirm that you have rights to share this work or it is public domain.';
+        }
+
+        if (empty($_FILES['ebook_file']) || (int) ($_FILES['ebook_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            $errors['ebook_file'] = 'Please select a PDF or EPUB file to upload.';
+        }
+
+        if (!empty($errors)) {
+            if ($isAjax) {
+                return $this->jsonResponse(422, ['errors' => $errors]);
+            }
+            $categories = $this->categories->listActive();
+            $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+            return $this->render('ebooks_upload', [
+                'pageTitle' => 'Upload an eBook — Community Library',
+                'metaDescription' => 'Share a digital book with the Infinity Blog community.',
+                'activeNav' => 'ebooks',
+                'categories' => $categories,
+                'communities' => $rooms,
+                'account' => $account,
+                'isAnonymous' => $account === null,
+                'submitted' => false,
+                'submissionRef' => null,
+                'errors' => $errors,
+                'formData' => $_POST,
+            ], 422);
+        }
+
+        try {
+            // Process the eBook binary (supports null user for anonymous uploads)
+            $bookMeta = $this->ebookFileService->processUploadedBook($_FILES['ebook_file'], $account?->id);
+
+            // Handle cover image
+            $coverPath = null;
+            if (!empty($_FILES['cover_image']) && (int) ($_FILES['cover_image']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $coverPath = $this->ebookFileService->processUploadedCover($_FILES['cover_image'], $account?->id);
+            } elseif (!empty($bookMeta['extracted_cover'])) {
+                $coverPath = $this->ebookFileService->saveExtractedCover(
+                    $bookMeta['extracted_cover'],
+                    $bookMeta['extracted_cover_mime'] ?? 'image/jpeg',
+                    $account?->id
+                );
+            }
+
+            // All public & member submissions enter 'pending' status for moderation
+            $ebookId = $this->ebooks->create($account?->id, [
+                'title' => $title,
+                'author_name' => $authorName,
+                'description' => $description,
+                'submitter_name' => $account !== null ? $account->displayName : ($submitterName !== '' ? $submitterName : null),
+                'submitter_email' => $account !== null ? $account->email : ($submitterEmail !== '' ? $submitterEmail : null),
+                'category_id' => $categoryId,
+                'community_id' => $communityId,
+                'file_path' => $bookMeta['file_path'],
+                'format' => $bookMeta['format'],
+                'file_size' => $bookMeta['file_size'],
+                'cover_path' => $coverPath,
+                'mime_type' => $bookMeta['mime_type'],
+                'language' => $language !== '' ? $language : 'en',
+                'tags' => $tags !== '' ? $tags : null,
+                'allow_download' => $allowDownload,
+                'status' => 'pending',
+            ]);
+
+            $submissionRef = 'EB-' . gmdate('Y') . '-' . str_pad((string) $ebookId, 5, '0', STR_PAD_LEFT);
+
+            if ($isAjax) {
+                return $this->jsonResponse(201, [
+                    'success' => true,
+                    'ebook_id' => $ebookId,
+                    'reference' => $submissionRef,
+                    'message' => 'Thank you! Your eBook has been submitted and is pending moderation review before public listing.',
+                    'redirect' => '/ebooks/upload?submitted=1&ref=' . urlencode($submissionRef),
+                ]);
+            }
+
+            return $this->redirect('/ebooks/upload?submitted=1&ref=' . urlencode($submissionRef));
+        } catch (\InfinityBlog\Ebooks\EbookValidationException $e) {
+            if ($isAjax) {
+                return $this->jsonResponse(422, ['errors' => $e->getErrors()]);
+            }
+            $categories = $this->categories->listActive();
+            $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+            return $this->render('ebooks_upload', [
+                'pageTitle' => 'Upload an eBook — Community Library',
+                'metaDescription' => 'Share a digital book with the Infinity Blog community.',
+                'activeNav' => 'ebooks',
+                'categories' => $categories,
+                'communities' => $rooms,
+                'account' => $account,
+                'isAnonymous' => $account === null,
+                'submitted' => false,
+                'submissionRef' => null,
+                'errors' => $e->getErrors(),
+                'formData' => $_POST,
+            ], 422);
+        } catch (Throwable $e) {
+            if ($isAjax) {
+                return $this->jsonResponse(500, ['error' => 'An error occurred while saving your eBook: ' . $e->getMessage()]);
+            }
+            $categories = $this->categories->listActive();
+            $rooms = $this->community !== null ? $this->community->getChatRooms() : [];
+            return $this->render('ebooks_upload', [
+                'pageTitle' => 'Upload an eBook — Community Library',
+                'metaDescription' => 'Share a digital book with the Infinity Blog community.',
+                'activeNav' => 'ebooks',
+                'categories' => $categories,
+                'communities' => $rooms,
+                'account' => $account,
+                'isAnonymous' => $account === null,
+                'submitted' => false,
+                'submissionRef' => null,
+                'errors' => ['general' => 'Upload failed. Please try again.'],
+                'formData' => $_POST,
+            ], 500);
+        }
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookDetail(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null) {
+            return $this->notFound('The requested eBook could not be found or has been restricted.');
+        }
+
+        $isSaved = $viewerId !== null ? $this->ebooks->isBookSaved($viewerId, $id) : false;
+        $readingProgress = $viewerId !== null ? $this->ebooks->getReadingProgress($viewerId, $id) : null;
+        $relatedBooksResult = $this->ebooks->listPublic([
+            'category_id' => $ebook['category_id'],
+            'exclude_id' => $id,
+        ], 1, 4);
+
+        return $this->render('ebooks_detail', [
+            'pageTitle' => $ebook['title'] . ' by ' . $ebook['author_name'] . ' — eBook Library',
+            'metaDescription' => mb_substr(strip_tags($ebook['description']), 0, 160),
+            'activeNav' => 'ebooks',
+            'ebook' => $ebook,
+            'isSaved' => $isSaved,
+            'readingProgress' => $readingProgress,
+            'relatedBooks' => $relatedBooksResult['items'],
+            'canManage' => $viewerId !== null && ($viewerId === (int) $ebook['user_id'] || $isAdmin),
+            'uploadedSuccess' => isset($_GET['uploaded']),
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookReader(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null) {
+            return $this->notFound('The requested eBook could not be found or has been restricted.');
+        }
+
+        // Increment genuine read count
+        $this->ebooks->incrementReadCount($id);
+
+        $readingProgress = $viewerId !== null ? $this->ebooks->getReadingProgress($viewerId, $id) : null;
+
+        $manifest = null;
+        if ($ebook['format'] === 'epub') {
+            $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+            if ($diskPath !== null && is_file($diskPath)) {
+                $manifest = \InfinityBlog\Ebooks\EpubParser::getManifest($diskPath);
+            }
+        }
+
+        return $this->render('ebooks_reader', [
+            'pageTitle' => 'Reading: ' . $ebook['title'] . ' — Infinity Blog Reader',
+            'metaDescription' => 'Reading ' . $ebook['title'] . ' online in browser.',
+            'activeNav' => 'ebooks',
+            'ebook' => $ebook,
+            'readingProgress' => $readingProgress,
+            'manifest' => $manifest,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
+    public function ebookReadFile(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null) {
+            return $this->notFound('File not found or access restricted.');
+        }
+
+        $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+        if ($diskPath === null || !is_file($diskPath)) {
+            return $this->notFound('eBook file is not present on storage.');
+        }
+
+        if (ob_get_level() > 0) {
+            @ob_clean();
+        }
+
+        $fileSize = filesize($diskPath);
+        $mime = !empty($ebook['mime_type']) ? (string) $ebook['mime_type'] : ($ebook['format'] === 'pdf' ? 'application/pdf' : 'application/epub+zip');
+        $content = file_get_contents($diskPath);
+
+        return [
+            'status' => 200,
+            'type' => $mime,
+            'headers' => [
+                'Content-Disposition' => 'inline; filename="book_' . $id . '.' . $ebook['format'] . '"',
+                'Content-Length' => (string) $fileSize,
+                'Accept-Ranges' => 'bytes',
+                'Cache-Control' => 'private, max-age=86400',
+            ],
+            'body' => $content !== false ? $content : '',
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
+    public function ebookDownload(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null) {
+            return $this->notFound('eBook not found.');
+        }
+
+        if (!$ebook['allow_download'] && !$isAdmin && ($viewerId === null || $viewerId !== (int) $ebook['user_id'])) {
+            return [
+                'status' => 403,
+                'type' => 'text/html; charset=utf-8',
+                'body' => '<!DOCTYPE html><html><body><h1>403 Forbidden</h1><p>Downloads have been restricted by the author for this eBook.</p><a href="/ebooks/' . $id . '">Back to Book</a></body></html>',
+            ];
+        }
+
+        $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+        if ($diskPath === null || !is_file($diskPath)) {
+            return $this->notFound('File missing from storage.');
+        }
+
+        if (ob_get_level() > 0) {
+            @ob_clean();
+        }
+
+        // Increment genuine download count
+        $this->ebooks->incrementDownloadCount($id);
+
+        $fileSize = filesize($diskPath);
+        $safeTitle = preg_replace('/[^a-zA-Z0-9_\-\s]/', '', $ebook['title']);
+        $safeTitle = trim(preg_replace('/\s+/', '_', $safeTitle));
+        if ($safeTitle === '') {
+            $safeTitle = 'book_' . $id;
+        }
+        $filename = $safeTitle . '.' . $ebook['format'];
+
+        $content = file_get_contents($diskPath);
+
+        $mime = !empty($ebook['mime_type']) ? (string) $ebook['mime_type'] : ($ebook['format'] === 'pdf' ? 'application/pdf' : 'application/epub+zip');
+
+        return [
+            'status' => 200,
+            'type' => $mime,
+            'headers' => [
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                'Content-Length' => (string) $fileSize,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-transform, no-store',
+            ],
+            'body' => $content !== false ? $content : '',
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookManifest(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null || $ebook['format'] !== 'epub') {
+            return $this->jsonResponse(404, ['error' => 'EPUB manifest not found.']);
+        }
+
+        $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+        if ($diskPath === null || !is_file($diskPath)) {
+            return $this->jsonResponse(404, ['error' => 'EPUB file not found on storage.']);
+        }
+
+        $manifest = \InfinityBlog\Ebooks\EpubParser::getManifest($diskPath);
+        return $this->jsonResponse(200, $manifest);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookChapter(Request $request, int $id, int $chapterIndex): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null || $ebook['format'] !== 'epub') {
+            return $this->jsonResponse(404, ['error' => 'EPUB not found.']);
+        }
+
+        $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+        if ($diskPath === null || !is_file($diskPath)) {
+            return $this->jsonResponse(404, ['error' => 'EPUB file not found on storage.']);
+        }
+
+        $chapter = \InfinityBlog\Ebooks\EpubParser::getChapterHtml($diskPath, $chapterIndex, $id);
+        if (isset($chapter['error'])) {
+            return $this->jsonResponse(404, $chapter);
+        }
+
+        return $this->jsonResponse(200, $chapter);
+    }
+
+    /** @return array{status: int, type: string, body: string, headers?: array<string, string>} */
+    public function ebookEpubAsset(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        $viewerId = $account?->id;
+        $isAdmin = ($account?->role ?? '') === 'admin';
+
+        $ebook = $this->ebooks->findPublished($id, $viewerId, $isAdmin);
+        if ($ebook === null || $ebook['format'] !== 'epub') {
+            return $this->notFound('EPUB not found.');
+        }
+
+        $diskPath = $this->ebookFileService->resolveDiskPath($ebook['file_path']);
+        if ($diskPath === null || !is_file($diskPath)) {
+            return $this->notFound('File not found.');
+        }
+
+        $assetPath = (string) ($request->query('path') ?? ($_GET['path'] ?? ''));
+        if ($assetPath === '') {
+            return $this->notFound('Asset path required.');
+        }
+
+        $asset = \InfinityBlog\Ebooks\EpubParser::getAsset($diskPath, $assetPath);
+        if ($asset === null) {
+            return $this->notFound('Asset not found inside EPUB.');
+        }
+
+        return [
+            'status' => 200,
+            'type' => $asset['mime'],
+            'headers' => [
+                'Cache-Control' => 'public, max-age=604800, immutable',
+                'Content-Length' => (string) strlen($asset['data']),
+            ],
+            'body' => $asset['data'],
+        ];
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookSaveProgress(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => 'Authentication required to save reading progress.']);
+        }
+
+        $input = $request->body();
+        if (empty($input) && !empty($_POST)) {
+            $input = $_POST;
+        }
+
+        $lastPage = isset($input['last_page']) ? (int) $input['last_page'] : null;
+        $lastChapter = isset($input['last_chapter']) ? (int) $input['last_chapter'] : null;
+        $percentage = isset($input['percentage']) ? (float) $input['percentage'] : 0.0;
+
+        $progress = $this->ebooks->saveReadingProgress($account->id, $id, $lastPage, $lastChapter, $percentage);
+
+        return $this->jsonResponse(200, [
+            'success' => true,
+            'progress' => $progress,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookSaveToggle(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => 'Authentication required to bookmark eBooks.']);
+        }
+
+        if ($this->ebooks->isBookSaved($account->id, $id)) {
+            $this->ebooks->unsaveBook($account->id, $id);
+            $saved = false;
+            $msg = 'Removed from your reading library.';
+        } else {
+            $this->ebooks->saveBook($account->id, $id);
+            $saved = true;
+            $msg = 'Saved to your reading library.';
+        }
+
+        return $this->jsonResponse(200, [
+            'saved' => $saved,
+            'message' => $msg,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookSubmitReport(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->jsonResponse(401, ['error' => 'Authentication required to report an eBook.']);
+        }
+
+        $input = $request->body();
+        if (empty($input) && !empty($_POST)) {
+            $input = $_POST;
+        }
+
+        $reason = trim((string) ($input['reason'] ?? ''));
+        $explanation = trim((string) ($input['explanation'] ?? ''));
+
+        if ($reason === '') {
+            return $this->jsonResponse(422, ['error' => 'Please select a reason for reporting this eBook.']);
+        }
+
+        $report = $this->ebooks->createReport($id, $account->id, $reason, $explanation !== '' ? $explanation : null);
+
+        return $this->jsonResponse(201, [
+            'success' => true,
+            'message' => 'Thank you for your report. Our moderation team has been notified.',
+            'report_id' => $report['id'],
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebooksManage(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login?redirect=' . urlencode('/ebooks/manage'));
+        }
+
+        $myBooks = $this->ebooks->listForUser($account->id);
+
+        return $this->render('ebooks_manage', [
+            'pageTitle' => 'My Uploaded eBooks — Author Dashboard',
+            'metaDescription' => 'Manage your uploaded community eBooks, track reads, and edit visibility.',
+            'activeNav' => 'ebooks',
+            'books' => $myBooks,
+            'deletedSuccess' => isset($_GET['deleted']),
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function ebookDelete(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return $this->redirect('/login');
+        }
+
+        $isAdmin = ($account->role ?? '') === 'admin';
+        $ebook = $this->ebooks->findById($id);
+
+        if ($ebook === null) {
+            return $this->notFound('eBook not found.');
+        }
+
+        if (!$isAdmin && (int) $ebook['user_id'] !== $account->id) {
+            return $this->jsonResponse(403, ['error' => 'You do not have permission to delete this eBook.']);
+        }
+
+        // Clean up files
+        $this->ebookFileService->deleteFile($ebook['file_path']);
+        if (!empty($ebook['cover_path'])) {
+            $this->ebookFileService->deleteCover($ebook['cover_path']);
+        }
+
+        $this->ebooks->delete($id, $account->id, $isAdmin);
+
+        return $this->redirect('/ebooks/manage?deleted=1');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminReportedEbooks(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->redirect('/login?redirect=' . urlencode('/admin/reported-ebooks-page'));
+        }
+
+        $status = $request->query('status') ?? ($_GET['status'] ?? null);
+        $status = is_string($status) && in_array($status, ['pending', 'reviewed', 'dismissed'], true) ? $status : null;
+        $page = max(1, (int) ($request->query('page') ?? ($_GET['page'] ?? 1)));
+
+        $reportsResult = $this->ebooks->listReports($status, $page, 20);
+
+        return $this->render('admin_reported_ebooks', [
+            'pageTitle' => 'Reported eBooks Moderation — Admin',
+            'activeNav' => 'reported_ebooks',
+            'reports' => $reportsResult['items'],
+            'pagination' => $reportsResult['pagination'],
+            'currentStatus' => $status,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminUpdateEbookReportStatus(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->jsonResponse(403, ['error' => 'Admin authorization required.']);
+        }
+
+        $input = $request->body();
+        if (empty($input) && !empty($_POST)) {
+            $input = $_POST;
+        }
+
+        $status = (string) ($input['status'] ?? 'reviewed');
+        $action = isset($input['action']) ? (string) $input['action'] : null;
+
+        $updated = $this->ebooks->updateReportStatus($id, $status, $account->id, $action);
+
+        return $this->jsonResponse(200, [
+            'success' => $updated,
+            'message' => 'Report status updated successfully.',
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminEbookModeration(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->redirect('/login?redirect=' . urlencode('/admin/ebook-moderation'));
+        }
+
+        $status = $request->query('status') ?? ($_GET['status'] ?? 'pending');
+        $status = is_string($status) && in_array($status, ['pending', 'published', 'rejected', 'hidden', 'all'], true) ? $status : 'pending';
+        $page = max(1, (int) ($request->query('page') ?? ($_GET['page'] ?? 1)));
+
+        $submissionsData = $this->ebooks->listSubmissions($status, $page, 15);
+
+        return $this->render('admin_ebook_moderation', [
+            'pageTitle' => 'eBook Moderation & Review — Admin Portal',
+            'metaDescription' => 'Review community-submitted eBooks, approve for public catalogue, or reject submissions.',
+            'activeNav' => 'ebook_moderation',
+            'statusFilter' => $status,
+            'submissions' => $submissionsData['items'],
+            'total' => $submissionsData['total'],
+            'page' => $submissionsData['page'],
+            'totalPages' => $submissionsData['total_pages'],
+            'approvedCount' => isset($_GET['approved']) ? 1 : 0,
+            'rejectedCount' => isset($_GET['rejected']) ? 1 : 0,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminApproveEbook(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->jsonResponse(403, ['error' => 'Admin authorization required.']);
+        }
+
+        $csrf = $request->post('csrf_token') ?? $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => 'Invalid or expired CSRF token.']);
+        }
+
+        $success = $this->ebooks->approveSubmission($id, $account->id);
+
+        if ($request->isJson() || str_contains((string) $request->header('Accept'), 'application/json')) {
+            return $this->jsonResponse(200, ['success' => $success, 'message' => 'eBook approved and published to public catalog.']);
+        }
+
+        return $this->redirect('/admin/ebook-moderation?status=pending&approved=1');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminRejectEbook(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->jsonResponse(403, ['error' => 'Admin authorization required.']);
+        }
+
+        $csrf = $request->post('csrf_token') ?? $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => 'Invalid or expired CSRF token.']);
+        }
+
+        $reason = trim((string) ($request->post('reason') ?? $_POST['reason'] ?? ''));
+        $success = $this->ebooks->rejectSubmission($id, $account->id, $reason !== '' ? $reason : null);
+
+        if ($request->isJson() || str_contains((string) $request->header('Accept'), 'application/json')) {
+            return $this->jsonResponse(200, ['success' => $success, 'message' => 'eBook submission rejected.']);
+        }
+
+        return $this->redirect('/admin/ebook-moderation?status=pending&rejected=1');
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function adminUpdateEbookStatus(Request $request, int $id): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null || ($account->role ?? '') !== 'admin') {
+            return $this->jsonResponse(403, ['error' => 'Admin authorization required.']);
+        }
+
+        $csrf = $request->post('csrf_token') ?? $_POST['csrf_token'] ?? $request->header('X-CSRF-Token');
+        if (!$this->sessions->validateCsrfToken($csrf)) {
+            return $this->jsonResponse(403, ['error' => 'Invalid or expired CSRF token.']);
+        }
+
+        $status = trim((string) ($request->post('status') ?? $_POST['status'] ?? 'hidden'));
+        $success = $this->ebooks->updateStatus($id, $status);
+
+        if ($request->isJson() || str_contains((string) $request->header('Accept'), 'application/json')) {
+            return $this->jsonResponse(200, ['success' => $success, 'status' => $status]);
+        }
+
+        return $this->redirect('/admin/ebook-moderation');
     }
 }

@@ -231,7 +231,7 @@ assertTest($resPostB['body']['error']['code'] === 'MEMBERSHIP_REQUIRED', 'Error 
 $reqWebChatB = Request::fromValues('GET', '/chat/test-room-b', '127.0.0.1', [], []);
 $webResultB = $webController->chat($reqWebChatB, 'test-room-b');
 assertTest($webResultB['status'] === 200, 'Chat view for Room B returns 200');
-assertTest(str_contains($webResultB['body'], 'Join #Test Room Beta to Participate'), 'Room B prompts user to join');
+assertTest(str_contains($webResultB['body'], 'Join') && str_contains($webResultB['body'], 'Test Room Beta to Participate'), 'Room B prompts user to join');
 assertTest(str_contains($webResultB['body'], 'Guest Viewer'), 'Room B displays Guest Viewer badge for non-member');
 
 // Now join Room B and verify user can post in Room B

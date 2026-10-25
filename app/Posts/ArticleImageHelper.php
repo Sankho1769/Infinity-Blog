@@ -15,91 +15,78 @@ final class ArticleImageHelper
     ];
 
     /**
-     * Resolve the thumbnail image URL for an article record.
-     * Checks explicit fields, embedded markdown/HTML images in content,
-     * and falls back cleanly to the provided project visual assets.
+     * Resolve public or local URL for an article cover image.
+     * Supports Supabase Storage paths (covers/...), local uploads (/uploads/covers/...),
+     * and external HTTP/HTTPS URLs. Returns null if empty or invalid.
+     */
+    public static function resolveCoverUrl(?string $path): ?string
+    {
+        if (empty($path) || !is_string($path)) {
+            return null;
+        }
+
+        $cover = trim($path);
+        if ($cover === '') {
+            return null;
+        }
+
+        if (str_starts_with($cover, 'http://') || str_starts_with($cover, 'https://')) {
+            return $cover;
+        }
+
+        if (str_starts_with($cover, '/')) {
+            $publicPath = dirname(__DIR__, 2) . '/public' . $cover;
+            if (file_exists($publicPath)) {
+                return $cover;
+            }
+        }
+
+        try {
+            $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
+            if ($storageConfig !== null && $storageConfig->isConfigured()) {
+                return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketArticles) . '/' . ltrim($cover, '/');
+            }
+        } catch (\Throwable) {
+        }
+
+        if (str_starts_with($cover, '/uploads/')) {
+            return $cover;
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the thumbnail / cover image URL for an article record.
+     * Only returns an image URL if the article has an explicit, valid cover image saved.
+     * Returns null if no cover image was selected, preventing arbitrary or unrelated stock imagery.
      *
      * @param array<string, mixed> $post
      */
-    public static function resolveThumbnail(array $post, int $index = 0): string
+    public static function resolveThumbnail(array $post, int $index = 0): ?string
     {
         if (!empty($post['cover_image_path']) && is_string($post['cover_image_path'])) {
-            $cover = trim($post['cover_image_path']);
-            if (str_starts_with($cover, 'http://') || str_starts_with($cover, 'https://')) {
+            $cover = self::resolveCoverUrl($post['cover_image_path']);
+            if ($cover !== null) {
                 return $cover;
-            }
-            if (str_starts_with($cover, '/')) {
-                $publicPath = dirname(__DIR__, 2) . '/public' . $cover;
-                if (file_exists($publicPath)) {
-                    return $cover;
-                }
-            }
-            try {
-                $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
-                if ($storageConfig !== null && $storageConfig->isConfigured()) {
-                    return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketArticles) . '/' . ltrim($cover, '/');
-                }
-            } catch (\Throwable) {
             }
         }
 
         if (!empty($post['featured_image_url']) && is_string($post['featured_image_url'])) {
-            $feat = trim($post['featured_image_url']);
-            if (str_starts_with($feat, 'http://') || str_starts_with($feat, 'https://')) {
-                return $feat;
-            }
-            if (str_starts_with($feat, '/') && file_exists(dirname(__DIR__, 2) . '/public' . $feat)) {
+            $feat = self::resolveCoverUrl($post['featured_image_url']);
+            if ($feat !== null) {
                 return $feat;
             }
         }
 
         if (!empty($post['image_url']) && is_string($post['image_url'])) {
-            $img = trim($post['image_url']);
-            if (str_starts_with($img, 'http://') || str_starts_with($img, 'https://')) {
-                return $img;
-            }
-            if (str_starts_with($img, '/') && file_exists(dirname(__DIR__, 2) . '/public' . $img)) {
+            $img = self::resolveCoverUrl($post['image_url']);
+            if ($img !== null) {
                 return $img;
             }
         }
 
-        if (!empty($post['content']) && is_string($post['content'])) {
-            if (preg_match('/!\[.*?\]\((https?:\/\/[^\s\)]+)\)/i', $post['content'], $match)) {
-                return $match[1];
-            }
-            if (preg_match('/<img[^>]+src=["\'](https?:\/\/[^"\']+)["\']/i', $post['content'], $match)) {
-                return $match[1];
-            }
-        }
-
-        $category = mb_strtolower((string) ($post['category_name'] ?? ''));
-        $title = mb_strtolower((string) ($post['title'] ?? ''));
-
-        if (str_contains($category, 'tech') || str_contains($category, 'code') || str_contains($category, 'software')
-            || str_contains($title, 'code') || str_contains($title, 'web') || str_contains($title, 'tech')) {
-            return ($index % 2 === 0)
-                ? '/assets/images/technology-article-laptop.png'
-                : '/assets/images/coding-coffee-workspace.png';
-        }
-
-        if (str_contains($category, 'life') || str_contains($category, 'productiv') || str_contains($category, 'mind')
-            || str_contains($title, 'focus') || str_contains($title, 'habit') || str_contains($title, 'productiv')) {
-            return '/assets/images/lifestyle-forest-road.png';
-        }
-
-        if (str_contains($category, 'edu') || str_contains($category, 'learn') || str_contains($category, 'study')
-            || str_contains($title, 'learn') || str_contains($title, 'guide') || str_contains($title, 'notes')) {
-            return '/assets/images/education-study-notes.png';
-        }
-
-        if (str_contains($category, 'nature') || str_contains($category, 'travel') || str_contains($category, 'outdoor')
-            || str_contains($title, 'nature') || str_contains($title, 'trail') || str_contains($title, 'journey')) {
-            return '/assets/images/nature-trail-scenery.png';
-        }
-
-        $seed = !empty($post['id']) ? (int) $post['id'] : $index;
-        $count = count(self::FALLBACK_THUMBNAILS);
-        return self::FALLBACK_THUMBNAILS[abs($seed) % $count];
+        return null;
     }
 
     /**
@@ -109,35 +96,7 @@ final class ArticleImageHelper
      */
     public static function resolveAvatarUrl(?string $path): ?string
     {
-        if ($path === null || trim($path) === '') {
-            return null;
-        }
-        $trimmed = trim($path);
-        if (str_starts_with($trimmed, 'http://') || str_starts_with($trimmed, 'https://')) {
-            return $trimmed;
-        }
-        if (str_starts_with($trimmed, '/')) {
-            return $trimmed;
-        }
-        if (str_starts_with($trimmed, 'uploads/')) {
-            return '/' . $trimmed;
-        }
-
-        try {
-            $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
-            if ($storageConfig !== null && $storageConfig->isConfigured()) {
-                return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketAvatars) . '/' . ltrim($trimmed, '/');
-            }
-        } catch (\Throwable) {
-        }
-
-        // Check local avatars directory fallback
-        $localAvatarsPath = dirname(__DIR__, 2) . '/public/uploads/avatars/' . ltrim($trimmed, '/');
-        if (file_exists($localAvatarsPath)) {
-            return '/uploads/avatars/' . ltrim($trimmed, '/');
-        }
-
-        return '/' . ltrim($trimmed, '/');
+        return \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($path);
     }
 
     /**
@@ -147,34 +106,6 @@ final class ArticleImageHelper
      */
     public static function resolveBannerUrl(?string $path): ?string
     {
-        if ($path === null || trim($path) === '') {
-            return null;
-        }
-        $trimmed = trim($path);
-        if (str_starts_with($trimmed, 'http://') || str_starts_with($trimmed, 'https://')) {
-            return $trimmed;
-        }
-        if (str_starts_with($trimmed, '/')) {
-            return $trimmed;
-        }
-        if (str_starts_with($trimmed, 'uploads/')) {
-            return '/' . $trimmed;
-        }
-
-        try {
-            $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
-            if ($storageConfig !== null && $storageConfig->isConfigured()) {
-                return $storageConfig->supabaseUrl . '/storage/v1/object/public/' . rawurlencode($storageConfig->bucketBanners) . '/' . ltrim($trimmed, '/');
-            }
-        } catch (\Throwable) {
-        }
-
-        // Check local banners directory fallback
-        $localBannersPath = dirname(__DIR__, 2) . '/public/uploads/banners/' . ltrim($trimmed, '/');
-        if (file_exists($localBannersPath)) {
-            return '/uploads/banners/' . ltrim($trimmed, '/');
-        }
-
-        return '/' . ltrim($trimmed, '/');
+        return \InfinityBlog\Support\UserIdentityHelper::resolveBannerUrl($path);
     }
 }

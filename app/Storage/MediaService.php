@@ -221,6 +221,18 @@ final class MediaService
         if ($path === '' || str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
             return false;
         }
+
+        // Clean up local mirror file if present
+        $projectRoot = dirname(__DIR__, 2);
+        $cleanPath = ltrim($path, '/');
+        $cleanSub = preg_replace('#^(avatars|banners|covers|category-logos|inline|videos)/#', '', $cleanPath);
+        @unlink($projectRoot . '/public/uploads/' . $cleanPath);
+        if ($cleanSub !== $cleanPath) {
+            @unlink($projectRoot . '/public/uploads/avatars/' . $cleanSub);
+            @unlink($projectRoot . '/public/uploads/banners/' . $cleanSub);
+            @unlink($projectRoot . '/public/uploads/covers/' . $cleanSub);
+        }
+
         try {
             return $this->client->delete($bucket, $path);
         } catch (Throwable) {
@@ -301,6 +313,15 @@ final class MediaService
         if ($binaryData === false) {
             throw new StorageException('Could not read temporary file content.', 'READ_ERROR');
         }
+
+        // Always mirror uploaded file to public/uploads directory for robust local availability
+        $projectRoot = dirname(__DIR__, 2);
+        $localDest = $projectRoot . '/public/uploads/' . $objectPath;
+        $localDir = dirname($localDest);
+        if (!is_dir($localDir)) {
+            @mkdir($localDir, 0755, true);
+        }
+        @file_put_contents($localDest, $binaryData);
 
         return $this->client->upload($bucket, $objectPath, $binaryData, $detectedMime, true);
     }

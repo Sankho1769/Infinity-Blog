@@ -61,11 +61,11 @@ declare(strict_types=1);
         <div class="profile-info" style="flex: 1; min-width: 260px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 8px;">
             <div>
-              <h1 style="font-size: 1.85rem; font-weight: 800; color: var(--text-heading); margin-bottom: 4px; letter-spacing: -0.02em;">
+              <h1 class="profile-name" style="font-size: 1.85rem; font-weight: 800; color: var(--text-heading); margin-bottom: 4px; letter-spacing: -0.02em;">
                 <?= htmlspecialchars($user['display_name'], ENT_QUOTES, 'UTF-8') ?>
               </h1>
-              <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 8px;">
-                @<?= htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8') ?>
+              <p class="profile-handle" style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 8px;">
+                <?= htmlspecialchars($user['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($user['username'] ?? null, $user['display_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
               </p>
             </div>
             <!-- Action Buttons: Primary Blue Gradient & Glass Secondary -->
@@ -109,6 +109,25 @@ declare(strict_types=1);
             <p style="color: var(--text-muted); font-size: 0.92rem; font-style: italic; margin-bottom: 12px;">
               No bio provided yet. <a href="/profile/edit" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">Add a bio</a> to tell readers about yourself.
             </p>
+          <?php endif; ?>
+
+          <!-- Public Social Presence Bar -->
+          <?php $socialLinks = \InfinityBlog\Support\UserIdentityHelper::getSocialLinks($user, $user['display_name'] ?? null, true); ?>
+          <?php if (!empty($socialLinks)): ?>
+            <div class="profile-social-links-bar" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+              <?php foreach ($socialLinks as $slink): ?>
+                <a href="<?= htmlspecialchars($slink['url'], ENT_QUOTES, 'UTF-8') ?>"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="profile-social-link social-link-btn btn btn-secondary btn-sm btn-pill"
+                   style="padding: 4px 12px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 6px; <?= !empty($slink['text_color']) ? 'color: ' . $slink['text_color'] . '; font-weight: 600;' : '' ?>"
+                   aria-label="<?= htmlspecialchars($slink['aria_label'], ENT_QUOTES, 'UTF-8') ?>"
+                   title="<?= htmlspecialchars($slink['title'], ENT_QUOTES, 'UTF-8') ?>">
+                  <?= $slink['svg_icon'] ?>
+                  <?= htmlspecialchars($slink['name'], ENT_QUOTES, 'UTF-8') ?>
+                </a>
+              <?php endforeach; ?>
+            </div>
           <?php endif; ?>
         </div>
       </div>
@@ -281,12 +300,108 @@ declare(strict_types=1);
           </div>
         <?php endif; ?>
 
+        <?php if (!empty($user['instagram_url'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E1306C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Instagram</div>
+              <a href="<?= htmlspecialchars($user['instagram_url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">
+                <?= htmlspecialchars(preg_replace('#^https?://(www\.)?instagram\.com/#i', '@', $user['instagram_url']), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($user['twitter_url'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style="color: var(--text-heading);">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">X (Twitter)</div>
+              <a href="<?= htmlspecialchars($user['twitter_url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">
+                <?= htmlspecialchars(preg_replace('#^https?://(www\.)?(twitter\.com|x\.com)/#i', '@', $user['twitter_url']), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($user['github_url'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="color: var(--text-heading);">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">GitHub</div>
+              <a href="<?= htmlspecialchars($user['github_url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">
+                <?= htmlspecialchars(preg_replace('#^https?://(www\.)?github\.com/#i', '', $user['github_url']), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($user['linkedin_url'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#0A66C2" aria-hidden="true">
+              <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 8.76a1.62 1.62 0 1 0 0-3.24 1.62 1.62 0 0 0 0 3.24M7.85 18.5V10.13H5.07V18.5h2.78z"/>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">LinkedIn</div>
+              <a href="<?= htmlspecialchars($user['linkedin_url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">
+                <?= htmlspecialchars(\InfinityBlog\Support\UserIdentityHelper::formatDisplayHandle($user['linkedin_url'], 'linkedin'), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($user['facebook_url'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#1877F2">
+              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Facebook</div>
+              <a href="<?= htmlspecialchars($user['facebook_url'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--primary-color); font-weight: 600; text-decoration: none;">
+                <?= htmlspecialchars(preg_replace('#^https?://(www\.)?facebook\.com/#i', '', $user['facebook_url']), ENT_QUOTES, 'UTF-8') ?>
+              </a>
+            </div>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($user['whatsapp_number'])): ?>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">
+              <path d="M17.472 14.382c-.301-.15-1.782-.879-2.057-.98-.276-.1-.476-.15-.677.15-.2.3-.777.98-.952 1.18-.175.2-.351.226-.652.075-.3-.15-1.267-.467-2.414-1.489-.893-.796-1.496-1.78-1.671-2.08-.175-.3-.019-.462.131-.612.135-.135.301-.35.452-.525.15-.176.2-.3.301-.5.1-.2.05-.376-.025-.526-.075-.15-.677-1.631-.927-2.233-.244-.587-.492-.507-.677-.516-.175-.01-.376-.01-.577-.01-.2 0-.526.075-.802.376-.276.3-1.053 1.028-1.053 2.508 0 1.48 1.078 2.909 1.229 3.109.15.2 2.122 3.24 5.141 4.544.718.31 1.279.496 1.716.634.721.23 1.378.197 1.9.12.58-.088 1.782-.728 2.032-1.431.25-.702.25-1.304.175-1.43-.075-.125-.276-.201-.577-.351z"/>
+              <path d="M12 2C6.48 2 2 6.48 2 12c0 1.83.49 3.55 1.34 5.03L2 22l5.12-1.33A9.95 9.95 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm0 18.2c-1.57 0-3.04-.43-4.32-1.18l-.31-.18-3.04.79.81-2.96-.2-.32A8.17 8.17 0 013.8 12c0-4.52 3.68-8.2 8.2-8.2s8.2 3.68 8.2 8.2-3.68 8.2-8.2 8.2z"/>
+            </svg>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                <span>WhatsApp</span>
+                <span style="font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; font-weight: 700; background: <?= !empty($user['whatsapp_public']) ? 'rgba(34, 197, 94, 0.15); color: #15803d;' : 'rgba(100, 116, 139, 0.15); color: #64748b;' ?>">
+                  <?= !empty($user['whatsapp_public']) ? '🌐 Public' : '🔒 Private' ?>
+                </span>
+              </div>
+              <?php if (!empty($user['whatsapp_link'])): ?>
+                <a href="<?= htmlspecialchars($user['whatsapp_link'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer" style="color: #25D366; font-weight: 600; text-decoration: none;">
+                  <?= htmlspecialchars($user['whatsapp_number'], ENT_QUOTES, 'UTF-8') ?>
+                </a>
+              <?php else: ?>
+                <span style="font-weight: 600; color: var(--text-heading);"><?= htmlspecialchars($user['whatsapp_number'], ENT_QUOTES, 'UTF-8') ?></span>
+              <?php endif; ?>
+            </div>
+          </div>
+        <?php endif; ?>
+
         <?php if (!empty($user['mobile_number_masked']) || !empty($user['phone'])): ?>
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 1.1rem;" title="Mobile Number (Private & Encrypted)">📱</span>
+            <span style="font-size: 1.1rem;" title="Account Mobile Number (Private & Encrypted)">📱</span>
             <div>
               <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
-                <span>Mobile (Private)</span>
+                <span>Account Mobile (Private)</span>
                 <span style="font-size: 0.68rem; background: rgba(59, 130, 246, 0.1); color: var(--primary-color); padding: 1px 5px; border-radius: 4px; font-weight: 600;">🔒 AES-256</span>
               </div>
               <span style="font-family: monospace; font-weight: 600; color: var(--text-heading);"><?= htmlspecialchars($user['mobile_number_masked'] ?? $user['phone'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -331,17 +446,32 @@ declare(strict_types=1);
     <?php else: ?>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
         <?php foreach ($followers as $f): ?>
+          <?php
+            $fAvatar = $f['avatar_url'] ?? \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($f['avatar_path'] ?? null);
+            $fInitial = strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1));
+            $fHandle = $f['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($f['username'] ?? null, $f['display_name'] ?? null);
+          ?>
           <div class="glass-card" style="padding: 16px 20px; border-radius: 16px; display: flex; align-items: center; gap: 14px;">
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
-              <?= strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1)) ?>
-            </div>
+            <?php if (!empty($fAvatar)): ?>
+              <img src="<?= htmlspecialchars($fAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                   alt="<?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>"
+                   style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div style="display: none; width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+                <?= htmlspecialchars($fInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php else: ?>
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+                <?= htmlspecialchars($fInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php endif; ?>
             <div style="flex: 1; min-width: 0;">
-              <a href="/authors/<?= rawurlencode($f['username']) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <a href="/author/<?= (int) ($f['id'] ?? 0) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
               </a>
-              <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);"><?= htmlspecialchars($fHandle, ENT_QUOTES, 'UTF-8') ?></span>
             </div>
-            <a href="/authors/<?= rawurlencode($f['username']) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
+            <a href="/author/<?= (int) ($f['id'] ?? 0) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
           </div>
         <?php endforeach; ?>
       </div>
@@ -360,17 +490,32 @@ declare(strict_types=1);
     <?php else: ?>
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;">
         <?php foreach ($following as $f): ?>
+          <?php
+            $fAvatar = $f['avatar_url'] ?? \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($f['avatar_path'] ?? null);
+            $fInitial = strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1));
+            $fHandle = $f['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($f['username'] ?? null, $f['display_name'] ?? null);
+          ?>
           <div class="glass-card" style="padding: 16px 20px; border-radius: 16px; display: flex; align-items: center; gap: 14px;">
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
-              <?= strtoupper(mb_substr($f['display_name'] ?? $f['username'] ?? 'U', 0, 1)) ?>
-            </div>
+            <?php if (!empty($fAvatar)): ?>
+              <img src="<?= htmlspecialchars($fAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                   alt="<?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>"
+                   style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; flex-shrink: 0;"
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div style="display: none; width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+                <?= htmlspecialchars($fInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php else: ?>
+              <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #a5b4fc, #6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; flex-shrink: 0; font-size: 1.05rem;">
+                <?= htmlspecialchars($fInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php endif; ?>
             <div style="flex: 1; min-width: 0;">
-              <a href="/authors/<?= rawurlencode($f['username']) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <a href="/author/<?= (int) ($f['id'] ?? 0) ?>" style="font-weight: 700; color: var(--text-heading); text-decoration: none; font-size: 0.95rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 <?= htmlspecialchars($f['display_name'], ENT_QUOTES, 'UTF-8') ?>
               </a>
-              <span style="font-size: 0.8rem; color: var(--text-muted);">@<?= htmlspecialchars($f['username'], ENT_QUOTES, 'UTF-8') ?></span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);"><?= htmlspecialchars($fHandle, ENT_QUOTES, 'UTF-8') ?></span>
             </div>
-            <a href="/authors/<?= rawurlencode($f['username']) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
+            <a href="/author/<?= (int) ($f['id'] ?? 0) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 10px; font-size: 0.78rem;">View</a>
           </div>
         <?php endforeach; ?>
       </div>

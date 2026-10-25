@@ -33,7 +33,7 @@
             <td style="color: var(--text-muted); font-size: 0.85rem;"><?= (int) $user['id'] ?></td>
             <td>
               <div style="font-weight: 700; color: var(--text-dark);"><?= htmlspecialchars($user['display_name'] ?? $user['username'], ENT_QUOTES, 'UTF-8') ?></div>
-              <div style="font-size: 0.8rem; color: var(--text-muted); font-family: monospace;">@<?= htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8') ?></div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); font-family: monospace;"><?= htmlspecialchars(\InfinityBlog\Support\UserIdentityHelper::formatHandle($user['username'] ?? null, $user['display_name'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
             </td>
             <td>
               <span class="user-role-badge <?= $user['role'] === 'admin' ? 'admin' : '' ?>"><?= htmlspecialchars($user['role'], ENT_QUOTES, 'UTF-8') ?></span>

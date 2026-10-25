@@ -23,6 +23,9 @@
     <a href="/library?tab=bookmarks" class="tab-pill <?= ($activeTab ?? 'bookmarks') === 'bookmarks' ? 'active' : '' ?>" style="padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; color: <?= ($activeTab ?? 'bookmarks') === 'bookmarks' ? '#fff' : 'var(--text-muted)' ?>; background: <?= ($activeTab ?? 'bookmarks') === 'bookmarks' ? 'var(--primary-gradient)' : 'transparent' ?>;">
       <span>🔖</span> Saved Articles (<?= count($bookmarks ?? []) ?>)
     </a>
+    <a href="/library?tab=ebooks" class="tab-pill <?= ($activeTab ?? '') === 'ebooks' ? 'active' : '' ?>" style="padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; color: <?= ($activeTab ?? '') === 'ebooks' ? '#fff' : 'var(--text-muted)' ?>; background: <?= ($activeTab ?? '') === 'ebooks' ? 'var(--primary-gradient)' : 'transparent' ?>;">
+      <span>📖</span> Saved eBooks (<?= count($savedEbooks ?? []) ?>)
+    </a>
     <a href="/library?tab=history" class="tab-pill <?= ($activeTab ?? '') === 'history' ? 'active' : '' ?>" style="padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; color: <?= ($activeTab ?? '') === 'history' ? '#fff' : 'var(--text-muted)' ?>; background: <?= ($activeTab ?? '') === 'history' ? 'var(--primary-gradient)' : 'transparent' ?>;">
       <span>⏱️</span> Continue Reading (<?= count($history ?? []) ?>)
     </a>
@@ -288,6 +291,87 @@
     </div>
   <?php endif; ?>
 
+  <!-- TAB 6: SAVED EBOOKS -->
+  <?php if (($activeTab ?? '') === 'ebooks'): ?>
+    <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <form method="GET" action="/library" style="display: flex; gap: 12px; max-width: 500px; flex: 1;">
+        <input type="hidden" name="tab" value="ebooks">
+        <input type="text" name="q" value="<?= htmlspecialchars($searchQuery ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Search saved eBooks by title or author..." class="form-input" style="flex: 1;">
+        <button type="submit" class="btn btn-secondary">Search</button>
+        <?php if (!empty($searchQuery)): ?>
+          <a href="/library?tab=ebooks" class="btn btn-secondary">Clear</a>
+        <?php endif; ?>
+      </form>
+      <a href="/ebooks" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 8px;">
+        <span>📚</span> Browse eBook Library
+      </a>
+    </div>
+
+    <?php if (empty($savedEbooks)): ?>
+      <div class="glass-panel empty-state" style="padding: 36px 20px; text-align: center; border-radius: 16px;">
+        <div style="font-size: 3.5rem; margin-bottom: 12px;">📖</div>
+        <h3 style="font-size: 1.3rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px;">No saved eBooks yet</h3>
+        <p style="color: var(--text-muted); max-width: 480px; margin: 0 auto 20px;">Discover community eBooks across programming, design, fiction, and more. Click "Save to Library" on any book to read it anytime.</p>
+        <a href="/ebooks" class="btn btn-primary">Discover eBooks</a>
+      </div>
+    <?php else: ?>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
+        <?php foreach ($savedEbooks as $book): ?>
+          <?php
+            $coverUrl = !empty($book['cover_path']) ? htmlspecialchars($book['cover_path'], ENT_QUOTES, 'UTF-8') : \InfinityBlog\Ebooks\EbookFileService::generateSvgCover($book['title'], $book['author_name'], $book['category_name'] ?? 'eBook');
+          ?>
+          <div class="glass-panel saved-ebook-card" data-ebook-id="<?= (int) $book['id'] ?>" style="padding: 20px; border-radius: 16px; display: flex; flex-direction: column; gap: 14px; position: relative;">
+            <div style="display: flex; gap: 16px;">
+              <a href="/ebooks/<?= (int) $book['id'] ?>" style="flex-shrink: 0; width: 80px; height: 112px; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.12); display: block;">
+                <img src="<?= $coverUrl ?>" alt="<?= htmlspecialchars($book['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;">
+              </a>
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; background: rgba(37,99,235,0.1); color: var(--primary-color); padding: 2px 8px; border-radius: 6px;">
+                    <?= strtoupper(htmlspecialchars($book['format'], ENT_QUOTES, 'UTF-8')) ?>
+                  </span>
+                  <?php if (!empty($book['category_name'])): ?>
+                    <span style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted);">
+                      <?= htmlspecialchars($book['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+                  <?php endif; ?>
+                </div>
+                <h4 style="font-size: 1.05rem; font-weight: 700; margin: 0 0 4px; line-height: 1.3;">
+                  <a href="/ebooks/<?= (int) $book['id'] ?>" style="color: var(--text-main); text-decoration: none;">
+                    <?= htmlspecialchars($book['title'], ENT_QUOTES, 'UTF-8') ?>
+                  </a>
+                </h4>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">
+                  By <?= htmlspecialchars($book['author_name'], ENT_QUOTES, 'UTF-8') ?>
+                </div>
+                <?php if (isset($book['percentage'])): ?>
+                  <div style="margin-top: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); margin-bottom: 2px;">
+                      <span>Progress</span>
+                      <span><?= round((float) $book['percentage']) ?>%</span>
+                    </div>
+                    <div style="height: 5px; width: 100%; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden;">
+                      <div style="height: 100%; width: <?= min(100, max(0, (float) $book['percentage'])) ?>%; background: var(--primary-gradient); border-radius: 3px;"></div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--glass-border);">
+              <a href="/ebooks/<?= (int) $book['id'] ?>/read" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+                <span>📖</span> Read Now
+              </a>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="removeSavedEbook(<?= (int) $book['id'] ?>, this)" title="Remove from saved eBooks">
+                <span>✕</span> Remove
+              </button>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+  <?php endif; ?>
+
 </div>
 
 <!-- Modal: New Collection -->
@@ -426,6 +510,30 @@ async function toggleTopicMute(catId, shouldMute, btn) {
     if (res.ok) window.location.reload();
   } catch (e) {
     alert('Error updating preference.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function removeSavedEbook(ebookId, btn) {
+  if (!confirm('Remove this eBook from your saved library?')) return;
+  btn.disabled = true;
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  try {
+    const res = await fetch('/api/ebooks/' + ebookId + '/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-Token': csrf || ''
+      }
+    });
+    if (res.ok) {
+      window.location.reload();
+    } else {
+      alert('Failed to remove eBook.');
+    }
+  } catch (e) {
+    alert('Network error.');
   } finally {
     btn.disabled = false;
   }

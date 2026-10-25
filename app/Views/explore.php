@@ -317,26 +317,34 @@
                  tabindex="0"
                  role="article"
                  aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
-          <div class="article-card-banner has-image">
-            <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.src='/assets/images/technology-article-laptop.png';">
-            <div class="article-banner-badge-wrapper">
-              <?php if (!empty($post['category_name'])): ?>
-                <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
-                  <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
-                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
-                </a>
-              <?php else: ?>
-                <span class="badge badge-published">Published</span>
-              <?php endif; ?>
-              <?php if (!empty($post['remixed_from_post_id'])): ?>
-                <span class="badge badge-remix" title="Remixed from an earlier article">🔀 Remix</span>
-              <?php endif; ?>
+          <?php if (!empty($thumbnailUrl)): ?>
+            <div class="article-card-banner has-image">
+              <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.closest('.article-card-banner').style.display='none';">
+              <div class="article-banner-badge-wrapper">
+                <?php if (!empty($post['category_name'])): ?>
+                  <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
+                    <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                  </a>
+                <?php else: ?>
+                  <span class="badge badge-published">Published</span>
+                <?php endif; ?>
+                <?php if (!empty($post['remixed_from_post_id'])): ?>
+                  <span class="badge badge-remix" title="Remixed from an earlier article">🔀 Remix</span>
+                <?php endif; ?>
+              </div>
             </div>
-          </div>
+          <?php endif; ?>
 
           <div class="article-card-body">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
               <div style="display: flex; align-items: center; gap: 8px;">
+                <?php if (empty($thumbnailUrl) && !empty($post['category_name'])): ?>
+                  <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
+                    <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
+                    <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                  </a>
+                <?php endif; ?>
                 <time class="article-date-meta">
                   <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
                 </time>
@@ -366,8 +374,25 @@
 
             <div class="article-card-footer">
               <div class="article-author-info">
-                <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="user-avatar" style="width: 26px; height: 26px; font-size: 0.75rem; text-decoration: none;" title="View Author Profile">
-                  <?= strtoupper(substr($post['author_name'] ?? 'Cristine Palmer', 0, 1)) ?>
+                <?php
+                  $authorAvatar = $post['author_avatar_url'] ?? \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($post['avatar_path'] ?? ($post['author_avatar_path'] ?? null));
+                  $authorInitial = strtoupper(mb_substr($post['author_name'] ?? 'A', 0, 1));
+                ?>
+                <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="feed-author-avatar-link" title="View Author Profile" style="text-decoration: none; display: inline-flex; align-items: center;">
+                  <?php if (!empty($authorAvatar)): ?>
+                    <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                         alt="<?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>"
+                         class="feed-author-avatar-img"
+                         width="26" height="26" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="user-avatar" style="display: none; width: 26px; height: 26px; font-size: 0.75rem; text-decoration: none;">
+                      <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                  <?php else: ?>
+                    <div class="user-avatar" style="width: 26px; height: 26px; font-size: 0.75rem; text-decoration: none;">
+                      <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                  <?php endif; ?>
                 </a>
                 <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="color: var(--text-dark); text-decoration: none; font-weight: 600;" title="View Author Profile">
                   <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>

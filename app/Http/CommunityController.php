@@ -39,8 +39,35 @@ final class CommunityController
         // Get post comments: GET /api/posts/{id}/comments
         if ($method === 'GET' && preg_match('#^/api/posts/([0-9]+)/comments$#D', $path, $m)) {
             $user = $this->guard->user();
-            $comments = $this->community->getPostComments((int) $m[1], $user?->id);
-            return ['status' => 200, 'body' => ['data' => $comments]];
+            $postId = (int) $m[1];
+            $comments = $this->community->getPostComments($postId, $user?->id);
+            $totalCount = $this->community->getCommentCount($postId);
+            $post = null;
+            try {
+                $post = $this->posts->findPublished($postId);
+            } catch (\Throwable) {
+            }
+            return [
+                'status' => 200,
+                'body' => [
+                    'data' => $comments,
+                    'total_count' => $totalCount,
+                    'post' => $post !== null ? [
+                        'id' => (int) $post['id'],
+                        'title' => (string) $post['title'],
+                        'author_id' => (int) $post['author_id'],
+                        'author_name' => (string) ($post['author_name'] ?? ''),
+                        'author_handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($post['author_username'] ?? '', $post['author_name'] ?? ''),
+                    ] : null,
+                    'viewer' => $user !== null ? [
+                        'id' => $user->id,
+                        'name' => $user->displayName,
+                        'handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle($user->username, $user->displayName),
+                        'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($user->avatarPath, $user->displayName),
+                        'role' => $user->role,
+                    ] : null,
+                ],
+            ];
         }
 
         // Add comment: POST /api/posts/{id}/comments
@@ -48,13 +75,23 @@ final class CommunityController
             return $this->addComment($request, (int) $m[1]);
         }
 
-        // Edit comment: PUT /api/comments/{id}
-        if (($method === 'PUT' || $method === 'POST') && preg_match('#^/api/comments/([0-9]+)/edit$#D', $path, $m)) {
+        // React to comment: POST /api/comments/{id}/react or /like or /dislike
+        if ($method === 'POST' && preg_match('#^/api/comments/([0-9]+)/(?:react|like|dislike)$#D', $path, $m)) {
+            return $this->reactComment($request, (int) $m[1]);
+        }
+
+        // Pin/unpin comment: POST /api/comments/{id}/pin
+        if ($method === 'POST' && preg_match('#^/api/comments/([0-9]+)/pin$#D', $path, $m)) {
+            return $this->pinComment($request, (int) $m[1]);
+        }
+
+        // Edit comment: PUT /api/comments/{id} or POST /api/comments/{id}/edit or PUT /api/comments/{id}/edit
+        if (($method === 'PUT' || $method === 'POST') && preg_match('#^/api/comments/([0-9]+)(?:/edit)?$#D', $path, $m)) {
             return $this->editComment($request, (int) $m[1]);
         }
 
-        // Delete comment: DELETE /api/comments/{id} or POST /api/comments/{id}/delete
-        if (($method === 'DELETE' || $method === 'POST') && preg_match('#^/api/comments/([0-9]+)/delete$#D', $path, $m)) {
+        // Delete comment: DELETE /api/comments/{id} or POST /api/comments/{id}/delete or DELETE /api/comments/{id}/delete
+        if (($method === 'DELETE' || $method === 'POST') && preg_match('#^/api/comments/([0-9]+)(?:/delete)?$#D', $path, $m)) {
             return $this->deleteComment($request, (int) $m[1]);
         }
 
@@ -65,20 +102,27 @@ final class CommunityController
 
         // Chat rooms list: GET /api/chat/rooms
         if ($method === 'GET' && $path === '/api/chat/rooms') {
+            $user = $this->guard->user();
+            if ($user === null) {
+                return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in to access chat rooms.')];
+            }
             return ['status' => 200, 'body' => ['data' => $this->community->getChatRooms()]];
         }
 
         // Chat messages: GET /api/chat/rooms/{slug}/messages
         if ($method === 'GET' && preg_match('#^/api/chat/rooms/([a-zA-Z0-9_\-]+)/messages$#D', $path, $m)) {
+            $user = $this->guard->user();
+            if ($user === null) {
+                return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in to access chat messages.')];
+            }
             $room = $this->community->getChatRoomBySlug($m[1]);
             if ($room === null) {
                 return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', 'Chat room not found.')];
             }
-            $user = $this->guard->user();
-            $isMember = $user !== null ? $this->community->isMember((int) $room['id'], $user->id) : false;
+            $isMember = $this->community->isMember((int) $room['id'], $user->id);
             $memberCount = $this->community->getRoomMemberCount((int) $room['id']);
-            $afterId = isset($_GET['after']) ? (int) $_GET['after'] : null;
-            $messages = $this->community->getChatMessages((int) $room['id'], 50, $afterId);
+            $afterId = isset($_GET['after']) ? (int) $_GET['after'] : (isset($_GET['after_id']) ? (int) $_GET['after_id'] : null);
+            $messages = $this->community->getChatMessages((int) $room['id'], 50, $afterId, $user->id);
             return [
                 'status' => 200,
                 'body' => [
@@ -169,7 +213,11 @@ final class CommunityController
         $commentId = $this->community->addComment($postId, $user->id, $content, $parentId);
 
         // Notify article author
-        $post = $this->posts->findPublic($postId);
+        $post = null;
+        try {
+            $post = $this->posts->findPublished($postId);
+        } catch (\Throwable) {
+        }
         if ($post && (int) $post['author_id'] !== $user->id) {
             $this->community->createNotification(
                 (int) $post['author_id'],
@@ -180,10 +228,12 @@ final class CommunityController
             );
         }
 
+        $newComment = $this->community->getCommentById($commentId, $user->id);
+
         return [
             'status' => 201,
             'body' => [
-                'data' => [
+                'data' => $newComment ?? [
                     'id' => $commentId,
                     'post_id' => $postId,
                     'user_id' => $user->id,
@@ -192,8 +242,66 @@ final class CommunityController
                     'created_at' => date('Y-m-d H:i:s'),
                     'message' => 'Comment posted successfully.',
                 ],
+                'total_count' => $this->community->getCommentCount($postId),
             ],
         ];
+    }
+
+    private function reactComment(Request $request, int $commentId): array
+    {
+        if (!$this->validateCsrf($request)) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('CSRF_INVALID', 'Security verification failed.')];
+        }
+
+        $user = $this->guard->user();
+        if ($user === null) {
+            return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in to react to comments.')];
+        }
+
+        $input = $request->input();
+        $reaction = strtolower(trim((string) ($input['reaction'] ?? '')));
+        if ($reaction === '') {
+            if (str_ends_with($request->path, '/dislike')) {
+                $reaction = 'dislike';
+            } else {
+                $reaction = 'like';
+            }
+        }
+
+        if (!in_array($reaction, ['like', 'dislike'], true)) {
+            return ['status' => 422, 'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'Reaction must be "like" or "dislike".')];
+        }
+
+        try {
+            $result = $this->community->reactToComment($commentId, $user->id, $reaction);
+            return [
+                'status' => 200,
+                'body' => [
+                    'data' => array_merge(['comment_id' => $commentId], $result),
+                ],
+            ];
+        } catch (\RuntimeException $e) {
+            return ['status' => 404, 'body' => ApiErrorResponder::build('NOT_FOUND', $e->getMessage())];
+        }
+    }
+
+    private function pinComment(Request $request, int $commentId): array
+    {
+        if (!$this->validateCsrf($request)) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('CSRF_INVALID', 'Security verification failed.')];
+        }
+
+        $user = $this->guard->user();
+        if ($user === null) {
+            return ['status' => 401, 'body' => ApiErrorResponder::build('UNAUTHENTICATED', 'Please sign in.')];
+        }
+
+        $success = $this->community->pinComment($commentId, $user->id, $user->role === 'admin');
+        if (!$success) {
+            return ['status' => 403, 'body' => ApiErrorResponder::build('FORBIDDEN', 'Permission denied.')];
+        }
+
+        return ['status' => 200, 'body' => ['data' => ['success' => true]]];
     }
 
     private function editComment(Request $request, int $commentId): array
@@ -382,6 +490,13 @@ final class CommunityController
 
         if ($name === '' || strlen($name) > 100) {
             return ['status' => 422, 'body' => ApiErrorResponder::build('VALIDATION_ERROR', 'Room name must be between 1 and 100 characters.')];
+        }
+
+        if ($catId !== null) {
+            $existingCatRoom = $this->community->getChatRoomByCategoryId($catId);
+            if ($existingCatRoom !== null) {
+                return ['status' => 422, 'body' => ApiErrorResponder::build('DUPLICATE_CATEGORY_ROOM', 'A chat room for this category already exists.')];
+            }
         }
 
         $existing = $this->community->getChatRoomBySlug($slug);

@@ -62,18 +62,39 @@
       <?php endif; ?>
 
       <div class="article-meta-row">
-        <div class="article-author-info">
-          <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="user-avatar" style="width: 36px; height: 36px; font-size: 0.95rem; text-decoration: none;" title="View Author Profile">
-            <?= strtoupper(substr($post['author_name'] ?? 'Cristine Palmer', 0, 1)) ?>
+        <div class="article-author-info" style="display: flex; align-items: center; gap: 12px;">
+          <?php
+            $authorAvatar = $post['author_avatar_url'] ?? \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($post['author_avatar_path'] ?? ($post['avatar_path'] ?? null));
+            $authorInitial = strtoupper(mb_substr($post['author_name'] ?? 'A', 0, 1));
+            $authorHandle = $post['author_handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($post['author_username'] ?? null, $post['author_name'] ?? null);
+          ?>
+          <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" class="article-author-avatar-link" title="View <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>'s Profile" style="text-decoration: none; display: inline-flex;">
+            <?php if (!empty($authorAvatar)): ?>
+              <img src="<?= htmlspecialchars($authorAvatar, ENT_QUOTES, 'UTF-8') ?>"
+                   alt="<?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>"
+                   class="article-author-avatar-img"
+                   width="38" height="38" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: var(--clay-shadow-sm, 0 2px 8px rgba(0,0,0,0.08));"
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div class="user-avatar article-avatar-fallback" style="display: none; width: 38px; height: 38px; font-size: 0.95rem; font-weight: 700; border-radius: 50%;">
+                <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php else: ?>
+              <div class="user-avatar article-avatar-fallback" style="width: 38px; height: 38px; font-size: 0.95rem; font-weight: 700; border-radius: 50%;">
+                <?= htmlspecialchars($authorInitial, ENT_QUOTES, 'UTF-8') ?>
+              </div>
+            <?php endif; ?>
           </a>
           <div>
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <a href="/author/<?= (int) ($post['author_id'] ?? 1) ?>" style="font-weight: 700; color: var(--text-dark); text-decoration: none;" title="View Author Profile">
-                <?= htmlspecialchars($post['author_name'] ?? 'Cristine Palmer', ENT_QUOTES, 'UTF-8') ?>
+                <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
               </a>
               <?php if (!empty($post['author_has_badge']) || !empty($authorHasBadge)): ?>
                 <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
               <?php endif; ?>
+              <span class="article-author-handle" style="font-size: 0.82rem; color: var(--text-muted); font-weight: 500;">
+                <?= htmlspecialchars($authorHandle, ENT_QUOTES, 'UTF-8') ?>
+              </span>
             </div>
             <div style="font-size: 0.8rem; color: var(--text-muted);">
               <?= date('F j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?> ·
@@ -123,9 +144,11 @@
     <?php
       $articleImage = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
     ?>
-    <div class="article-featured-banner">
-      <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" fetchpriority="high">
-    </div>
+    <?php if (!empty($articleImage)): ?>
+      <div class="article-featured-banner">
+        <img src="<?= htmlspecialchars($articleImage, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" fetchpriority="high" onerror="this.onerror=null; this.closest('.article-featured-banner').style.display='none';">
+      </div>
+    <?php endif; ?>
 
     <!-- Reader Experience Toolbar (Reader Mode, Audio, Focus, Bookmark, AI) -->
     <div class="article-reader-toolbar" role="toolbar" aria-label="Reading Controls and Preferences">
@@ -608,53 +631,112 @@
           </div>
         <?php else: ?>
           <?php foreach ($comments as $comm): ?>
-            <div class="comment-item" id="comment-<?= (int) $comm['id'] ?>">
+            <?php
+              $commId = (int) $comm['id'];
+              $commHandle = \InfinityBlog\Support\UserIdentityHelper::formatHandle($comm['user_username'] ?? '', $comm['user_name'] ?? '');
+              $commAvatar = \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($comm['user_avatar'] ?? null, $comm['user_name'] ?? '');
+              $commLikes = (int) ($comm['like_count'] ?? 0);
+              $commDislikes = (int) ($comm['dislike_count'] ?? 0);
+              $commReaction = $comm['viewer_reaction'] ?? null;
+              $isPinned = !empty($comm['is_pinned']);
+              $isAuthor = !empty($comm['is_author']);
+            ?>
+            <div class="comment-item <?= $isPinned ? 'is-pinned' : '' ?>" id="comment-<?= $commId ?>">
+              <?php if ($isPinned): ?>
+                <div class="comment-pinned-banner" style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--primary-color); margin-bottom: 6px; padding-left: 42px;">
+                  <span>📌 Pinned by Author</span>
+                </div>
+              <?php endif; ?>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
-                    <?= htmlspecialchars(mb_substr($comm['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                  <a href="/author/<?= urlencode($comm['user_username'] ?? (string) $comm['user_id']) ?>" style="text-decoration: none;">
+                    <?php if (!empty($commAvatar)): ?>
+                      <img src="<?= htmlspecialchars($commAvatar, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($comm['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?>" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                      <div style="display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--primary-gradient); color: #fff; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+                        <?= htmlspecialchars(mb_substr($comm['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                      </div>
+                    <?php else: ?>
+                      <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem;">
+                        <?= htmlspecialchars(mb_substr($comm['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                      </div>
+                    <?php endif; ?>
+                  </a>
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <a href="/author/<?= urlencode($comm['user_username'] ?? (string) $comm['user_id']) ?>" style="font-weight: 700; font-size: 0.9rem; color: var(--text-dark); text-decoration: none;">
+                      <?= htmlspecialchars($commHandle, ENT_QUOTES, 'UTF-8') ?>
+                    </a>
+                    <?php if ($isAuthor): ?>
+                      <span class="comment-role-tag author-tag">Author</span>
+                    <?php elseif (!empty($comm['has_author_badge'])): ?>
+                      <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
+                    <?php endif; ?>
+                    <span style="font-size: 0.75rem; color: var(--text-muted);"><?= \InfinityBlog\Community\CommunityRepository::formatRelativeTime((string) $comm['created_at']) ?></span>
                   </div>
-                  <span style="font-weight: 700; font-size: 0.9rem; color: var(--text-dark);"><?= htmlspecialchars($comm['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
-                  <?php if (!empty($comm['has_author_badge'])): ?>
-                    <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
-                  <?php endif; ?>
-                  <span style="font-size: 0.75rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($comm['created_at'])) ?></span>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <?php if (!empty($currentUser)): ?>
-                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="initReply(<?= (int) $comm['id'] ?>, '<?= htmlspecialchars(addslashes($comm['user_name'] ?? 'User'), ENT_QUOTES, 'UTF-8') ?>')">Reply</button>
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="initReply(<?= $commId ?>, '<?= htmlspecialchars(addslashes($commHandle), ENT_QUOTES, 'UTF-8') ?>')">Reply</button>
                     <?php if ((int) $currentUser['id'] === (int) $comm['user_id'] || $currentUser['role'] === 'admin'): ?>
-                      <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem; color: #ef4444;" onclick="deleteComment(<?= (int) $comm['id'] ?>)">Delete</button>
+                      <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem; color: #ef4444;" onclick="deleteComment(<?= $commId ?>)">Delete</button>
                     <?php endif; ?>
-                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="reportComment(<?= (int) $comm['id'] ?>)">Report</button>
+                    <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="reportComment(<?= $commId ?>)">Report</button>
                   <?php endif; ?>
                 </div>
               </div>
-              <div style="font-size: 0.92rem; color: var(--text-main); line-height: 1.5; padding-left: 42px;">
+              <div style="font-size: 0.92rem; color: var(--text-main); line-height: 1.5; padding-left: 42px; word-break: break-word;">
                 <?= !empty($comm['rendered_content']) ? $comm['rendered_content'] : \InfinityBlog\Social\MentionService::renderMentionsToHtml($comm['content']) ?>
               </div>
 
-              <!-- Nested Replies -->
+              <!-- Action Bar (Reactions) -->
+              <div style="display: flex; align-items: center; gap: 14px; padding-left: 42px; margin-top: 6px;">
+                <button type="button" class="comment-action-btn btn-like <?= $commReaction === 'like' ? 'active' : '' ?>" id="inline-like-<?= $commId ?>" onclick="toggleCommentReaction(event, <?= $commId ?>, 'like')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="<?= $commReaction === 'like' ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                  <span id="like-count-<?= $commId ?>"><?= $commLikes > 0 ? $commLikes : '' ?></span>
+                </button>
+                <button type="button" class="comment-action-btn btn-dislike <?= $commReaction === 'dislike' ? 'active' : '' ?>" id="inline-dislike-<?= $commId ?>" onclick="toggleCommentReaction(event, <?= $commId ?>, 'dislike')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="<?= $commReaction === 'dislike' ? 'currentColor' : 'none' ?>" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path></svg>
+                </button>
+              </div>
+
+              <!-- Nested Replies with Curved Thread Lines -->
               <?php if (!empty($comm['replies'])): ?>
-                <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+                <div class="comment-replies-list" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
                   <?php foreach ($comm['replies'] as $reply): ?>
-                    <div class="comment-item reply" id="comment-<?= (int) $reply['id'] ?>">
+                    <?php
+                      $replyId = (int) $reply['id'];
+                      $replyHandle = \InfinityBlog\Support\UserIdentityHelper::formatHandle($reply['user_username'] ?? '', $reply['user_name'] ?? '');
+                      $replyAvatar = \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl($reply['user_avatar'] ?? null, $reply['user_name'] ?? '');
+                    ?>
+                    <div class="comment-item reply comment-reply-item" id="comment-<?= $replyId ?>">
                       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                          <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">
-                            <?= htmlspecialchars(mb_substr($reply['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
-                          </div>
-                          <span style="font-weight: 700; font-size: 0.85rem; color: var(--text-dark);"><?= htmlspecialchars($reply['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?></span>
-                          <?php if (!empty($reply['has_author_badge'])): ?>
+                          <a href="/author/<?= urlencode($reply['user_username'] ?? (string) $reply['user_id']) ?>" style="text-decoration: none;">
+                            <?php if (!empty($replyAvatar)): ?>
+                              <img src="<?= htmlspecialchars($replyAvatar, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($reply['user_name'] ?? 'User', ENT_QUOTES, 'UTF-8') ?>" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                              <div style="display: none; width: 28px; height: 28px; border-radius: 50%; background: var(--primary-gradient); color: #fff; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">
+                                <?= htmlspecialchars(mb_substr($reply['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                              </div>
+                            <?php else: ?>
+                              <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem;">
+                                <?= htmlspecialchars(mb_substr($reply['user_name'] ?? 'U', 0, 1), ENT_QUOTES, 'UTF-8') ?>
+                              </div>
+                            <?php endif; ?>
+                          </a>
+                          <a href="/author/<?= urlencode($reply['user_username'] ?? (string) $reply['user_id']) ?>" style="font-weight: 700; font-size: 0.85rem; color: var(--text-dark); text-decoration: none;">
+                            <?= htmlspecialchars($replyHandle, ENT_QUOTES, 'UTF-8') ?>
+                          </a>
+                          <?php if (!empty($reply['is_author'])): ?>
+                            <span class="comment-role-tag author-tag">Author</span>
+                          <?php elseif (!empty($reply['has_author_badge'])): ?>
                             <?= \InfinityBlog\Social\AuthorBadgeService::renderBadgeHtml(true) ?>
                           <?php endif; ?>
-                          <span style="font-size: 0.72rem; color: var(--text-muted);"><?= date('M j, Y - g:i A', strtotime($reply['created_at'])) ?></span>
+                          <span style="font-size: 0.72rem; color: var(--text-muted);"><?= \InfinityBlog\Community\CommunityRepository::formatRelativeTime((string) $reply['created_at']) ?></span>
                         </div>
                         <?php if (!empty($currentUser) && ((int) $currentUser['id'] === (int) $reply['user_id'] || $currentUser['role'] === 'admin')): ?>
-                          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.72rem; color: #ef4444;" onclick="deleteComment(<?= (int) $reply['id'] ?>)">Delete</button>
+                          <button type="button" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.72rem; color: #ef4444;" onclick="deleteComment(<?= $replyId ?>)">Delete</button>
                         <?php endif; ?>
                       </div>
-                      <div style="font-size: 0.9rem; color: var(--text-main); line-height: 1.45; padding-left: 36px;">
+                      <div style="font-size: 0.9rem; color: var(--text-main); line-height: 1.45; padding-left: 36px; word-break: break-word;">
                         <?= !empty($reply['rendered_content']) ? $reply['rendered_content'] : \InfinityBlog\Social\MentionService::renderMentionsToHtml($reply['content']) ?>
                       </div>
                     </div>

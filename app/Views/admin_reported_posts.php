@@ -160,7 +160,7 @@
                   </div>
                   <div style="font-size: 0.76rem; color: var(--text-muted);">
                     <a href="/authors/<?= rawurlencode($p['author_username'] ?? '') ?>" target="_blank" rel="noopener noreferrer" style="color: var(--text-muted); text-decoration: none;">
-                      @<?= htmlspecialchars($p['author_username'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                      <?= htmlspecialchars(\InfinityBlog\Support\UserIdentityHelper::formatHandle($p['author_username'] ?? null, $p['author_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                     </a>
                   </div>
                 </td>

@@ -100,6 +100,11 @@ final class SocialController
             return $this->shareDirectMessage($request);
         }
 
+        // People search for New Chat (server-backed, secure)
+        if (($request->path === '/api/users/search' || $request->path === '/api/messages/search-users') && $request->method === 'GET') {
+            return $this->searchUsersForChat($request);
+        }
+
         // Direct message endpoints
         if ($request->path === '/api/messages/unread-count' && $request->method === 'GET') {
             return $this->unreadCount();
@@ -199,7 +204,7 @@ final class SocialController
     {
         $account = $this->guard->currentAccount();
         if ($account === null) {
-            return ['status' => 200, 'body' => ['data' => ['unread_count' => 0]]];
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to view messages.']]];
         }
 
         $count = $this->messages->getUnreadCount($account->id);
@@ -222,6 +227,10 @@ final class SocialController
         $account = $this->guard->currentAccount();
         if ($account === null) {
             return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to view messages.']]];
+        }
+
+        if ($account->id === $otherUserId) {
+            return ['status' => 422, 'body' => ['error' => ['code' => 'SELF_MESSAGE', 'message' => 'You cannot message yourself.']]];
         }
 
         $afterId = isset($_GET['after_id']) ? max(0, (int) $_GET['after_id']) : null;
@@ -251,6 +260,11 @@ final class SocialController
         if ($account === null) {
             return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to send messages.']]];
         }
+
+        if ($account->id === $otherUserId) {
+            return ['status' => 422, 'body' => ['error' => ['code' => 'SELF_MESSAGE', 'message' => 'You cannot send messages to yourself.']]];
+        }
+
         $csrfError = $this->requireCsrf($request);
         if ($csrfError !== null) {
             return $csrfError;
@@ -258,9 +272,10 @@ final class SocialController
 
         $input = $request->input();
         $body = isset($input['body']) && is_string($input['body']) ? $input['body'] : '';
+        $clientMsgId = isset($input['client_msg_id']) && is_string($input['client_msg_id']) ? $input['client_msg_id'] : null;
 
         try {
-            $msg = $this->messages->sendMessage($account->id, $otherUserId, $body);
+            $msg = $this->messages->sendMessage($account->id, $otherUserId, $body, $clientMsgId);
             return ['status' => 201, 'body' => ['data' => ['message' => $msg]]];
         } catch (InvalidArgumentException $e) {
             $isRateLimit = str_contains($e->getMessage(), 'Rate limit') || str_contains($e->getMessage(), 'slow down');
@@ -382,6 +397,30 @@ final class SocialController
         $status = $badgeService->getAuthorBadgeStatus($authorId);
 
         return ['status' => 200, 'body' => ['data' => $status]];
+    }
+
+    private function searchUsersForChat(Request $request): array
+    {
+        $account = $this->guard->currentAccount();
+        if ($account === null) {
+            return ['status' => 401, 'body' => ['error' => ['code' => 'UNAUTHENTICATED', 'message' => 'Please sign in to search users.']]];
+        }
+
+        $q = isset($_GET['q']) && is_string($_GET['q']) ? $_GET['q'] : '';
+        $limit = isset($_GET['limit']) ? max(1, min(50, (int) $_GET['limit'])) : 15;
+
+        $users = $this->users->searchUsersForChat($q, $account->id, $limit);
+
+        return [
+            'status' => 200,
+            'body' => [
+                'data' => [
+                    'users' => $users,
+                    'query' => $q,
+                    'count' => count($users),
+                ],
+            ],
+        ];
     }
 
     private function mentionSearch(Request $request): array

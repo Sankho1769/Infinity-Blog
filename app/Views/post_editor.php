@@ -1,299 +1,777 @@
-<!-- Screens 4 & 5: Post Editor (Create & Edit) -->
 <?php
   $isEdit = !empty($post['id']);
   $pageHeading = $isEdit ? 'Edit Post' : 'Create New Post';
-  $pageSubhead = $isEdit ? 'Update your article content and publication settings.' : 'Write and publish your ideas to the world.';
-?>
-
-<div class="dashboard-header dashboard-page-bg">
-  <div>
-    <h1 class="dashboard-greeting"><?= $pageHeading ?></h1>
-    <p class="dashboard-subhead"><?= $pageSubhead ?></p>
-  </div>
-
-  <a href="/posts/manage" class="btn btn-secondary btn-pill">
-    ← Back to All Posts
-  </a>
-</div>
-
-<?php
   $remixedFromId = !empty($post['remixed_from_post_id']) ? (int) $post['remixed_from_post_id'] : (!empty($remixSource['id']) ? (int) $remixSource['id'] : null);
   $remixedFromTitle = $post['remixed_from_title'] ?? ($remixSource['title'] ?? null);
   $remixedFromAuthor = $post['remixed_from_author_name'] ?? ($remixSource['author_name'] ?? null);
+
+  $initialCoverPath = $post['cover_image_path'] ?? '';
+  $initialCoverUrl = !empty($initialCoverPath) ? (\InfinityBlog\Posts\ArticleImageHelper::resolveCoverUrl($initialCoverPath) ?? \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post)) : '';
+  $initialVideoPath = $post['video_path'] ?? '';
+
+  $studioData = $studioData ?? [
+    'subtitle' => '',
+    'research_notes' => '',
+    'quick_notes' => [
+      ['id' => 'qn-1', 'text' => 'Add statistic about screen time', 'done' => true],
+      ['id' => 'qn-2', 'text' => 'Include personal experience', 'done' => false],
+      ['id' => 'qn-3', 'text' => 'Find a relevant quote', 'done' => false],
+      ['id' => 'qn-4', 'text' => 'Add image suggestions', 'done' => false],
+    ],
+    'target_words' => 2000,
+    'settings' => [
+      'theme' => 'lavender',
+      'font' => 'serif',
+      'textSize' => 18,
+      'editorWidth' => 'comfortable',
+      'lineSpacing' => 'relaxed',
+      'focusDefault' => false,
+    ],
+  ];
+
+  $savedSettings = $studioData['settings'] ?? [];
+  $activeTheme = $savedSettings['theme'] ?? 'lavender';
+  $activeFont = $savedSettings['font'] ?? 'serif';
+  $targetWords = !empty($studioData['target_words']) ? (int) $studioData['target_words'] : 2000;
+  $subtitle = $studioData['subtitle'] ?? '';
+  $researchNotes = $studioData['research_notes'] ?? '';
+  $quickNotes = $studioData['quick_notes'] ?? [];
+
+  $userInitials = 'U';
+  if (!empty($currentUser['display_name'])) {
+    $userInitials = mb_strtoupper(mb_substr($currentUser['display_name'], 0, 1));
+  } elseif (!empty($currentUser['username'])) {
+    $userInitials = mb_strtoupper(mb_substr($currentUser['username'], 0, 1));
+  }
 ?>
 
-<?php if ($remixedFromId !== null): ?>
-  <div class="alert-banner" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; background: rgba(238, 242, 255, 0.7); border: 1px solid rgba(199, 210, 254, 0.85); color: #3730a3; border-radius: var(--radius-md);">
-    <span style="font-size: 1.2rem;">🔀</span>
-    <div>
-      <strong>Remix Mode:</strong> This article is based on
-      <em><?= htmlspecialchars($remixedFromTitle ?? 'Original Article', ENT_QUOTES, 'UTF-8') ?></em>
-      <?php if (!empty($remixedFromAuthor)): ?>
-        by <strong><?= htmlspecialchars($remixedFromAuthor, ENT_QUOTES, 'UTF-8') ?></strong>
-      <?php endif; ?>.
-      Original author attribution will be preserved upon publication.
+<div id="infinity-writing-studio" class="studio-container studio-theme-<?= htmlspecialchars($activeTheme, ENT_QUOTES, 'UTF-8') ?> studio-font-<?= htmlspecialchars($activeFont, ENT_QUOTES, 'UTF-8') ?>">
+
+  <!-- TOP NAVIGATION TOOLBAR -->
+  <header class="studio-topbar" role="toolbar" aria-label="Writing Studio Toolbar">
+    <!-- Left: Brand Mark & Management Link -->
+    <div class="studio-topbar-left">
+      <a href="/posts/manage" class="studio-brand-link" title="Back to All Articles">
+        <img src="/assets/images/infinity-blog-symbol.png" alt="Infinity Blog" class="studio-brand-symbol-img" width="34" height="21" loading="eager">
+        <span class="studio-brand-name">Infinity Blog</span>
+      </a>
     </div>
-  </div>
-<?php endif; ?>
 
-<div id="draft-recovery-banner" class="alert-banner" style="display: none; align-items: center; justify-content: space-between; margin-bottom: 20px; background: rgba(254, 243, 199, 0.9); border: 1px solid rgba(245, 158, 11, 0.6); color: #92400e; border-radius: var(--radius-md); padding: 12px 18px;">
-  <div style="display: flex; align-items: center; gap: 10px;">
-    <span style="font-size: 1.25rem;">💾</span>
-    <div>
-      <strong>Unsaved Local Draft Detected:</strong>
-      <span style="font-size: 0.88rem; margin-left: 4px;">Found unsaved work from <span id="draft-saved-time" style="font-weight: 600;"></span>.</span>
+    <!-- Center: Global Search & Shortcuts -->
+    <div class="studio-topbar-search">
+      <span class="studio-search-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </span>
+      <input type="search" id="studio-search-input" class="studio-search-input" placeholder="Search articles, ideas, or anything..." aria-label="Search studio articles and notes">
+      <kbd class="studio-search-shortcut">⌘ K</kbd>
     </div>
-  </div>
-  <div style="display: flex; gap: 8px;">
-    <button type="button" id="restore-draft-btn" class="btn btn-sm btn-primary">Restore Draft</button>
-    <button type="button" id="discard-draft-btn" class="btn btn-sm btn-secondary">Discard</button>
-  </div>
-</div>
 
-<div id="editor-error-alert" class="alert-banner alert-error" style="display: none;"></div>
-
-<form id="post-editor-form" method="POST" action="<?= $isEdit ? '/author/posts/' . (int) $post['id'] : '/author/posts' ?>">
-  <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
-  <?php if ($isEdit): ?>
-    <input type="hidden" id="post-id" value="<?= (int) $post['id'] ?>">
-  <?php endif; ?>
-  <?php if ($remixedFromId !== null): ?>
-    <input type="hidden" id="remixed-from-post-id" value="<?= (int) $remixedFromId ?>">
-  <?php endif; ?>
-
-  <div class="editor-layout">
-    <!-- Main Content Column -->
-    <div class="glass-panel editor-main-card">
-      <div class="form-group">
-        <label for="post-title" class="form-label">Article Title <span style="color: var(--danger-color);">*</span></label>
-        <input type="text" id="post-title" name="title" class="form-input" style="font-size: 1.15rem; font-weight: 700;" placeholder="Enter an engaging title..." value="<?= htmlspecialchars($post['title'] ?? '', ENT_QUOTES, 'UTF-8') ?>" required maxlength="190">
+    <!-- Right: Save Status, Preview, Publish, Theme, Profile -->
+    <div class="studio-topbar-right">
+      <!-- Live Truthful Save Indicator -->
+      <div id="studio-save-indicator" class="studio-save-indicator" title="Draft Save Status">
+        <span id="studio-save-dot" class="studio-save-dot"></span>
+        <span id="studio-save-text">Saved just now</span>
       </div>
 
-      <div class="form-group">
-        <label for="post-category" class="form-label">Category</label>
-        <select id="post-category" name="category_id" class="form-select">
-          <option value="">Select a category (Optional for draft, required for publish)</option>
-          <?php foreach ($categories as $cat): ?>
-            <option value="<?= (int) $cat['id'] ?>" <?= (!empty($post['category_id']) && (int) $post['category_id'] === (int) $cat['id']) ? 'selected' : '' ?>>
-              <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
+      <!-- Preview Button -->
+      <button type="button" id="studio-preview-toggle-btn" class="studio-top-btn" title="Toggle Live Preview">
+        <span id="studio-preview-btn-icon">👁️</span>
+        <span id="studio-preview-btn-text">Preview</span>
+      </button>
 
-      <!-- Article Cover Image (Supabase Storage: article-images) -->
-      <?php
-        $initialCoverPath = $post['cover_image_path'] ?? '';
-        $initialCoverUrl = !empty($initialCoverPath) ? \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post) : '';
-      ?>
-      <div class="form-group">
-        <label class="form-label">Article Cover Image <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional · Max 5MB · JPEG, PNG, WebP)</span></label>
-        <input type="hidden" id="post-cover-image-path" name="cover_image_path" value="<?= htmlspecialchars($initialCoverPath, ENT_QUOTES, 'UTF-8') ?>">
-
-        <div id="cover-preview-container" style="<?= empty($initialCoverUrl) ? 'display: none;' : '' ?> margin-bottom: 12px; position: relative; border-radius: var(--radius-md); overflow: hidden; max-height: 220px; border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow-sm);">
-          <img id="cover-preview-img" src="<?= htmlspecialchars($initialCoverUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Cover Image Preview" style="width: 100%; height: 220px; object-fit: cover; display: block;">
-          <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px;">
-            <button type="button" id="change-cover-btn" class="btn btn-secondary btn-sm btn-pill">Change</button>
-            <button type="button" id="remove-cover-btn" class="btn btn-danger-subtle btn-sm btn-pill">Remove</button>
-          </div>
+      <!-- Publish Split Dropdown -->
+      <div class="studio-publish-split">
+        <button type="button" id="studio-main-publish-btn" class="studio-publish-btn">
+          <?= $isEdit && ($post['status'] ?? '') === 'published' ? 'Update' : 'Publish' ?>
+        </button>
+        <button type="button" id="studio-publish-dropdown-btn" class="studio-publish-dropdown-toggle" aria-label="More publishing actions" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div id="studio-publish-menu" class="studio-publish-menu" role="menu">
+          <button type="button" class="studio-publish-menu-item" id="menu-publish-now-btn" role="menuitem">
+            <span>🚀</span> <?= $isEdit && ($post['status'] ?? '') === 'published' ? 'Update Post Now' : 'Publish Immediately' ?>
+          </button>
+          <button type="button" class="studio-publish-menu-item" id="menu-save-draft-btn" role="menuitem">
+            <span>💾</span> Save as Draft
+          </button>
+          <button type="button" class="studio-publish-menu-item" id="menu-schedule-btn" role="menuitem">
+            <span>📅</span> Schedule Publication...
+          </button>
+          <?php if ($isEdit && ($post['status'] ?? '') === 'published'): ?>
+            <button type="button" class="studio-publish-menu-item" id="menu-unpublish-btn" role="menuitem" style="color: #dc2626;">
+              <span>📥</span> Unpublish to Draft
+            </button>
+          <?php endif; ?>
         </div>
+      </div>
 
-        <div id="cover-upload-box" class="featured-image-placeholder-box" style="<?= !empty($initialCoverUrl) ? 'display: none;' : '' ?> cursor: pointer;" onclick="document.getElementById('cover-file-input').click()">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 6px;">
+      <!-- Theme Direct Toggle Button -->
+      <button type="button" id="studio-theme-toggle-btn" class="studio-icon-btn" aria-label="Toggle Light/Dark Theme" title="Switch Theme">
+        <svg id="studio-theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg id="studio-theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
+      <!-- User Notifications Shortcut -->
+      <a href="/messages" class="studio-icon-btn" title="Messages & Notifications" aria-label="Messages">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </a>
+
+      <!-- User Avatar Circle -->
+      <a href="/profile/edit" class="studio-avatar-pill" title="My Profile" aria-label="Profile">
+        <?= htmlspecialchars($userInitials, ENT_QUOTES, 'UTF-8') ?>
+      </a>
+
+      <!-- Independent Sidebar Toggles (Left Navigation & Right Inspector) -->
+      <div class="studio-sidebar-toggles-group" role="group" aria-label="Sidebar visibility controls">
+        <!-- Left Sidebar Toggle -->
+        <button type="button"
+                id="toggle-left-sidebar-btn"
+                class="studio-icon-btn studio-sidebar-toggle-btn active"
+                aria-label="Toggle left sidebar"
+                aria-expanded="true"
+                aria-controls="studio-left-sidebar"
+                title="Toggle left sidebar (Workspaces &amp; Navigation)">
+          <svg class="studio-sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
+            <path class="studio-sidebar-icon-fill" d="M3 5a2 2 0 0 1 2-2h4v18H5a2 2 0 0 1-2-2z" fill="currentColor"></path>
           </svg>
-          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to Upload Cover Image</div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Stored securely in Supabase Storage. Automatic fallback artwork if omitted.</div>
-        </div>
-        <input type="file" id="cover-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
-        <div id="cover-upload-status" style="font-size: 0.82rem; margin-top: 6px; display: none;"></div>
-      </div>
+        </button>
 
-      <!-- Article Video (Supabase Storage: article-videos) -->
-      <?php
-        $initialVideoPath = $post['video_path'] ?? '';
-      ?>
-      <div class="form-group" style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
-        <label class="form-label">Article Video <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal;">(Optional · Max 50MB · MP4, WebM · Supabase Private Bucket)</span></label>
-        <input type="hidden" id="post-video-path" name="video_path" value="<?= htmlspecialchars($initialVideoPath, ENT_QUOTES, 'UTF-8') ?>">
-
-        <div id="video-preview-container" class="video-preview-box" style="<?= empty($initialVideoPath) ? 'display: none;' : '' ?> margin-bottom: 10px; padding: 12px 16px; background: var(--glass-bg-subtle); border-radius: var(--radius-md); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-          <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
-            <span style="font-size: 1.3rem;">🎬</span>
-            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              <span id="video-preview-label" style="font-size: 0.88rem; font-weight: 600; color: var(--text-dark);"><?= htmlspecialchars(basename($initialVideoPath), ENT_QUOTES, 'UTF-8') ?></span>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">Protected video playable via authorized signed URLs</div>
-            </div>
-          </div>
-          <div style="display: flex; gap: 6px; flex-shrink: 0;">
-            <button type="button" id="change-video-btn" class="btn btn-secondary btn-sm btn-pill">Change</button>
-            <button type="button" id="remove-video-btn" class="btn btn-danger-subtle btn-sm btn-pill">Remove</button>
-          </div>
-        </div>
-
-        <div id="video-upload-box" class="featured-image-placeholder-box" style="<?= !empty($initialVideoPath) ? 'display: none;' : '' ?> cursor: pointer; padding: 16px;" onclick="document.getElementById('video-file-input').click()">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color: var(--primary-color); margin-bottom: 4px;">
-            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        <!-- Right Sidebar Toggle -->
+        <button type="button"
+                id="toggle-right-sidebar-btn"
+                class="studio-icon-btn studio-sidebar-toggle-btn active"
+                aria-label="Toggle right sidebar"
+                aria-expanded="true"
+                aria-controls="studio-right-sidebar"
+                title="Toggle right sidebar (Outline &amp; Tools)">
+          <svg class="studio-sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+            <path class="studio-sidebar-icon-fill" d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4z" fill="currentColor"></path>
           </svg>
-          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to Upload Video</div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">MP4 or WebM (up to 50MB). Stored in private bucket with short-lived playback signatures.</div>
-        </div>
-        <input type="file" id="video-file-input" accept="video/mp4,video/webm" style="display: none;">
-        <div id="video-upload-status" style="font-size: 0.82rem; margin-top: 6px; display: none;"></div>
+        </button>
       </div>
+    </div>
+  </header>
 
-      <div class="form-group" style="margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(226, 232, 240, 0.6);">
-        <div class="editor-tabs-bar">
-          <div class="editor-tabs">
-            <button type="button" class="editor-tab-btn active" id="tab-write-btn" onclick="switchEditorTab('write')">
-              ✏️ Write
-            </button>
-            <button type="button" class="editor-tab-btn" id="tab-preview-btn" onclick="switchEditorTab('preview')">
-              👁️ Preview
-            </button>
-          </div>
-          <div id="editor-write-toolbar" style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('**', '**', 'bold text')" title="Bold"><strong>B</strong></button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('*', '*', 'italic text')" title="Italic"><em>I</em></button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('## ', '', 'Heading 2')" title="Heading 2">H2</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('### ', '', 'Heading 3')" title="Heading 3">H3</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('> ', '', 'Quote text')" title="Quote">”</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('```\n', '\n```', 'code block')" title="Code">Code</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('- ', '', 'List item')" title="Bullet List">• List</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('1. ', '', 'Numbered item')" title="Numbered List">1. List</button>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="insertMarkdown('[', '](https://example.com)', 'Link text')" title="Insert Link">🔗 Link</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="insert-image-btn" title="Upload and Insert Image">🖼️ Image</button>
-            <button type="button" class="btn btn-secondary btn-sm" id="open-video-modal-btn" title="Insert YouTube, Vimeo, or Video Upload">🎥 Video</button>
-            <input type="file" id="inline-image-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
-          </div>
-        </div>
-
-        <div id="editor-write-panel">
-          <textarea id="post-content" name="content" class="form-textarea" placeholder="Write your article in Markdown..." required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-            <span>Supports standard Markdown: <code>## Headings</code>, <code>**bold**</code>, <code>*italic*</code>, <code>[links](url)</code>, <code>![alt](image-url)</code>, and YouTube/Vimeo embeds.</span>
-            <span id="word-count-display">0 words · 0 characters</span>
-          </div>
-        </div>
-
-        <div id="editor-preview-panel" style="display: none;">
-          <div id="editor-preview-loading" style="text-align: center; padding: 40px; color: var(--text-muted); display: none;">
-            <span>Rendering live preview...</span>
-          </div>
-          <div id="editor-preview-content" class="article-body-content editor-preview-container" style="display: none;"></div>
-        </div>
+  <!-- DRAFT RECOVERY BANNER (If local unsaved backup exists) -->
+  <div id="draft-recovery-banner" class="alert-banner" style="display: none; align-items: center; justify-content: space-between; margin: 10px 20px 0; background: rgba(254, 243, 199, 0.95); border: 1px solid rgba(245, 158, 11, 0.6); color: #92400e; border-radius: var(--radius-md); padding: 10px 16px; z-index: 90;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-size: 1.25rem;">💾</span>
+      <div>
+        <strong>Unsaved Local Draft Detected:</strong>
+        <span style="font-size: 0.88rem; margin-left: 4px;">Found unsaved work from <span id="draft-saved-time" style="font-weight: 600;"></span>.</span>
       </div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button type="button" id="restore-draft-btn" class="btn btn-sm btn-primary">Restore Draft</button>
+      <button type="button" id="discard-draft-btn" class="btn btn-sm btn-secondary">Discard</button>
+    </div>
+  </div>
 
-      <!-- AI Summary Section (Edit Mode) -->
-      <?php if ($isEdit): ?>
-        <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid rgba(226, 232, 240, 0.7);">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-            <span style="font-weight: 700; color: var(--text-dark); display: flex; align-items: center; gap: 6px;">
-              <span>✨</span> AI Article Summary
+  <div id="editor-error-alert" class="alert-banner alert-error" style="display: none; margin: 10px 20px 0; z-index: 90;"></div>
+
+  <!-- MASTER 4-PANEL WORKSPACE BODY -->
+  <div class="studio-body">
+
+    <!-- 1. LEFT SIDEBAR: Tools, Workspaces & Writing Goal -->
+    <aside class="studio-left-sidebar" id="studio-left-sidebar" aria-label="Writing Studio Navigation">
+      <div>
+        <!-- Primary Navigation Items -->
+        <nav class="studio-nav-group" aria-label="Studio Tools">
+          <button type="button" class="studio-nav-item active" id="nav-item-write" data-view="write">
+            <span class="studio-nav-icon">✏️</span>
+            <span>Write</span>
+          </button>
+          <button type="button" class="studio-nav-item" id="nav-item-ideas" data-view="ideas">
+            <span class="studio-nav-icon">💡</span>
+            <span>Ideas</span>
+          </button>
+          <button type="button" class="studio-nav-item" id="nav-item-drafts" data-view="drafts">
+            <span class="studio-nav-icon">📄</span>
+            <span>Drafts</span>
+            <span style="margin-left: auto; font-size: 0.75rem; background: rgba(99, 102, 241, 0.15); color: #4338ca; padding: 1px 7px; border-radius: 10px; font-weight: 700;">
+              <?= count(array_filter($authorPosts ?? [], fn($p) => ($p['status'] ?? '') === 'draft')) ?>
             </span>
-            <button type="button" id="generate-summary-btn" data-post-id="<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm">
-              Generate AI Summary
-            </button>
+          </button>
+          <button type="button" class="studio-nav-item" id="nav-item-media" data-view="media">
+            <span class="studio-nav-icon">🖼️</span>
+            <span>Media</span>
+          </button>
+          <button type="button" class="studio-nav-item" id="nav-item-planner" data-view="planner">
+            <span class="studio-nav-icon">📅</span>
+            <span>Planner</span>
+          </button>
+          <button type="button" class="studio-nav-item" id="nav-item-insights" data-view="insights">
+            <span class="studio-nav-icon">📊</span>
+            <span>Insights</span>
+          </button>
+          <a href="/communities" class="studio-nav-item" id="nav-item-community">
+            <span class="studio-nav-icon">👥</span>
+            <span>Community</span>
+          </a>
+        </nav>
+
+        <!-- Workspaces Section -->
+        <div class="studio-workspaces-section">
+          <div class="studio-workspaces-header">
+            <span>Workspaces</span>
+            <button type="button" id="add-workspace-btn" style="background: none; border: none; cursor: pointer; color: var(--studio-muted); font-size: 1.1rem; line-height: 1; padding: 0 4px;" title="Create Workspace">+</button>
           </div>
-          <?php if (!empty($post['summary'])): ?>
-            <div class="ai-summary-card" style="margin-bottom: 0;">
-              <p class="ai-summary-text"><?= nl2br(htmlspecialchars($post['summary'], ENT_QUOTES, 'UTF-8')) ?></p>
-              <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 8px;">
-                Status: <strong><?= htmlspecialchars($post['summary_status'] ?? 'unknown', ENT_QUOTES, 'UTF-8') ?></strong>
+          <div class="studio-workspaces-list">
+            <div class="studio-workspace-item" data-workspace="personal">
+              <span class="studio-workspace-dot" style="background: #8b5cf6;"></span>
+              <span>Personal</span>
+            </div>
+            <div class="studio-workspace-item" data-workspace="travel">
+              <span class="studio-workspace-dot" style="background: #6366f1;"></span>
+              <span>Travel Stories</span>
+            </div>
+            <div class="studio-workspace-item" data-workspace="tech">
+              <span class="studio-workspace-dot" style="background: #10b981;"></span>
+              <span>Tech & AI</span>
+            </div>
+            <div class="studio-workspace-item" data-workspace="design">
+              <span class="studio-workspace-dot" style="background: #f59e0b;"></span>
+              <span>Design Ideas</span>
+            </div>
+            <a href="/posts/manage" class="studio-workspace-item" style="color: var(--studio-muted);">
+              <span class="studio-workspace-dot" style="background: #94a3b8;"></span>
+              <span>All Articles</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Writing Goal Card -->
+      <div class="studio-goal-card" id="studio-writing-goal-card" title="Click to customize writing target">
+        <div class="studio-goal-ring" id="goal-progress-ring-container">
+          <svg width="38" height="38" viewBox="0 0 36 36">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(148, 163, 184, 0.25)" stroke-width="3.5"/>
+            <path id="goal-ring-arc" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#6366f1" stroke-width="3.5" stroke-dasharray="0, 100" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="studio-goal-details">
+          <div class="studio-goal-title">
+            <span>Writing Goal</span>
+            <span id="goal-percent-text" style="color: #6366f1;">0%</span>
+          </div>
+          <div class="studio-goal-sub">
+            <span id="goal-words-current">0</span> / <span id="goal-words-target"><?= $targetWords ?></span> words
+          </div>
+        </div>
+        <span style="color: var(--studio-muted); font-size: 0.9rem; margin-left: 2px;">›</span>
+      </div>
+    </aside>
+
+    <!-- 2. CENTER EDITORIAL WRITING CANVAS -->
+    <main class="studio-center-canvas" id="studio-center-canvas">
+      <div class="studio-canvas-inner" id="studio-canvas-inner">
+
+        <!-- Editorial Formatting Toolbar (Sticky) -->
+        <div class="studio-formatting-toolbar" id="studio-formatting-toolbar" role="toolbar" aria-label="Rich text formatting">
+          <!-- Heading / Block Dropdown -->
+          <select id="studio-block-type-select" class="studio-tool-dropdown" title="Text Style">
+            <option value="p">Paragraph</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+            <option value="quote">Blockquote</option>
+            <option value="code">Code Block</option>
+          </select>
+
+          <div class="studio-toolbar-divider"></div>
+
+          <!-- Inline Text Styles -->
+          <button type="button" class="studio-tool-btn" id="format-bold-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+          <button type="button" class="studio-tool-btn" id="format-italic-btn" title="Italic (Ctrl+I)"><em>I</em></button>
+          <button type="button" class="studio-tool-btn" id="format-underline-btn" title="Underline (Ctrl+U)"><span style="text-decoration: underline;">U</span></button>
+          <button type="button" class="studio-tool-btn" id="format-strike-btn" title="Strikethrough"><span style="text-decoration: line-through;">S</span></button>
+
+          <div class="studio-toolbar-divider"></div>
+
+          <!-- Lists & Indents -->
+          <button type="button" class="studio-tool-btn" id="format-bullet-btn" title="Bullet List">•≡</button>
+          <button type="button" class="studio-tool-btn" id="format-number-btn" title="Numbered List">1.≡</button>
+          <button type="button" class="studio-tool-btn" id="format-align-left-btn" title="Align Left">⇤</button>
+          <button type="button" class="studio-tool-btn" id="format-align-center-btn" title="Align Center">⇥</button>
+
+          <div class="studio-toolbar-divider"></div>
+
+          <!-- Inserts -->
+          <button type="button" class="studio-tool-btn" id="format-link-btn" title="Insert Link">🔗</button>
+          <button type="button" class="studio-tool-btn" id="format-quote-btn" title="Insert Quote">”</button>
+          <button type="button" class="studio-tool-btn" id="format-image-btn" title="Upload and Insert Image">🖼️</button>
+          <button type="button" class="studio-tool-btn" id="format-video-btn" title="Insert Video / Embed">🎥</button>
+          <button type="button" class="studio-tool-btn" id="format-code-btn" title="Code Block">{ }</button>
+
+          <div class="studio-toolbar-divider"></div>
+
+          <!-- AI Assistant Quick Trigger -->
+          <button type="button" class="studio-tool-btn studio-ai-pill-btn" id="open-ai-panel-btn" title="Open AI Writing Assistant">
+            <span>✨ AI</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left: 3px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+
+          <!-- Studio Settings Trigger -->
+          <button type="button" class="studio-tool-btn" id="open-settings-drawer-btn" title="Appearance & Editor Settings" style="margin-left: auto;">
+            ⚙️
+          </button>
+        </div>
+
+        <!-- Form for hidden inputs and sync -->
+        <form id="post-editor-form" method="POST" action="<?= $isEdit ? '/author/posts/' . (int) $post['id'] : '/author/posts' ?>">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+          <?php if ($isEdit): ?>
+            <input type="hidden" id="post-id" value="<?= (int) $post['id'] ?>">
+          <?php endif; ?>
+          <?php if ($remixedFromId !== null): ?>
+            <input type="hidden" id="remixed-from-post-id" value="<?= (int) $remixedFromId ?>">
+          <?php endif; ?>
+
+          <input type="hidden" id="post-cover-image-path" name="cover_image_path" value="<?= htmlspecialchars($initialCoverPath, ENT_QUOTES, 'UTF-8') ?>">
+          <input type="hidden" id="post-video-path" name="video_path" value="<?= htmlspecialchars($initialVideoPath, ENT_QUOTES, 'UTF-8') ?>">
+          <input type="hidden" id="scheduled-at" name="scheduled_at" value="<?= !empty($post['scheduled_at']) ? date('Y-m-d\TH:i', strtotime($post['scheduled_at'])) : '' ?>">
+
+          <!-- Category Pill Selector -->
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
+            <label for="post-category" style="font-size: 0.78rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase; letter-spacing: 0.05em;">Category:</label>
+            <select id="post-category" name="category_id" class="studio-tool-dropdown" style="padding: 4px 10px; font-size: 0.82rem; border-radius: 12px;">
+              <option value="">Select Category (Required to Publish)</option>
+              <?php foreach ($categories as $cat): ?>
+                <option value="<?= (int) $cat['id'] ?>" <?= (!empty($post['category_id']) && (int) $post['category_id'] === (int) $cat['id']) ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+
+          <!-- Remix Attribution Banner -->
+          <?php if ($remixedFromId !== null): ?>
+            <div class="alert-banner" style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; background: rgba(238, 242, 255, 0.7); border: 1px solid rgba(199, 210, 254, 0.85); color: #3730a3; border-radius: var(--radius-md); padding: 8px 14px; font-size: 0.85rem;">
+              <span>🔀</span>
+              <div>
+                <strong>Remix:</strong> Based on <em><?= htmlspecialchars($remixedFromTitle ?? 'Original Article', ENT_QUOTES, 'UTF-8') ?></em>
+                <?php if (!empty($remixedFromAuthor)): ?> by <?= htmlspecialchars($remixedFromAuthor, ENT_QUOTES, 'UTF-8') ?><?php endif; ?>.
               </div>
             </div>
-          <?php else: ?>
-            <p style="font-size: 0.85rem; color: var(--text-muted);">
-              Click "Generate AI Summary" to create a concise plain-text summary via the configured AI provider.
-            </p>
-          <?php endif; ?>
-        </div>
-      <?php endif; ?>
-    </div>
-
-    <!-- Sidebar Settings Column -->
-    <aside>
-      <div class="glass-panel editor-sidebar-card">
-        <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin-bottom: 16px;">Post Settings</h3>
-
-        <div class="form-group">
-          <label class="form-label">Publication Status</label>
-          <div class="radio-group" style="flex-direction: column; gap: 10px;">
-            <label class="radio-label">
-              <input type="radio" name="status" value="draft" <?= (empty($post['status']) || $post['status'] === 'draft') ? 'checked' : '' ?>>
-              <span>Draft (Not visible publicly)</span>
-            </label>
-            <label class="radio-label">
-              <input type="radio" name="status" value="published" <?= (!empty($post['status']) && $post['status'] === 'published') ? 'checked' : '' ?>>
-              <span>Published (Visible on blog)</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="form-group" style="margin-top: 14px;">
-          <label for="scheduled-at" class="form-label" style="font-size: 0.88rem;">Schedule Publication <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(Optional)</span></label>
-          <input type="datetime-local" id="scheduled-at" name="scheduled_at" class="form-input" value="<?= !empty($post['scheduled_at']) ? date('Y-m-d\TH:i', strtotime($post['scheduled_at'])) : '' ?>" style="font-size: 0.88rem;">
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Post will be automatically published on or after this time.</p>
-        </div>
-
-        <?php if ($isEdit && !empty($post['published_at'])): ?>
-          <div class="form-group" style="font-size: 0.85rem; color: var(--text-muted);">
-            <div><strong>Published on:</strong> <?= date('M j, Y H:i', strtotime($post['published_at'])) ?></div>
-            <?php if (!empty($post['updated_at'])): ?>
-              <div style="margin-top: 4px;"><strong>Last edited:</strong> <?= date('M j, Y H:i', strtotime($post['updated_at'])) ?></div>
-            <?php endif; ?>
-          </div>
-        <?php endif; ?>
-
-        <div id="autosave-status" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
-          <span id="autosave-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
-          <span id="autosave-text">Autosave active</span>
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <button type="button" id="save-draft-btn" class="btn btn-secondary btn-full">
-            Save as Draft
-          </button>
-          <button type="button" id="publish-btn" class="btn btn-primary btn-full">
-            <?= $isEdit && ($post['status'] ?? '') === 'published' ? 'Update Post' : 'Publish Article' ?>
-          </button>
-
-          <?php if ($isEdit): ?>
-            <button type="button" id="open-versions-btn" class="btn btn-secondary btn-full" style="margin-top: 4px;">
-              📜 Version History
-            </button>
-            <button type="button" class="btn btn-danger-subtle btn-full" style="margin-top: 4px;"
-                    onclick="openDeleteModal('<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>/<?= (int) $post['id'] ?>', '<?= htmlspecialchars(addslashes($post['title']), ENT_QUOTES, 'UTF-8') ?>')">
-              Delete Post
-            </button>
           <?php endif; ?>
 
-          <a href="/posts/manage" class="btn btn-secondary btn-full" style="text-align: center; justify-content: center; margin-top: 4px;">
-            Cancel
-          </a>
+          <!-- Article Title Field -->
+          <input type="text"
+                 id="post-title"
+                 name="title"
+                 class="studio-title-field"
+                 placeholder="The Art of Mindful Technology"
+                 value="<?= htmlspecialchars($post['title'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                 required
+                 maxlength="190"
+                 autocomplete="off">
+
+          <!-- Article Subtitle / Lead Description Field -->
+          <input type="text"
+                 id="post-subtitle"
+                 name="subtitle"
+                 class="studio-subtitle-field"
+                 placeholder="A calmer, more intentional relationship with the digital world."
+                 value="<?= htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') ?>"
+                 autocomplete="off">
+
+          <!-- Cover Image Preview Banner (if attached) -->
+          <div id="studio-cover-banner" style="<?= empty($initialCoverUrl) ? 'display: none;' : '' ?> margin-bottom: 20px; position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--studio-border); box-shadow: 0 4px 14px rgba(0,0,0,0.06);">
+            <img id="studio-cover-img" src="<?= htmlspecialchars($initialCoverUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Cover Image" style="width: 100%; height: 260px; object-fit: cover; display: block;">
+            <div style="position: absolute; top: 12px; right: 12px; display: flex; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm btn-pill" onclick="document.getElementById('cover-file-input').click()">Change Cover</button>
+              <button type="button" class="btn btn-danger-subtle btn-sm btn-pill" id="remove-cover-banner-btn">Remove</button>
+            </div>
+          </div>
+
+          <!-- Video Preview Banner (if attached) -->
+          <div id="studio-video-banner" style="<?= empty($initialVideoPath) ? 'display: none;' : '' ?> margin-bottom: 18px; padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2); display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 1.3rem;">🎬</span>
+              <div>
+                <strong id="studio-video-label" style="font-size: 0.88rem;"><?= htmlspecialchars(basename($initialVideoPath), ENT_QUOTES, 'UTF-8') ?></strong>
+                <div style="font-size: 0.74rem; color: var(--studio-muted);">Protected video playable via signed access</div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-danger-subtle btn-sm btn-pill" id="remove-video-banner-btn">Remove</button>
+          </div>
+
+          <!-- Article Text Canvas (Clean Markdown / Rich Body) -->
+          <textarea id="post-content"
+                    name="content"
+                    class="studio-editor-area"
+                    placeholder="Start writing your story or draft in clean markdown. Format using the toolbar above, insert quotes, headings, and images..."
+                    required><?= htmlspecialchars($post['content'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+        </form>
+
+        <!-- Live Reader Preview Overlay (Hidden until user clicks Preview) -->
+        <div id="studio-preview-container" style="display: none; padding: 24px; border-radius: 16px; background: var(--studio-panel-bg); border: 1px solid var(--studio-border); margin-top: 10px;">
+          <div id="studio-preview-loading" style="text-align: center; padding: 30px; color: var(--studio-muted);">
+            <span>Rendering reader preview...</span>
+          </div>
+          <div id="studio-preview-rendered" class="article-body-content" style="display: none;"></div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- 3. CONTEXTUAL AI WRITING ASSISTANT PANEL (Floating / Docked) -->
+    <aside class="studio-ai-panel" id="studio-ai-panel" aria-label="AI Writing Assistant">
+      <div class="studio-ai-header">
+        <div class="studio-ai-title">
+          <span>✨</span>
+          <span>AI Writing Assistant</span>
+        </div>
+        <button type="button" class="studio-icon-btn" id="close-ai-panel-btn" style="width: 26px; height: 26px;" aria-label="Close Assistant">×</button>
+      </div>
+
+      <div style="font-size: 0.75rem; color: var(--studio-muted);">
+        Select text in your draft, or apply action to the current section.
+      </div>
+
+      <!-- Tone selector pills (used for Change Tone) -->
+      <div id="ai-tone-selector" style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 2px;">
+        <button type="button" class="studio-tab-btn active ai-tone-pill" data-tone="formal" style="font-size: 0.72rem; padding: 3px 8px;">Formal</button>
+        <button type="button" class="studio-tab-btn ai-tone-pill" data-tone="casual" style="font-size: 0.72rem; padding: 3px 8px;">Casual</button>
+        <button type="button" class="studio-tab-btn ai-tone-pill" data-tone="persuasive" style="font-size: 0.72rem; padding: 3px 8px;">Persuasive</button>
+        <button type="button" class="studio-tab-btn ai-tone-pill" data-tone="technical" style="font-size: 0.72rem; padding: 3px 8px;">Technical</button>
+      </div>
+
+      <!-- 8 Action Cards Matching Reference Screenshot -->
+      <div class="studio-ai-actions-list">
+        <!-- 1. Improve Writing -->
+        <button type="button" class="studio-ai-action-card" data-action="improve_writing">
+          <div class="studio-ai-action-icon" style="background: rgba(99, 102, 241, 0.15); color: #6366f1;">✏️</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Improve writing</div>
+            <div class="studio-ai-action-desc">Enhance clarity and flow</div>
+          </div>
+        </button>
+
+        <!-- 2. Fix Grammar -->
+        <button type="button" class="studio-ai-action-card" data-action="fix_grammar">
+          <div class="studio-ai-action-icon" style="background: rgba(236, 72, 153, 0.15); color: #ec4899;">%</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Fix grammar</div>
+            <div class="studio-ai-action-desc">Correct errors and improve style</div>
+          </div>
+        </button>
+
+        <!-- 3. Change Tone -->
+        <button type="button" class="studio-ai-action-card" data-action="change_tone">
+          <div class="studio-ai-action-icon" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">🎭</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Change tone</div>
+            <div class="studio-ai-action-desc">Make it more formal, casual, etc.</div>
+          </div>
+        </button>
+
+        <!-- 4. Make Shorter -->
+        <button type="button" class="studio-ai-action-card" data-action="make_shorter">
+          <div class="studio-ai-action-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">⇥⇤</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Make shorter</div>
+            <div class="studio-ai-action-desc">Keep the key ideas</div>
+          </div>
+        </button>
+
+        <!-- 5. Make Longer -->
+        <button type="button" class="studio-ai-action-card" data-action="make_longer">
+          <div class="studio-ai-action-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">⇤⇥</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Make longer</div>
+            <div class="studio-ai-action-desc">Add more detail and examples</div>
+          </div>
+        </button>
+
+        <!-- 6. Simplify -->
+        <button type="button" class="studio-ai-action-card" data-action="simplify">
+          <div class="studio-ai-action-icon" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">✨</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Simplify</div>
+            <div class="studio-ai-action-desc">Use clearer, simpler language</div>
+          </div>
+        </button>
+
+        <!-- 7. Suggest Headline -->
+        <button type="button" class="studio-ai-action-card" data-action="suggest_headline">
+          <div class="studio-ai-action-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">📰</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Suggest headline</div>
+            <div class="studio-ai-action-desc">Generate title ideas</div>
+          </div>
+        </button>
+
+        <!-- 8. Continue Writing -->
+        <button type="button" class="studio-ai-action-card" data-action="continue_writing">
+          <div class="studio-ai-action-icon" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;">🚀</div>
+          <div class="studio-ai-action-info">
+            <div class="studio-ai-action-name">Continue writing</div>
+            <div class="studio-ai-action-desc">Based on your content</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- AI Comparison / Review Card -->
+      <div id="studio-ai-result-card" class="studio-ai-result-card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <strong id="ai-result-title" style="font-size: 0.82rem; color: #4338ca;">AI Suggestion</strong>
+          <span id="ai-result-source" style="font-size: 0.7rem; color: var(--studio-muted);"></span>
+        </div>
+        <div id="ai-result-content" class="studio-ai-result-text"></div>
+        <div class="studio-ai-result-actions">
+          <button type="button" id="ai-apply-replace-btn" class="btn btn-sm btn-primary" style="flex: 1; padding: 4px 8px; font-size: 0.78rem;">Replace</button>
+          <button type="button" id="ai-apply-insert-btn" class="btn btn-sm btn-secondary" style="flex: 1; padding: 4px 8px; font-size: 0.78rem;">Insert</button>
+          <button type="button" id="ai-discard-btn" class="btn btn-sm btn-secondary" style="padding: 4px 8px; font-size: 0.78rem;">✕</button>
         </div>
       </div>
     </aside>
-  </div>
-</form>
 
-<!-- Modal: Version History -->
-<div id="versions-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="versions-modal-title" style="display: none;">
-  <div class="modal-card" style="max-width: 600px;">
-    <h3 id="versions-modal-title" class="modal-title">Revision History</h3>
-    <p class="modal-desc">Review prior revisions and restore content if needed.</p>
-    <div id="versions-list-container" style="max-height: 320px; overflow-y: auto; margin: 16px 0;">
-      <p style="color: var(--text-muted); font-size: 0.88rem;">Loading revisions...</p>
+    <!-- 4. RIGHT SIDEBAR: Tabs (Outline, Research, Media), Quick Notes, SEO Readiness -->
+    <aside class="studio-right-sidebar" id="studio-right-sidebar" aria-label="Article Outline and Tools">
+      <!-- 3 Tab Switcher -->
+      <div class="studio-tabs-nav" role="tablist">
+        <button type="button" class="studio-tab-btn active" id="tab-nav-outline" role="tab" aria-selected="true">Outline</button>
+        <button type="button" class="studio-tab-btn" id="tab-nav-research" role="tab" aria-selected="false">Research</button>
+        <button type="button" class="studio-tab-btn" id="tab-nav-media" role="tab" aria-selected="false">Media</button>
+      </div>
+
+      <!-- TAB 1: OUTLINE CONTENT -->
+      <div id="tab-panel-outline" class="studio-tab-content">
+        <div class="studio-side-card">
+          <div class="studio-side-card-header">
+            <span>Article outline</span>
+            <button type="button" id="outline-add-heading-btn" class="studio-icon-btn" style="width: 24px; height: 24px; font-size: 0.9rem;" title="Add Section">+</button>
+          </div>
+          <div id="studio-outline-container" class="studio-outline-list">
+            <span style="font-size: 0.78rem; color: var(--studio-muted); font-style: italic;">Headings added in your draft will appear here.</span>
+          </div>
+          <button type="button" id="btn-add-section-action" class="studio-top-btn" style="width: 100%; justify-content: center; font-size: 0.8rem; padding: 6px 12px; margin-top: 6px;">
+            + Add section
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 2: RESEARCH & NOTES CONTENT -->
+      <div id="tab-panel-research" class="studio-tab-content" style="display: none;">
+        <div class="studio-side-card">
+          <div class="studio-side-card-header">
+            <span>Research & Sources</span>
+          </div>
+          <textarea id="studio-research-notes" class="studio-editor-area" style="min-height: 180px; font-size: 0.82rem; line-height: 1.5; border: 1px solid var(--studio-border); border-radius: 8px; padding: 8px;" placeholder="Paste sources, statistics, URLs, quotes, and research ideas for this article..."><?= htmlspecialchars($researchNotes, ENT_QUOTES, 'UTF-8') ?></textarea>
+          <span style="font-size: 0.72rem; color: var(--studio-muted);">Saved automatically to your draft.</span>
+        </div>
+      </div>
+
+      <!-- TAB 3: MEDIA MANAGEMENT CONTENT -->
+      <div id="tab-panel-media" class="studio-tab-content" style="display: none;">
+        <div class="studio-side-card">
+          <div class="studio-side-card-header">
+            <span>Featured Cover</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm btn-full" onclick="document.getElementById('cover-file-input').click()">
+            Upload Cover Artwork
+          </button>
+        </div>
+
+        <div class="studio-side-card" style="margin-top: 10px;">
+          <div class="studio-side-card-header">
+            <span>Article Video</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm btn-full" onclick="window.openInsertVideoModal()">
+            Embed or Upload Video
+          </button>
+        </div>
+      </div>
+
+      <!-- QUICK NOTES CHECKLIST CARD -->
+      <div class="studio-side-card">
+        <div class="studio-side-card-header">
+          <span>Quick notes</span>
+          <button type="button" id="add-quick-note-btn" class="studio-icon-btn" style="width: 24px; height: 24px; font-size: 0.9rem;" title="Add quick note">+</button>
+        </div>
+        <div id="studio-quick-notes-list" class="studio-notes-list">
+          <?php foreach ($quickNotes as $qn): ?>
+            <?php
+              $qnId = htmlspecialchars($qn['id'] ?? uniqid('qn-'), ENT_QUOTES, 'UTF-8');
+              $qnText = htmlspecialchars($qn['text'] ?? '', ENT_QUOTES, 'UTF-8');
+              $isDone = !empty($qn['done']);
+            ?>
+            <div class="studio-note-item <?= $isDone ? 'is-done' : '' ?>" data-id="<?= $qnId ?>">
+              <input type="checkbox" class="studio-note-checkbox" <?= $isDone ? 'checked' : '' ?>>
+              <span class="studio-note-label" style="flex: 1;"><?= $qnText ?></span>
+              <button type="button" class="studio-note-del-btn" style="background: none; border: none; color: var(--studio-muted); cursor: pointer; font-size: 0.8rem;" title="Delete">×</button>
+            </div>
+          <?php endforeach; ?>
+        </div>
+        <div id="quick-note-add-row" style="display: none; gap: 6px; margin-top: 6px;">
+          <input type="text" id="new-quick-note-input" class="form-input" style="font-size: 0.8rem; padding: 4px 8px;" placeholder="New note...">
+          <button type="button" id="save-new-quick-note-btn" class="btn btn-primary btn-sm" style="padding: 4px 10px;">Add</button>
+        </div>
+      </div>
+
+      <!-- SEO & PUBLISH READINESS CARD -->
+      <div class="studio-side-card">
+        <div class="studio-seo-gauge-row">
+          <span style="font-weight: 700; font-size: 0.86rem; color: var(--studio-text);">SEO & Publish</span>
+          <div class="studio-seo-meter-ring" id="seo-gauge-ring-container">
+            <svg width="40" height="40" viewBox="0 0 36 36">
+              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(148, 163, 184, 0.25)" stroke-width="3.5"/>
+              <path id="seo-gauge-arc" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#10b981" stroke-width="3.5" stroke-dasharray="40, 100" stroke-linecap="round"/>
+            </svg>
+            <span id="seo-score-fraction" style="position: absolute; font-size: 0.72rem; font-weight: 800; color: #10b981;">2/5</span>
+          </div>
+        </div>
+
+        <div class="studio-checklist-list">
+          <div class="studio-checklist-row" id="chk-meta-desc">
+            <span class="chk-icon">☐</span>
+            <span>Add meta description</span>
+          </div>
+          <div class="studio-checklist-row" id="chk-category">
+            <span class="chk-icon">☐</span>
+            <span>Choose category</span>
+          </div>
+          <div class="studio-checklist-row" id="chk-tags">
+            <span class="chk-icon">☐</span>
+            <span>Add article tags</span>
+          </div>
+          <div class="studio-checklist-row" id="chk-featured-image">
+            <span class="chk-icon">☐</span>
+            <span>Set featured image</span>
+          </div>
+          <div class="studio-checklist-row" id="chk-readability">
+            <span class="chk-icon">☐</span>
+            <span>Check readability</span>
+            <span id="readability-badge" style="margin-left: auto; font-size: 0.7rem; color: #10b981; font-weight: 700;">Good</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /.studio-body -->
+
+  <!-- BOTTOM STATUS BAR -->
+  <footer class="studio-bottom-bar" id="studio-bottom-bar">
+    <div class="studio-bottom-bar-left">
+      <span id="studio-stat-words">0 words</span>
+      <span>•</span>
+      <span id="studio-stat-readtime">0 min read</span>
+      <span>•</span>
+      <span id="studio-stat-chars" style="opacity: 0.7;">0 characters</span>
     </div>
-    <div class="modal-actions">
-      <button type="button" class="btn btn-secondary" onclick="document.getElementById('versions-modal').style.display='none'">Close</button>
+
+    <div class="studio-bottom-bar-right">
+      <!-- Focus Mode Switch -->
+      <label class="studio-toggle-switch" for="studio-focus-mode-toggle" title="Toggle Distraction-free Focus Mode">
+        <span style="font-weight: 600; font-size: 0.8rem;">Focus mode</span>
+        <input type="checkbox" id="studio-focus-mode-toggle" class="studio-toggle-checkbox" style="display: none;">
+        <div class="studio-switch-track">
+          <div class="studio-switch-thumb"></div>
+        </div>
+      </label>
+
+      <!-- Expand Fullscreen Button -->
+      <button type="button" id="studio-fullscreen-btn" class="studio-icon-btn" style="width: 28px; height: 28px;" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- APPEARANCE & EDITOR SETTINGS DRAWER -->
+  <div id="studio-settings-drawer" class="studio-settings-drawer" role="dialog" aria-modal="false" aria-labelledby="settings-drawer-title">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h4 id="settings-drawer-title" style="margin: 0; font-size: 0.92rem; font-weight: 800; color: var(--studio-text);">Appearance & Editor Settings</h4>
+      <button type="button" id="close-settings-drawer-btn" style="background: none; border: none; cursor: pointer; font-size: 1.1rem; color: var(--studio-muted);">×</button>
+    </div>
+
+    <!-- Theme Selection -->
+    <div>
+      <label style="font-size: 0.76rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase;">Theme</label>
+      <div class="studio-theme-swatches" style="margin-top: 6px;">
+        <div class="studio-theme-swatch studio-swatch-paper <?= $activeTheme === 'paper' ? 'active' : '' ?>" data-theme="paper">Paper</div>
+        <div class="studio-theme-swatch studio-swatch-lavender <?= $activeTheme === 'lavender' ? 'active' : '' ?>" data-theme="lavender">Lavender</div>
+        <div class="studio-theme-swatch studio-swatch-sage <?= $activeTheme === 'sage' ? 'active' : '' ?>" data-theme="sage">Sage</div>
+        <div class="studio-theme-swatch studio-swatch-midnight <?= $activeTheme === 'midnight' ? 'active' : '' ?>" data-theme="midnight">Midnight</div>
+      </div>
+    </div>
+
+    <!-- Font Selector -->
+    <div>
+      <label for="settings-font-select" style="font-size: 0.76rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase;">Font</label>
+      <select id="settings-font-select" class="studio-tool-dropdown" style="width: 100%; margin-top: 4px;">
+        <option value="serif" <?= $activeFont === 'serif' ? 'selected' : '' ?>>Literary Serif (Default)</option>
+        <option value="inter" <?= $activeFont === 'inter' ? 'selected' : '' ?>>Inter Modern</option>
+        <option value="sans" <?= $activeFont === 'sans' ? 'selected' : '' ?>>System Sans</option>
+      </select>
+    </div>
+
+    <!-- Text Size Slider -->
+    <div>
+      <div style="display: flex; justify-content: space-between; font-size: 0.76rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase;">
+        <span>Text size</span>
+        <span id="settings-text-size-val">18px</span>
+      </div>
+      <input type="range" id="settings-text-size-slider" min="14" max="24" value="18" style="width: 100%; margin-top: 6px; accent-color: #6366f1;">
+    </div>
+
+    <!-- Editor Width -->
+    <div>
+      <label for="settings-width-select" style="font-size: 0.76rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase;">Editor width</label>
+      <select id="settings-width-select" class="studio-tool-dropdown" style="width: 100%; margin-top: 4px;">
+        <option value="compact">Compact (640px)</option>
+        <option value="comfortable" selected>Comfortable (780px)</option>
+        <option value="wide">Wide (980px)</option>
+        <option value="full">Full (100%)</option>
+      </select>
+    </div>
+
+    <!-- Line Spacing -->
+    <div>
+      <label for="settings-line-spacing-select" style="font-size: 0.76rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase;">Line spacing</label>
+      <select id="settings-line-spacing-select" class="studio-tool-dropdown" style="width: 100%; margin-top: 4px;">
+        <option value="normal">Normal (1.6)</option>
+        <option value="relaxed" selected>Relaxed (1.85)</option>
+        <option value="spacious">Spacious (2.1)</option>
+      </select>
+    </div>
+
+    <!-- Focus Mode Default Toggle -->
+    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid var(--studio-border);">
+      <span style="font-size: 0.82rem; font-weight: 600; color: var(--studio-text);">Focus mode by default</span>
+      <input type="checkbox" id="settings-focus-default-toggle" style="accent-color: #6366f1;">
     </div>
   </div>
-</div>
 
-<!-- Modal: Insert Video -->
+  <!-- HIDDEN FILE INPUTS FOR COVER & INLINE IMAGES -->
+  <input type="file" id="cover-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
+  <input type="file" id="inline-image-file-input" accept="image/png,image/jpeg,image/webp" style="display: none;">
+
+  <!-- Off-Canvas Mobile Drawer Backdrop Overlay -->
+  <div id="studio-drawer-backdrop" class="studio-drawer-backdrop" aria-hidden="true"></div>
+
+</div><!-- /#infinity-writing-studio -->
+
+<!-- MODAL: INSERT VIDEO (Embed or Upload) -->
 <div id="insert-video-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="insert-video-modal-title">
   <div class="modal-card">
     <h3 id="insert-video-modal-title" class="modal-title">Insert Video into Article</h3>
@@ -338,491 +816,71 @@
   </div>
 </div>
 
-<script>
-function updateWordCount() {
-  const textarea = document.getElementById('post-content');
-  const display = document.getElementById('word-count-display');
-  if (!textarea || !display) return;
-  const val = textarea.value.trim();
-  const words = val ? val.split(/\s+/).length : 0;
-  const chars = textarea.value.length;
-  display.textContent = `${words} word${words === 1 ? '' : 's'} · ${chars} character${chars === 1 ? '' : 's'}`;
-}
+<!-- MODAL: SCHEDULE PUBLICATION -->
+<div id="schedule-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title" style="display: none;">
+  <div class="modal-card" style="max-width: 440px;">
+    <h3 id="schedule-modal-title" class="modal-title">Schedule Publication</h3>
+    <p class="modal-desc">Choose a date and time for this article to become publicly visible on Infinity Blog.</p>
+    <div class="form-group" style="margin: 16px 0;">
+      <label for="modal-scheduled-at" class="form-label">Publish Date & Time</label>
+      <input type="datetime-local" id="modal-scheduled-at" class="form-input" value="<?= !empty($post['scheduled_at']) ? date('Y-m-d\TH:i', strtotime($post['scheduled_at'])) : '' ?>">
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('schedule-modal').style.display='none'">Cancel</button>
+      <button type="button" id="confirm-schedule-btn" class="btn btn-primary">Schedule & Save</button>
+    </div>
+  </div>
+</div>
 
-function insertMarkdown(prefix, suffix, defaultText = '') {
-  const textarea = document.getElementById('post-content');
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-  const selection = text.substring(start, end);
-  const content = selection || defaultText;
-  const replacement = prefix + content + suffix;
-  textarea.value = text.substring(0, start) + replacement + text.substring(end);
-  textarea.focus();
-  if (selection) {
-    textarea.setSelectionRange(start + prefix.length, start + prefix.length + selection.length);
-  } else {
-    textarea.setSelectionRange(start + prefix.length, start + prefix.length + defaultText.length);
-  }
-  updateWordCount();
-}
+<!-- MODAL: REVISION HISTORY -->
+<div id="versions-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="versions-modal-title" style="display: none;">
+  <div class="modal-card" style="max-width: 600px;">
+    <h3 id="versions-modal-title" class="modal-title">Revision History</h3>
+    <p class="modal-desc">Review prior revisions and restore content if needed.</p>
+    <div id="versions-list-container" style="max-height: 320px; overflow-y: auto; margin: 16px 0;">
+      <p style="color: var(--text-muted); font-size: 0.88rem;">Loading revisions...</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('versions-modal').style.display='none'">Close</button>
+    </div>
+  </div>
+</div>
 
-async function switchEditorTab(tab) {
-  const writeBtn = document.getElementById('tab-write-btn');
-  const previewBtn = document.getElementById('tab-preview-btn');
-  const writePanel = document.getElementById('editor-write-panel');
-  const writeToolbar = document.getElementById('editor-write-toolbar');
-  const previewPanel = document.getElementById('editor-preview-panel');
-  const previewLoading = document.getElementById('editor-preview-loading');
-  const previewContent = document.getElementById('editor-preview-content');
+<!-- MODAL: SET TARGET WORD COUNT GOAL (PART 8) -->
+<div id="word-count-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="word-count-modal-title" style="display: none;">
+  <div class="modal-card" style="max-width: 440px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h3 id="word-count-modal-title" class="modal-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: var(--text-heading);">Set Target Word Count</h3>
+      <button type="button" id="word-count-modal-x-btn" class="studio-icon-btn" aria-label="Close dialog" style="font-size: 1.1rem; width: 28px; height: 28px;">✕</button>
+    </div>
+    <p class="modal-desc" style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+      Define a target word count to focus your writing flow. Your live circular progress meter updates automatically.
+    </p>
 
-  if (tab === 'write') {
-    writeBtn.classList.add('active');
-    previewBtn.classList.remove('active');
-    writePanel.style.display = 'block';
-    writeToolbar.style.display = 'flex';
-    previewPanel.style.display = 'none';
-  } else {
-    writeBtn.classList.remove('active');
-    previewBtn.classList.add('active');
-    writePanel.style.display = 'none';
-    writeToolbar.style.display = 'none';
-    previewPanel.style.display = 'block';
-    previewLoading.style.display = 'block';
-    previewContent.style.display = 'none';
+    <!-- Quick Presets -->
+    <div style="margin-bottom: 14px;">
+      <label class="form-label" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display: block;">Quick Presets</label>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-secondary btn-sm btn-pill word-goal-preset preset-pill" data-words="500">500 (Quick Read)</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-pill word-goal-preset preset-pill" data-words="1000">1,000 (Standard)</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-pill word-goal-preset preset-pill" data-words="2000">2,000 (Deep Dive)</button>
+        <button type="button" class="btn btn-secondary btn-sm btn-pill word-goal-preset preset-pill" data-words="3500">3,500 (Guide)</button>
+      </div>
+    </div>
 
-    const content = document.getElementById('post-content').value;
-    try {
-      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || document.querySelector('input[name="csrf_token"]')?.value;
-      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
-        csrf = await window.BlogCMS.ensureCsrfToken();
-      }
-      const res = await fetch('/posts/preview', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-Token': csrf || ''
-        },
-        body: JSON.stringify({ content })
-      });
-      const data = await res.json();
-      previewLoading.style.display = 'none';
-      if (res.ok && data.data) {
-        previewContent.innerHTML = data.data.html || '<p style="color: var(--text-muted); font-style: italic;">Nothing to preview yet. Write some markdown content!</p>';
-        previewContent.style.display = 'block';
-      } else {
-        previewContent.innerHTML = '<p style="color: var(--danger-color);">Failed to load preview.</p>';
-        previewContent.style.display = 'block';
-      }
-    } catch (err) {
-      previewLoading.style.display = 'none';
-      previewContent.innerHTML = '<p style="color: var(--danger-color);">Network error while loading preview.</p>';
-      previewContent.style.display = 'block';
-    }
-  }
-}
+    <!-- Numeric Input -->
+    <div class="form-group" style="margin-bottom: 20px;">
+      <label for="modal-target-words-input" class="form-label" style="font-weight: 600; font-size: 0.88rem; margin-bottom: 6px; display: block;">Target Words</label>
+      <input type="number" id="modal-target-words-input" class="form-input" min="50" max="50000" step="50" style="font-size: 1.15rem; font-weight: 700; padding: 10px 14px;">
+      <span style="font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; display: block;">Enter any goal between 50 and 50,000 words.</span>
+    </div>
 
-window.openInsertVideoModal = function() {
-  document.getElementById('insert-video-modal')?.classList.add('open');
-};
+    <div class="modal-actions" style="display: flex; justify-content: flex-end; gap: 10px;">
+      <button type="button" id="modal-cancel-goal-btn" class="btn btn-secondary btn-pill">Cancel</button>
+      <button type="button" id="modal-save-goal-btn" class="btn btn-primary btn-pill" style="min-width: 120px;">Save Goal</button>
+    </div>
+  </div>
+</div>
 
-window.closeInsertVideoModal = function() {
-  document.getElementById('insert-video-modal')?.classList.remove('open');
-};
-
-window.switchVideoModalTab = function(tab) {
-  const embedTab = document.getElementById('video-tab-embed');
-  const uploadTab = document.getElementById('video-tab-upload');
-  const embedBtn = document.getElementById('video-mode-embed-btn');
-  const uploadBtn = document.getElementById('video-mode-upload-btn');
-  if (tab === 'embed') {
-    embedTab.style.display = 'block';
-    uploadTab.style.display = 'none';
-    embedBtn.classList.add('active');
-    uploadBtn.classList.remove('active');
-  } else {
-    embedTab.style.display = 'none';
-    uploadTab.style.display = 'block';
-    embedBtn.classList.remove('active');
-    uploadBtn.classList.add('active');
-  }
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  const form = document.getElementById('post-editor-form');
-  const errorBox = document.getElementById('editor-error-alert');
-  const isEdit = <?= $isEdit ? 'true' : 'false' ?>;
-  const postId = <?= $isEdit ? (int) $post['id'] : 'null' ?>;
-  const apiBase = <?= json_encode((($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts') ?>;
-  const currentPostStatus = <?= json_encode($post['status'] ?? 'draft') ?>;
-
-  async function submitPost(targetStatus) {
-    errorBox.style.display = 'none';
-
-    const title = document.getElementById('post-title').value.trim();
-    const content = document.getElementById('post-content').value.trim();
-    const categoryVal = document.getElementById('post-category').value;
-    const categoryId = categoryVal ? parseInt(categoryVal, 10) : null;
-
-    if (!title) {
-      errorBox.textContent = 'Please enter an article title.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-    if (!content) {
-      errorBox.textContent = 'Please enter article content.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-    if (targetStatus === 'published' && !categoryId) {
-      errorBox.textContent = 'A valid active category is required before publishing.';
-      errorBox.style.display = 'flex';
-      return;
-    }
-
-    const remixedFromVal = document.getElementById('remixed-from-post-id')?.value;
-    const remixedFromId = remixedFromVal && parseInt(remixedFromVal, 10) > 0 ? parseInt(remixedFromVal, 10) : null;
-    const coverPath = document.getElementById('post-cover-image-path')?.value || null;
-    const videoPath = document.getElementById('post-video-path')?.value || null;
-
-    const scheduledAtVal = document.getElementById('scheduled-at')?.value || null;
-
-    const payload = {
-      title,
-      content,
-      category_id: categoryId,
-      remixed_from_post_id: remixedFromId,
-      cover_image_path: coverPath,
-      video_path: videoPath,
-      scheduled_at: scheduledAtVal
-    };
-
-    const saveDraftBtn = document.getElementById('save-draft-btn');
-    const publishBtn = document.getElementById('publish-btn');
-    if (saveDraftBtn) saveDraftBtn.disabled = true;
-    if (publishBtn) publishBtn.disabled = true;
-
-    try {
-      let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || document.querySelector('input[name="csrf_token"]')?.value;
-      if (!csrf && window.BlogCMS && typeof window.BlogCMS.ensureCsrfToken === 'function') {
-        csrf = await window.BlogCMS.ensureCsrfToken();
-      }
-      let url = isEdit ? `${apiBase}/${postId}` : apiBase;
-      let method = isEdit ? 'PATCH' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-Token': csrf || ''
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        try {
-          localStorage.removeItem('infinity_blog_draft_' + (postId ? postId : 'new'));
-        } catch (e) {}
-        const effectiveId = isEdit ? postId : data.data?.post?.id;
-        if (targetStatus === 'published' && (currentPostStatus !== 'published' || !isEdit)) {
-          const pubRes = await fetch(`${apiBase}/${effectiveId}/publish`, {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'X-CSRF-Token': csrf || ''
-            }
-          });
-          if (!pubRes.ok) {
-            const pubData = await pubRes.json();
-            errorBox.textContent = pubData.error?.message || 'Post saved, but publishing failed.';
-            errorBox.style.display = 'flex';
-            return;
-          }
-        } else if (targetStatus === 'draft' && isEdit && currentPostStatus === 'published') {
-          await fetch(`${apiBase}/${effectiveId}/unpublish`, {
-            method: 'POST',
-            headers: {
-              'Accept': 'application/json',
-              'X-CSRF-Token': csrf || ''
-            }
-          });
-        }
-        window.location.href = isEdit ? '/posts/manage?updated=1' : '/posts/manage?created=1';
-      } else {
-        errorBox.textContent = data.error?.message || (data.error?.fields ? Object.values(data.error.fields).join(' ') : 'Could not save post.');
-        errorBox.style.display = 'flex';
-      }
-    } catch (err) {
-      errorBox.textContent = 'Network error while saving post.';
-      errorBox.style.display = 'flex';
-    } finally {
-      if (saveDraftBtn) saveDraftBtn.disabled = false;
-      if (publishBtn) publishBtn.disabled = false;
-    }
-  }
-
-  // --- Cover Image Upload Handler ---
-  const coverFileInput = document.getElementById('cover-file-input');
-  const coverUploadStatus = document.getElementById('cover-upload-status');
-  const coverPreviewContainer = document.getElementById('cover-preview-container');
-  const coverPreviewImg = document.getElementById('cover-preview-img');
-  const coverUploadBox = document.getElementById('cover-upload-box');
-  const postCoverInput = document.getElementById('post-cover-image-path');
-
-  async function uploadCoverFile(file) {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Cover image size must not exceed 5MB.');
-      return;
-    }
-    coverUploadStatus.textContent = 'Uploading cover image...';
-    coverUploadStatus.style.color = 'var(--text-muted)';
-    coverUploadStatus.style.display = 'block';
-
-    const formData = new FormData();
-    formData.append('cover', file);
-    if (postCoverInput.value) {
-      formData.append('old_path', postCoverInput.value);
-    }
-    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-      || document.querySelector('input[name="csrf_token"]')?.value;
-    formData.append('csrf_token', csrf || '');
-
-    try {
-      const res = await fetch('/posts/upload/cover', {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': csrf || '' },
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.data) {
-        postCoverInput.value = data.data.path;
-        coverPreviewImg.src = data.data.url;
-        coverPreviewContainer.style.display = 'block';
-        coverUploadBox.style.display = 'none';
-        coverUploadStatus.textContent = 'Cover image uploaded!';
-        coverUploadStatus.style.color = '#16a34a';
-        setTimeout(() => { coverUploadStatus.style.display = 'none'; }, 3000);
-      } else {
-        coverUploadStatus.textContent = data.error?.message || 'Failed to upload cover image.';
-        coverUploadStatus.style.color = '#dc2626';
-      }
-    } catch (err) {
-      coverUploadStatus.textContent = 'Network error during cover upload.';
-      coverUploadStatus.style.color = '#dc2626';
-    }
-  }
-
-  coverFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      uploadCoverFile(e.target.files[0]);
-    }
-  });
-  document.getElementById('change-cover-btn')?.addEventListener('click', () => coverFileInput?.click());
-  document.getElementById('remove-cover-btn')?.addEventListener('click', () => {
-    postCoverInput.value = '';
-    coverPreviewImg.src = '';
-    coverPreviewContainer.style.display = 'none';
-    coverUploadBox.style.display = 'block';
-    coverFileInput.value = '';
-  });
-
-  // --- Video Upload Handler ---
-  const videoFileInput = document.getElementById('video-file-input');
-  const videoUploadStatus = document.getElementById('video-upload-status');
-  const videoPreviewContainer = document.getElementById('video-preview-container');
-  const videoPreviewLabel = document.getElementById('video-preview-label');
-  const videoUploadBox = document.getElementById('video-upload-box');
-  const postVideoInput = document.getElementById('post-video-path');
-
-  async function uploadVideoFile(file) {
-    if (!file) return;
-    if (file.size > 50 * 1024 * 1024) {
-      alert('Video file size must not exceed 50MB.');
-      return;
-    }
-    videoUploadStatus.textContent = 'Uploading video (up to 50MB, please wait)...';
-    videoUploadStatus.style.color = 'var(--text-muted)';
-    videoUploadStatus.style.display = 'block';
-
-    const formData = new FormData();
-    formData.append('video', file);
-    if (postVideoInput.value) {
-      formData.append('old_path', postVideoInput.value);
-    }
-    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-      || document.querySelector('input[name="csrf_token"]')?.value;
-    formData.append('csrf_token', csrf || '');
-
-    try {
-      const res = await fetch('/posts/upload/video', {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': csrf || '' },
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.data) {
-        postVideoInput.value = data.data.path;
-        if (videoPreviewLabel) videoPreviewLabel.textContent = file.name;
-        videoPreviewContainer.style.display = 'flex';
-        videoUploadBox.style.display = 'none';
-        videoUploadStatus.textContent = 'Video uploaded successfully to private storage!';
-        videoUploadStatus.style.color = '#16a34a';
-        setTimeout(() => { videoUploadStatus.style.display = 'none'; }, 3000);
-      } else {
-        videoUploadStatus.textContent = data.error?.message || 'Failed to upload video.';
-        videoUploadStatus.style.color = '#dc2626';
-      }
-    } catch (err) {
-      videoUploadStatus.textContent = 'Network error during video upload.';
-      videoUploadStatus.style.color = '#dc2626';
-    }
-  }
-
-  videoFileInput?.addEventListener('change', (e) => {
-    if (e.target.files && e.target.files[0]) {
-      uploadVideoFile(e.target.files[0]);
-    }
-  });
-  document.getElementById('change-video-btn')?.addEventListener('click', () => videoFileInput?.click());
-  document.getElementById('remove-video-btn')?.addEventListener('click', () => {
-    postVideoInput.value = '';
-    videoPreviewContainer.style.display = 'none';
-    videoUploadBox.style.display = 'block';
-    videoFileInput.value = '';
-  });
-
-  // --- Inline Image Toolbar Handler ---
-  const inlineImageBtn = document.getElementById('insert-image-btn');
-  const inlineImageInput = document.getElementById('inline-image-file-input');
-
-  inlineImageBtn?.addEventListener('click', () => inlineImageInput?.click());
-  inlineImageInput?.addEventListener('change', async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Article image must not exceed 5MB.');
-      return;
-    }
-    const origText = inlineImageBtn.textContent;
-    inlineImageBtn.textContent = 'Uploading...';
-    inlineImageBtn.disabled = true;
-
-    const formData = new FormData();
-    formData.append('image', file);
-    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-      || document.querySelector('input[name="csrf_token"]')?.value;
-    formData.append('csrf_token', csrf || '');
-
-    try {
-      const res = await fetch('/posts/upload/inline', {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': csrf || '' },
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.data && data.data.url) {
-        insertMarkdown(`![${file.name.replace(/[\[\]]/g, '')}](${data.data.url})`, '');
-      } else {
-        alert(data.error?.message || 'Failed to upload image.');
-      }
-    } catch (err) {
-      alert('Network error while uploading image.');
-    } finally {
-      inlineImageBtn.textContent = origText;
-      inlineImageBtn.disabled = false;
-      inlineImageInput.value = '';
-    }
-  });
-
-  // --- Word Count & Typing Listener ---
-  const contentTextarea = document.getElementById('post-content');
-  if (contentTextarea) {
-    contentTextarea.addEventListener('input', updateWordCount);
-    updateWordCount();
-  }
-
-  // --- Video Insert Modal Event Listeners ---
-  document.getElementById('open-video-modal-btn')?.addEventListener('click', () => {
-    window.openInsertVideoModal();
-  });
-
-  document.getElementById('confirm-embed-video-btn')?.addEventListener('click', () => {
-    const urlInput = document.getElementById('video-embed-url');
-    const url = urlInput ? urlInput.value.trim() : '';
-    if (!url) {
-      alert('Please enter a YouTube or Vimeo video link.');
-      return;
-    }
-    insertMarkdown(`\n[video](${url})\n`, '');
-    if (urlInput) urlInput.value = '';
-    window.closeInsertVideoModal();
-  });
-
-  const modalVideoFileInput = document.getElementById('modal-video-file-input');
-  const modalVideoStatus = document.getElementById('modal-video-upload-status');
-  modalVideoFileInput?.addEventListener('change', async (e) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-    if (file.size > 50 * 1024 * 1024) {
-      alert('Video file size must not exceed 50MB.');
-      return;
-    }
-    if (modalVideoStatus) {
-      modalVideoStatus.textContent = 'Uploading video to private storage...';
-      modalVideoStatus.style.color = 'var(--text-muted)';
-      modalVideoStatus.style.display = 'block';
-    }
-
-    const formData = new FormData();
-    formData.append('video', file);
-    let csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-      || document.querySelector('input[name="csrf_token"]')?.value;
-    formData.append('csrf_token', csrf || '');
-
-    try {
-      const res = await fetch('/posts/upload/video', {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': csrf || '' },
-        body: formData
-      });
-      const data = await res.json();
-      if (res.ok && data.data && data.data.path) {
-        insertMarkdown(`\n[video](${data.data.path})\n`, '');
-        if (modalVideoStatus) {
-          modalVideoStatus.textContent = 'Uploaded and inserted into article!';
-          modalVideoStatus.style.color = '#16a34a';
-        }
-        setTimeout(() => {
-          if (modalVideoStatus) modalVideoStatus.style.display = 'none';
-          window.closeInsertVideoModal();
-        }, 1200);
-      } else {
-        if (modalVideoStatus) {
-          modalVideoStatus.textContent = data.error?.message || 'Video upload failed.';
-          modalVideoStatus.style.color = '#dc2626';
-        }
-      }
-    } catch (err) {
-      if (modalVideoStatus) {
-        modalVideoStatus.textContent = 'Network error during upload.';
-        modalVideoStatus.style.color = '#dc2626';
-      }
-    } finally {
-      modalVideoFileInput.value = '';
-    }
-  });
-
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    submitPost('published');
-  });
-  document.getElementById('save-draft-btn')?.addEventListener('click', () => submitPost('draft'));
-  document.getElementById('publish-btn')?.addEventListener('click', () => submitPost('published'));
-});
-</script>
+<!-- SCRIPT: WRITING STUDIO CONTROLLER -->
+<script src="/assets/js/studio.js"></script>

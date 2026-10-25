@@ -45,6 +45,11 @@ category_page_test.html
 !/public/uploads/inline/.htaccess
 /public/uploads/videos/*
 !/public/uploads/videos/.htaccess
+/public/uploads/category-logos/*
+!/public/uploads/category-logos/.htaccess
+/storage/ebooks/files/*
+!/storage/ebooks/files/.htaccess
+/scripts/
 /Assets/
 /tools/
 /scratch/

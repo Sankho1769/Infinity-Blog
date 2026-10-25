@@ -52,7 +52,7 @@ final class PostRepository
         };
 
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, u.username AS author_username, ' . $this->avatarColumnSql() . ', ' .
             'p.summary, p.summary_status, p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
             $scoreJoin .
@@ -126,6 +126,12 @@ final class PostRepository
                 'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'author_id' => (int) $row['author_id'],
                 'author_name' => (string) $row['author_name'],
+                'author_username' => (string) ($row['author_username'] ?? ''),
+                'author_handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle((string) ($row['author_username'] ?? ''), (string) $row['author_name']),
+                'avatar_path' => isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : null,
+                'author_avatar_path' => isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : null,
+                'author_avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl(isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : null),
+                'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl(isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : null),
                 'summary' => self::isSummaryCurrent($row) ? (string) $row['summary'] : null,
                 'published_at' => (string) $row['published_at'],
                 'created_at' => (string) $row['created_at'],
@@ -178,7 +184,7 @@ final class PostRepository
     {
         $statement = $this->pdo->prepare(
             'SELECT p.*, ' .
-            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, u.username AS author_username, ' . $this->avatarColumnSql() . ', ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id ' .
             'JOIN users u ON u.id = p.author_id ' .
@@ -818,7 +824,7 @@ final class PostRepository
         $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
         $lock = $forUpdate && $driver === 'mysql' ? ' FOR UPDATE' : '';
         $sql = 'SELECT p.*, ' .
-            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, ' .
+            'c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, u.username AS author_username, ' . $this->avatarColumnSql() . ', ' .
             'orig.title AS remixed_from_title, orig.status AS remixed_from_status, orig_u.id AS remixed_from_author_id, orig_u.display_name AS remixed_from_author_name ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
             'LEFT JOIN posts orig ON orig.id = p.remixed_from_post_id ' .
@@ -908,6 +914,12 @@ final class PostRepository
             'id' => (int) $row['id'],
             'author_id' => (int) $row['author_id'],
             'author_name' => (string) $row['author_name'],
+            'author_username' => (string) ($row['author_username'] ?? ($row['username'] ?? '')),
+            'author_handle' => \InfinityBlog\Support\UserIdentityHelper::formatHandle((string) ($row['author_username'] ?? ($row['username'] ?? '')), (string) $row['author_name']),
+            'author_avatar_path' => isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : (isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null),
+            'avatar_path' => isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : (isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null),
+            'author_avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl(isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : (isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null)),
+            'avatar_url' => \InfinityBlog\Support\UserIdentityHelper::resolveAvatarUrl(isset($row['author_avatar_path']) && is_string($row['author_avatar_path']) ? $row['author_avatar_path'] : (isset($row['avatar_path']) && is_string($row['avatar_path']) ? $row['avatar_path'] : null)),
             'title' => (string) $row['title'],
             'content' => (string) $row['content'],
             'category_id' => $row['category_id'] === null ? null : (int) $row['category_id'],
@@ -955,4 +967,36 @@ final class PostRepository
         $count = preg_match_all('/./us', $value);
         return $count === false ? strlen($value) : $count;
     }
+
+    private ?bool $hasUserAvatarColumn = null;
+
+    private function hasUserAvatarColumn(): bool
+    {
+        if ($this->hasUserAvatarColumn !== null) {
+            return $this->hasUserAvatarColumn;
+        }
+
+        try {
+            $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $stmt = $this->pdo->query('PRAGMA table_info(users)');
+                $cols = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                foreach ($cols as $c) {
+                    if (($c['name'] ?? '') === 'avatar_path') {
+                        return $this->hasUserAvatarColumn = true;
+                    }
+                }
+                return $this->hasUserAvatarColumn = false;
+            }
+            return $this->hasUserAvatarColumn = true;
+        } catch (Throwable) {
+            return $this->hasUserAvatarColumn = false;
+        }
+    }
+
+    private function avatarColumnSql(): string
+    {
+        return $this->hasUserAvatarColumn() ? 'u.avatar_path AS author_avatar_path' : 'NULL AS author_avatar_path';
+    }
 }
+

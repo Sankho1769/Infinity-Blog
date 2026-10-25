@@ -629,6 +629,15 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NULL, metadata TEXT NULL, ' .
         'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS post_studio_data (' .
+        'id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' .
+        'post_id INTEGER NULL REFERENCES posts(id) ON DELETE CASCADE, ' .
+        'draft_key TEXT NOT NULL, subtitle TEXT NULL, research_notes TEXT NULL, quick_notes TEXT NULL, ' .
+        'target_words INTEGER NOT NULL DEFAULT 2000, settings TEXT NULL, ' .
+        'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, ' .
+        'UNIQUE (user_id, draft_key))'
+    );
     return $pdo;
 };
 
@@ -2357,6 +2366,13 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
     $pdo->exec('ALTER TABLE users ADD COLUMN avatar_path TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN banner_path TEXT NULL');
     $pdo->exec("ALTER TABLE users ADD COLUMN profile_visibility TEXT NOT NULL DEFAULT 'public'");
+    $pdo->exec('ALTER TABLE users ADD COLUMN instagram_url TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN facebook_url TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN github_url TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN whatsapp_number TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN whatsapp_public INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('ALTER TABLE users ADD COLUMN twitter_url TEXT NULL');
+    $pdo->exec('ALTER TABLE users ADD COLUMN linkedin_url TEXT NULL');
     return $pdo;
 };
 
@@ -6069,6 +6085,14 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $migrationRunner->rollbackLast(false);
             } catch (InvalidArgumentException $exception) {
                 $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610190029_create_comment_reactions');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610190028_normalize_user_handles');
+                $rolledBack = $migrationRunner->rollbackLast(true);
+                $expect($rolledBack === '202610190027_create_post_studio_data');
+                $studioTables = (int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'post_studio_data'")->fetchColumn();
+                $expect($studioTables === 0, 'The post_studio_data table should be removed by rollback.');
+                $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610180026_create_post_reviews');
                 $rolledBack = $migrationRunner->rollbackLast(true);
                 $expect($rolledBack === '202610180025_create_chat_room_members');
@@ -6166,6 +6190,16 @@ if (!$runDatabaseTests && $testDatabaseError === null) {
                 $expect(in_array('202610140024_create_registration_challenges', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610180025_create_chat_room_members', $migrationRunner->appliedMigrations(), true));
                 $expect(in_array('202610180026_create_post_reviews', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610190027_create_post_studio_data', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610190028_normalize_user_handles', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610190029_create_comment_reactions', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610190030_add_social_links_to_users', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250031_create_ebook_library_schema', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250032_update_ebooks_for_public_uploads', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250033_ensure_category_chat_rooms', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250034_add_linkedin_to_users', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250035_add_client_msg_id_to_direct_messages', $migrationRunner->appliedMigrations(), true));
+                $expect(in_array('202610250036_add_show_in_recommendations_to_users', $migrationRunner->appliedMigrations(), true));
                 return;
             }
 

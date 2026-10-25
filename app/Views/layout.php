@@ -22,12 +22,17 @@
     <meta property="twitter:image" content="<?= htmlspecialchars($ogImageAbsolute, ENT_QUOTES, 'UTF-8') ?>">
   <?php elseif (!empty($ogImage)): ?>
     <meta property="twitter:image" content="<?= htmlspecialchars($ogImage, ENT_QUOTES, 'UTF-8') ?>">
+  <?php else: ?>
+    <meta property="og:image" content="<?= htmlspecialchars(($baseUrl ?? '') . '/assets/images/infinity-blog-logo.png', ENT_QUOTES, 'UTF-8') ?>">
+    <meta property="twitter:image" content="<?= htmlspecialchars(($baseUrl ?? '') . '/assets/images/infinity-blog-logo.png', ENT_QUOTES, 'UTF-8') ?>">
   <?php endif; ?>
   <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl ?? (($baseUrl ?? '') . ($canonicalPath ?? ($_SERVER['REQUEST_URI'] ?? '/'))), ENT_QUOTES, 'UTF-8') ?>">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="apple-touch-icon" href="/favicon-apple.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/favicon-apple.png">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#3b82f6">
   <?php if (!empty($gscVerificationCode)): ?>
@@ -70,7 +75,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
 </head>
-<body class="<?= ($activeNav ?? '') === 'home' ? 'is-home-page' : '' ?>" data-user-logged-in="<?= !empty($currentUser) ? '1' : '0' ?>">
+<body class="<?= ($activeNav ?? '') === 'home' ? 'is-home-page' : '' ?> <?= !empty($isStudioPage) || ($activeNav ?? '') === 'posts_studio' ? 'is-studio-page' : '' ?> <?= in_array($activeNav ?? '', ['messages', 'chat'], true) ? 'is-chat-page' : '' ?>" data-user-logged-in="<?= !empty($currentUser) ? '1' : '0' ?>">
   <!-- Ambient glow backdrop for pastel claymorphism/glassmorphism -->
   <div class="ambient-glow" aria-hidden="true">
     <div class="ambient-blob-1"></div>
@@ -83,10 +88,12 @@
     <div class="top-header-inner">
       <!-- Left: Logo & Wordmark -->
       <div class="top-header-left">
-        <a href="/" class="brand-logo" aria-label="Infinity Blog Home">
-          <span class="brand-logo-icon">✦</span>
-          <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
-        </a>
+        <?= \InfinityBlog\Support\BrandHelper::render('responsive', [
+            'link' => true,
+            'height' => 38,
+            'class' => 'header-brand-logo',
+            'aria_label' => 'Infinity Blog Home'
+        ]) ?>
       </div>
 
       <!-- Center: Global Search Bar -->
@@ -156,7 +163,7 @@
                   id="header-theme-toggle-btn"
                   title="Switch to Dark Mode"
                   aria-label="Switch to Dark Mode">
-            <span class="theme-btn-icon" id="header-theme-current-icon" aria-hidden="true">☀️</span>
+            <span class="theme-btn-icon" id="header-theme-current-icon" aria-hidden="true"><svg class="theme-svg-sun" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span>
           </button>
         </div>
 
@@ -170,7 +177,8 @@
           <div class="header-user-menu-wrapper" style="position: relative;">
             <button type="button" class="header-user-avatar-btn" id="header-user-menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Account menu">
               <?php if (!empty($hdrAvatarUrl)): ?>
-                <img src="<?= htmlspecialchars($hdrAvatarUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($hdrDisplayName, ENT_QUOTES, 'UTF-8') ?>" class="header-avatar-img">
+                <img src="<?= htmlspecialchars($hdrAvatarUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($hdrDisplayName, ENT_QUOTES, 'UTF-8') ?>" class="header-avatar-img" onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                <div class="header-avatar-fallback" style="display: none;"><?= htmlspecialchars($hdrInitial, ENT_QUOTES, 'UTF-8') ?></div>
               <?php else: ?>
                 <div class="header-avatar-fallback"><?= htmlspecialchars($hdrInitial, ENT_QUOTES, 'UTF-8') ?></div>
               <?php endif; ?>
@@ -183,11 +191,13 @@
                     <span class="user-role-badge admin">Admin</span>
                   <?php endif; ?>
                 </div>
-                <div class="header-user-handle">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                <div class="header-user-handle"><?= htmlspecialchars($currentUser['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($currentUser['username'] ?? null, $hdrDisplayName), ENT_QUOTES, 'UTF-8') ?></div>
               </div>
               <div class="header-dropdown-sep"></div>
               <a href="/profile" class="header-dropdown-link"><span class="hdr-item-icon">👤</span> My Profile</a>
               <a href="/posts/manage" class="header-dropdown-link"><span class="hdr-item-icon">📄</span> My Articles</a>
+              <a href="/ebooks" class="header-dropdown-link"><span class="hdr-item-icon">📚</span> eBook Library</a>
+              <a href="/ebooks/manage" class="header-dropdown-link"><span class="hdr-item-icon">📖</span> My Uploaded eBooks</a>
               <a href="/library" class="header-dropdown-link"><span class="hdr-item-icon">🔖</span> Reading Library</a>
               <a href="/posts/new" class="header-dropdown-link"><span class="hdr-item-icon">✍️</span> Create Post</a>
               <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
@@ -202,10 +212,10 @@
                 <div class="header-theme-label">Appearance</div>
                 <div class="theme-segmented-group" role="radiogroup" aria-label="Theme Appearance">
                   <button type="button" class="theme-segmented-btn active" data-theme-value="light" role="radio" aria-checked="true" title="Light Theme">
-                    <span class="theme-seg-icon">☀️</span> Light
+                    <span class="theme-seg-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span> Light
                   </button>
                   <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false" title="Dark Theme">
-                    <span class="theme-seg-icon">🌙</span> Dark
+                    <span class="theme-seg-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span> Dark
                   </button>
                 </div>
               </div>
@@ -280,6 +290,14 @@
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" x2="22" y1="12" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                 </span>
                 <span class="sidebar-link-text">Discover Communities</span>
+              </a>
+            </li>
+            <li>
+              <a href="/ebooks" class="nav-link <?= ($activeNav ?? '') === 'ebooks' ? 'active' : '' ?>">
+                <span class="sidebar-link-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg>
+                </span>
+                <span class="sidebar-link-text">eBook Library</span>
               </a>
             </li>
           </ul>
@@ -381,12 +399,14 @@
             <!-- Group 4: Administration -->
             <div class="sidebar-nav-group nav-dropdown" id="admin-nav-dropdown">
               <div class="sidebar-group-title">
-                <button type="button" class="sidebar-group-btn nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages', 'reported_posts']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="true">
+                <button type="button" class="sidebar-group-btn nav-link nav-dropdown-btn <?= in_array($activeNav ?? '', ['admin_categories', 'users', 'audit', 'contact_messages', 'reported_posts', 'reported_ebooks', 'ebook_moderation']) ? 'active' : '' ?>" id="admin-nav-dropdown-btn" aria-haspopup="true" aria-expanded="true">
                   Administration
                 </button>
               </div>
               <ul class="sidebar-nav-list" id="admin-nav-dropdown-menu">
+                <li><a href="/admin/ebook-moderation" class="nav-link <?= ($activeNav ?? '') === 'ebook_moderation' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">📖</span> <span class="sidebar-link-text">eBook Moderation</span></a></li>
                 <li><a href="/admin/reported-posts-page" class="nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">🚩</span> <span class="sidebar-link-text">Reported Posts</span></a></li>
+                <li><a href="/admin/reported-ebooks-page" class="nav-link <?= ($activeNav ?? '') === 'reported_ebooks' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">📚</span> <span class="sidebar-link-text">Reported eBooks</span></a></li>
                 <li><a href="/admin/categories-page" class="nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">📁</span> <span class="sidebar-link-text">Categories Admin</span></a></li>
                 <li><a href="/admin/users-page" class="nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">👤</span> <span class="sidebar-link-text">Users Management</span></a></li>
                 <li><a href="/admin/audit-logs-page" class="nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="sidebar-link-icon" aria-hidden="true">🛡️</span> <span class="sidebar-link-text">Audit Logs</span></a></li>
@@ -427,7 +447,7 @@
                     <span class="user-role-badge admin">Admin</span>
                   <?php endif; ?>
                 </div>
-                <span class="sidebar-user-handle">@<?= htmlspecialchars($currentUser['username'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="sidebar-user-handle"><?= htmlspecialchars($currentUser['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($currentUser['username'] ?? null, $navDisplayName), ENT_QUOTES, 'UTF-8') ?></span>
               </div>
             </a>
             <a href="/logout" class="sidebar-logout-btn" title="Sign out / Logout" aria-label="Sign Out">
@@ -494,10 +514,12 @@
       <div class="footer-top-grid">
         <!-- Column 1: Brand & Concise Description -->
         <div class="footer-brand-col">
-          <a href="/" class="brand-logo footer-brand-logo" aria-label="Infinity Blog Home">
-            <span class="brand-logo-icon">✦</span>
-            <span class="brand-name-text">Infinity <span class="brand-text-accent">Blog</span></span>
-          </a>
+          <?= \InfinityBlog\Support\BrandHelper::render('horizontal', [
+              'link' => true,
+              'height' => 38,
+              'class' => 'footer-brand-logo',
+              'aria_label' => 'Infinity Blog Home'
+          ]) ?>
           <p class="footer-tagline">
             A community for sharing ideas, stories, and knowledge.
           </p>
@@ -511,6 +533,7 @@
             <li><a href="/categories" class="footer-nav-link">Categories</a></li>
             <li><a href="/authors" class="footer-nav-link">Authors</a></li>
             <li><a href="/communities" class="footer-nav-link">Discover Communities</a></li>
+            <li><a href="/ebooks" class="footer-nav-link">eBook Library</a></li>
           </ul>
         </div>
 
@@ -550,8 +573,26 @@
     </div>
   </footer>
 
-  <!-- Accessible Slide-Out Mobile Navigation Drawer -->
-  <div id="mobile-nav-drawer" class="mobile-nav-drawer glass-panel" role="dialog" aria-modal="true" aria-label="Mobile Navigation" style="display: none;">
+  <!-- Off-Canvas Mobile Navigation Backdrop Overlay -->
+  <div id="mobile-nav-backdrop" class="mobile-nav-backdrop" aria-hidden="true"></div>
+
+  <!-- Accessible Slide-Out Mobile Navigation Drawer (Anchored to Left Edge) -->
+  <div id="mobile-nav-drawer" class="mobile-nav-drawer" role="dialog" aria-modal="true" aria-label="Mobile Navigation" aria-hidden="true">
+    <div class="mobile-drawer-header">
+      <?= \InfinityBlog\Support\BrandHelper::render('horizontal', [
+          'link' => true,
+          'height' => 32,
+          'class' => 'mobile-drawer-brand',
+          'aria_label' => 'Infinity Blog Home'
+      ]) ?>
+      <button type="button" class="mobile-drawer-close-btn" id="mobile-nav-close-btn" aria-label="Close navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
     <!-- Mobile Search Form -->
     <form action="/" method="GET" class="mobile-search-form" role="search">
       <svg class="mobile-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -565,15 +606,63 @@
     <div class="mobile-nav-section">
       <div class="mobile-nav-section-title">Discover</div>
       <ul class="mobile-nav-list">
-        <li><a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>"><span class="mobile-link-icon">🏠</span> Home</a></li>
-        <li><a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>"><span class="mobile-link-icon">🧭</span> Explore Stories</a></li>
-        <li><a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories</a></li>
-        <li><a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>"><span class="mobile-link-icon">✍️</span> Authors</a></li>
-        <li><a href="/communities" class="mobile-nav-link <?= ($activeNav ?? '') === 'communities' ? 'active' : '' ?>"><span class="mobile-link-icon">🌐</span> Discover Communities</a></li>
-        <li><a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>"><span class="mobile-link-icon">💬</span> Community Chat</a></li>
-        <li><a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Messages <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none;"></span></a></li>
+        <li>
+          <a href="/" class="mobile-nav-link <?= ($activeNav ?? '') === 'home' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>
+            <span>Home</span>
+          </a>
+        </li>
+        <li>
+          <a href="/explore" class="mobile-nav-link <?= ($activeNav ?? '') === 'explore' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg></span>
+            <span>Explore Stories</span>
+          </a>
+        </li>
+        <li>
+          <a href="/categories" class="mobile-nav-link <?= ($activeNav ?? '') === 'categories' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
+            <span>Categories</span>
+          </a>
+        </li>
+        <li>
+          <a href="/authors" class="mobile-nav-link <?= ($activeNav ?? '') === 'authors' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+            <span>Authors</span>
+          </a>
+        </li>
+        <li>
+          <a href="/communities" class="mobile-nav-link <?= ($activeNav ?? '') === 'communities' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></span>
+            <span>Discover Communities</span>
+          </a>
+        </li>
+        <li>
+          <a href="/ebooks" class="mobile-nav-link <?= ($activeNav ?? '') === 'ebooks' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path><path d="M6 6h10"></path><path d="M6 10h10"></path></svg></span>
+            <span>eBook Library</span>
+          </a>
+        </li>
+        <li>
+          <a href="/chat" class="mobile-nav-link <?= ($activeNav ?? '') === 'chat' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span>
+            <span>Community Chat</span>
+          </a>
+        </li>
+        <li>
+          <a href="/messages" class="mobile-nav-link <?= ($activeNav ?? '') === 'messages' ? 'active' : '' ?>">
+            <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg></span>
+            <span>Messages</span>
+            <span id="mobile-unread-badge" class="badge-unread-dot" style="display: none; margin-left: auto;"></span>
+          </a>
+        </li>
         <?php if (!empty($currentUser)): ?>
-          <li><a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link"><span class="mobile-link-icon">🔔</span> Notifications <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none;">0</span></a></li>
+          <li>
+            <a href="#notifications" class="mobile-nav-link" id="mobile-drawer-notif-link">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></span>
+              <span>Notifications</span>
+              <span id="mobile-drawer-notif-badge" class="badge-unread-count" style="display: none; margin-left: auto;">0</span>
+            </a>
+          </li>
         <?php endif; ?>
       </ul>
     </div>
@@ -582,11 +671,11 @@
     <div class="mobile-nav-section mobile-theme-section">
       <div class="mobile-nav-section-title">Appearance</div>
       <div class="theme-segmented-group mobile-theme-group" role="radiogroup" aria-label="Theme Appearance">
-        <button type="button" class="theme-segmented-btn active" data-theme-value="light" role="radio" aria-checked="true">
-          <span class="theme-seg-icon">☀️</span> Light
+        <button type="button" class="theme-segmented-btn active" data-theme-value="light" role="radio" aria-checked="true" title="Light Theme">
+          <span class="theme-seg-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg></span> Light
         </button>
-        <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false">
-          <span class="theme-seg-icon">🌙</span> Dark
+        <button type="button" class="theme-segmented-btn" data-theme-value="dark" role="radio" aria-checked="false" title="Dark Theme">
+          <span class="theme-seg-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></span> Dark
         </button>
       </div>
     </div>
@@ -601,11 +690,36 @@
       <div class="mobile-nav-section">
         <div class="mobile-nav-section-title">My Workspace</div>
         <ul class="mobile-nav-list">
-          <li><a href="/posts/new" class="mobile-nav-link mobile-create-link"><span class="mobile-link-icon">✏️</span> + Create New Post</a></li>
-          <li><a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>"><span class="mobile-link-icon">📝</span> My Articles</a></li>
-          <li><a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>"><span class="mobile-link-icon">📚</span> My Library</a></li>
-          <li><a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>"><span class="mobile-link-icon">👥</span> Following Feed</a></li>
-          <li><a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>"><span class="mobile-link-icon">📊</span> Dashboard</a></li>
+          <li>
+            <a href="/posts/new" class="mobile-nav-link mobile-create-link">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg></span>
+              <span>+ Create New Post</span>
+            </a>
+          </li>
+          <li>
+            <a href="/posts/manage" class="mobile-nav-link <?= ($activeNav ?? '') === 'posts' ? 'active' : '' ?>">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" x2="8" y1="13" y2="13"></line><line x1="16" x2="8" y1="17" y2="17"></line><line x1="10" x2="8" y1="9" y2="9"></line></svg></span>
+              <span>My Articles</span>
+            </a>
+          </li>
+          <li>
+            <a href="/library" class="mobile-nav-link <?= ($activeNav ?? '') === 'library' ? 'active' : '' ?>">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"></path><path d="M12 6v14"></path><path d="M8 8v12"></path><path d="M4 4v16"></path></svg></span>
+              <span>My Library</span>
+            </a>
+          </li>
+          <li>
+            <a href="/following" class="mobile-nav-link <?= ($activeNav ?? '') === 'following' ? 'active' : '' ?>">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+              <span>Following Feed</span>
+            </a>
+          </li>
+          <li>
+            <a href="/dashboard" class="mobile-nav-link <?= ($activeNav ?? '') === 'dashboard' ? 'active' : '' ?>">
+              <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg></span>
+              <span>Dashboard</span>
+            </a>
+          </li>
         </ul>
       </div>
 
@@ -614,11 +728,36 @@
         <div class="mobile-nav-section">
           <div class="mobile-nav-section-title">Administration</div>
           <ul class="mobile-nav-list">
-            <li><a href="/admin/reported-posts-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>"><span class="mobile-link-icon">🚩</span> Reported Posts</a></li>
-            <li><a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>"><span class="mobile-link-icon">📁</span> Categories Admin</a></li>
-            <li><a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>"><span class="mobile-link-icon">👤</span> Users Management</a></li>
-            <li><a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>"><span class="mobile-link-icon">🛡️</span> Audit Logs</a></li>
-            <li><a href="/admin/contact-messages-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>"><span class="mobile-link-icon">✉️</span> Contact Inquiries</a></li>
+            <li>
+              <a href="/admin/reported-posts-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'reported_posts' ? 'active' : '' ?>">
+                <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg></span>
+                <span>Reported Posts</span>
+              </a>
+            </li>
+            <li>
+              <a href="/admin/categories-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'admin_categories' ? 'active' : '' ?>">
+                <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
+                <span>Categories Admin</span>
+              </a>
+            </li>
+            <li>
+              <a href="/admin/users-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'users' ? 'active' : '' ?>">
+                <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
+                <span>Users Management</span>
+              </a>
+            </li>
+            <li>
+              <a href="/admin/audit-logs-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'audit' ? 'active' : '' ?>">
+                <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></span>
+                <span>Audit Logs</span>
+              </a>
+            </li>
+            <li>
+              <a href="/admin/contact-messages-page" class="mobile-nav-link <?= ($activeNav ?? '') === 'contact_messages' ? 'active' : '' ?>">
+                <span class="mobile-link-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg></span>
+                <span>Contact Inquiries</span>
+              </a>
+            </li>
           </ul>
         </div>
       <?php endif; ?>
@@ -642,10 +781,13 @@
               </div>
             <?php endif; ?>
             <div class="mobile-user-meta">
-              <span class="mobile-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
-              <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
-                <span class="user-role-badge admin">Admin</span>
-              <?php endif; ?>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="mobile-user-name"><?= htmlspecialchars($navDisplayName, ENT_QUOTES, 'UTF-8') ?></span>
+                <?php if (($currentUser['role'] ?? '') === 'admin'): ?>
+                  <span class="user-role-badge admin">Admin</span>
+                <?php endif; ?>
+              </div>
+              <span class="mobile-user-handle" style="font-size: 0.78rem; color: var(--text-muted); display: block;"><?= htmlspecialchars($currentUser['handle'] ?? \InfinityBlog\Support\UserIdentityHelper::formatHandle($currentUser['username'] ?? null, $navDisplayName), ENT_QUOTES, 'UTF-8') ?></span>
             </div>
           </a>
           <a href="/logout" class="btn btn-secondary btn-sm btn-pill">Sign Out</a>
@@ -1007,11 +1149,17 @@
     </div>
   </div>
 
+  <!-- Threaded Discussion Panel & Bottom Sheet Modal -->
+  <?php require __DIR__ . '/comments_modal.php'; ?>
+
   <?php
     $jsFile = dirname(__DIR__, 2) . '/public/assets/js/app.js';
     $jsVersion = file_exists($jsFile) ? (string) filemtime($jsFile) : '20261013';
+    $commentsJsFile = dirname(__DIR__, 2) . '/public/assets/js/comments.js';
+    $commentsJsVersion = file_exists($commentsJsFile) ? (string) filemtime($commentsJsFile) : '20261019';
   ?>
   <script src="/assets/js/app.js?v=<?= $jsVersion ?>"></script>
+  <script src="/assets/js/comments.js?v=<?= $commentsJsVersion ?>"></script>
 
   <!-- Cookie Consent & Privacy Gatekeeper Script -->
   <script>
