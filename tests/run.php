@@ -605,6 +605,7 @@ $createPostDatabase = static function () use ($createUserDatabase): PDO {
         'category_id INTEGER NULL REFERENCES categories(id) ON DELETE RESTRICT, ' .
         'remixed_from_post_id INTEGER NULL REFERENCES posts(id) ON DELETE SET NULL, ' .
         'title TEXT NOT NULL, content TEXT NOT NULL, ' .
+        'content_type TEXT NOT NULL DEFAULT \'article\', ' .
         'cover_image_path TEXT NULL, video_path TEXT NULL, audio_path TEXT NULL, audio_status TEXT NOT NULL DEFAULT \'idle\', audio_duration INTEGER NULL, audio_generated_at TEXT NULL, ' .
         'summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, ' .
         'summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\' CHECK (status IN (\'draft\', \'published\')), ' .
@@ -2356,7 +2357,7 @@ $createProfileTestDatabase = static function () use ($createUserDatabase): PDO {
         'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, icon_name TEXT NULL, custom_logo_path TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', scheduled_at TEXT NULL, views_count INTEGER NOT NULL DEFAULT 0, published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
+        'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, remixed_from_post_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT \'article\', cover_image_path TEXT NULL, video_path TEXT NULL, summary TEXT NULL, summary_status TEXT NOT NULL DEFAULT \'none\', summary_source_hash TEXT NULL, summary_generated_at TEXT NULL, status TEXT NOT NULL DEFAULT \'draft\', scheduled_at TEXT NULL, views_count INTEGER NOT NULL DEFAULT 0, published_at TEXT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec('ALTER TABLE users ADD COLUMN bio TEXT NULL');
     $pdo->exec('ALTER TABLE users ADD COLUMN location TEXT NULL');
@@ -3252,7 +3253,7 @@ $run('TtsService synthesizes audio, verifies source hash, cleans up superseded a
     $sqlite->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $sqlite->exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, display_name TEXT, email TEXT, role TEXT, password_hash TEXT)');
     $sqlite->exec('CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT, slug TEXT, icon_name TEXT, custom_logo_path TEXT, is_active INTEGER)');
-    $sqlite->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, summary TEXT, summary_status TEXT, summary_source_hash TEXT, summary_generated_at TEXT, audio_path TEXT, audio_source_hash TEXT, audio_duration INTEGER, audio_status TEXT, audio_generated_at TEXT, status TEXT, remixed_from_post_id INTEGER, created_at TEXT, updated_at TEXT, published_at TEXT)');
+    $sqlite->exec('CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, content_type TEXT NOT NULL DEFAULT \'article\', summary TEXT, summary_status TEXT, summary_source_hash TEXT, summary_generated_at TEXT, audio_path TEXT, audio_source_hash TEXT, audio_duration INTEGER, audio_status TEXT, audio_generated_at TEXT, status TEXT, remixed_from_post_id INTEGER, created_at TEXT, updated_at TEXT, published_at TEXT)');
     $sqlite->exec('CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT, entity_type TEXT, entity_id INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)');
 
     $sqlite->exec("INSERT INTO users (id, username, display_name, email, role, password_hash) VALUES (1, 'author1', 'Author One', 'author1@example.com', 'author', 'hash')");
@@ -3436,7 +3437,7 @@ $run('Category repository persists icon_name and custom_logo_path, updates recor
         'created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
     );
     $pdo->exec(
-        'CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, status TEXT NOT NULL DEFAULT \'published\')'
+        'CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER, category_id INTEGER, title TEXT, content TEXT, content_type TEXT NOT NULL DEFAULT \'article\', status TEXT NOT NULL DEFAULT \'published\')'
     );
     $pdo->exec(
         'CREATE TABLE audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER NULL, action TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id INTEGER NULL, metadata TEXT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
@@ -3637,7 +3638,7 @@ $run('Community chat and direct messaging enforce authentication redirects and d
             'CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE, description TEXT NULL, icon_name TEXT NULL, custom_logo_path TEXT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'
         );
         $pdo->exec(
-            'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'published\')'
+            'CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL, category_id INTEGER NULL, title TEXT NOT NULL, content TEXT NOT NULL, content_type TEXT NOT NULL DEFAULT \'article\', status TEXT NOT NULL DEFAULT \'published\')'
         );
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id INTEGER, action TEXT, entity_type TEXT, entity_id INTEGER, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
@@ -3969,6 +3970,7 @@ $run('Persistent notification center delivers notifications on follow, messages,
                 title TEXT NOT NULL,
                 slug TEXT NOT NULL,
                 body TEXT NOT NULL,
+                content_type TEXT NOT NULL DEFAULT 'article',
                 status TEXT NOT NULL DEFAULT 'published',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NULL

@@ -350,17 +350,32 @@
           <input type="hidden" id="post-video-path" name="video_path" value="<?= htmlspecialchars($initialVideoPath, ENT_QUOTES, 'UTF-8') ?>">
           <input type="hidden" id="scheduled-at" name="scheduled_at" value="<?= !empty($post['scheduled_at']) ? date('Y-m-d\TH:i', strtotime($post['scheduled_at'])) : '' ?>">
 
-          <!-- Category Pill Selector -->
-          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 14px;">
-            <label for="post-category" style="font-size: 0.78rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase; letter-spacing: 0.05em;">Category:</label>
-            <select id="post-category" name="category_id" class="studio-tool-dropdown" style="padding: 4px 10px; font-size: 0.82rem; border-radius: 12px;">
-              <option value="">Select Category (Required to Publish)</option>
-              <?php foreach ($categories as $cat): ?>
-                <option value="<?= (int) $cat['id'] ?>" <?= (!empty($post['category_id']) && (int) $post['category_id'] === (int) $cat['id']) ? 'selected' : '' ?>>
-                  <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
+          <!-- Type and Category Selectors -->
+          <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="post-content-type" style="font-size: 0.78rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase; letter-spacing: 0.05em;">Type:</label>
+              <select id="post-content-type" name="content_type" class="studio-tool-dropdown" style="padding: 4px 10px; font-size: 0.82rem; border-radius: 12px;">
+                <?php
+                  $selectedType = $post['content_type'] ?? 'article';
+                ?>
+                <option value="article" <?= $selectedType === 'article' ? 'selected' : '' ?>>ARTICLE</option>
+                <option value="blog" <?= $selectedType === 'blog' ? 'selected' : '' ?>>BLOG</option>
+                <option value="research_paper" <?= $selectedType === 'research_paper' ? 'selected' : '' ?>>RESEARCH PAPER</option>
+                <option value="photo" <?= $selectedType === 'photo' ? 'selected' : '' ?>>PHOTO</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label for="post-category" style="font-size: 0.78rem; font-weight: 700; color: var(--studio-muted); text-transform: uppercase; letter-spacing: 0.05em;">Category:</label>
+              <select id="post-category" name="category_id" class="studio-tool-dropdown" style="padding: 4px 10px; font-size: 0.82rem; border-radius: 12px;">
+                <option value="">Select Category (Required to Publish)</option>
+                <?php foreach ($categories as $cat): ?>
+                  <option value="<?= (int) $cat['id'] ?>" <?= (!empty($post['category_id']) && (int) $post['category_id'] === (int) $cat['id']) ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
           </div>
 
           <!-- Remix Attribution Banner -->

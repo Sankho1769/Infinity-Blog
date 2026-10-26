@@ -308,7 +308,7 @@
       <?php foreach ($posts as $idx => $post): ?>
         <?php
           $postId = (int) $post['id'];
-          $canonicalPostUrl = '/article/' . $postId;
+          $canonicalPostUrl = ($basePath ?? '') . '/article/' . $postId;
           $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
         ?>
         <article class="glass-panel glass-panel-hover article-card"
@@ -319,8 +319,11 @@
                  aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
           <?php if (!empty($thumbnailUrl)): ?>
             <div class="article-card-banner has-image">
-              <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.closest('.article-card-banner').style.display='none';">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="article-banner-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+                <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" width="360" height="200" loading="lazy" onerror="this.onerror=null; this.closest('.article-card-banner').style.display='none';">
+              </a>
               <div class="article-banner-badge-wrapper">
+                <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
                 <?php if (!empty($post['category_name'])): ?>
                   <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
                     <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
@@ -339,6 +342,9 @@
           <div class="article-card-body">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
               <div style="display: flex; align-items: center; gap: 8px;">
+                <?php if (empty($thumbnailUrl)): ?>
+                  <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+                <?php endif; ?>
                 <?php if (empty($thumbnailUrl) && !empty($post['category_name'])): ?>
                   <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
                     <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 13) ?>
@@ -352,15 +358,13 @@
                   ⏱️ <?= $post['reading_time'] ?? max(1, (int) ceil(str_word_count(strip_tags($post['content'] ?? '')) / 200)) ?> min
                 </span>
               </div>
-              <?php if (!empty($post['reader_score']['count']) && $post['reader_score']['count'] > 0): ?>
-                <span class="badge badge-score" title="Reader Score: <?= number_format($post['reader_score']['average'], 1) ?> out of 5 based on <?= (int) $post['reader_score']['count'] ?> scores">
-                  ★ <?= number_format($post['reader_score']['average'], 1) ?> (<?= (int) $post['reader_score']['count'] ?>)
-                </span>
-              <?php endif; ?>
+              <div>
+                <?= \InfinityBlog\Support\RatingHelper::getRatingInfo($post['reader_score']['average'] ?? 0, $post['reader_score']['count'] ?? 0)['badge_html'] ?>
+              </div>
             </div>
 
             <h3 class="article-card-title">
-              <a href="/article/<?= (int) $post['id'] ?>">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . (int) $post['id']) ?>">
                 <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
               </a>
             </h3>

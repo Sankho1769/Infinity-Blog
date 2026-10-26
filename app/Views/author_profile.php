@@ -167,7 +167,7 @@
       <?php foreach ($posts as $idx => $post): ?>
         <?php
           $postId = (int) $post['id'];
-          $canonicalPostUrl = '/article/' . $postId;
+          $canonicalPostUrl = ($basePath ?? '') . '/article/' . $postId;
           $thumbnailUrl = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, $idx);
         ?>
         <article class="glass-panel glass-panel-hover article-card"
@@ -178,8 +178,11 @@
                  aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
           <?php if (!empty($thumbnailUrl)): ?>
             <div class="article-card-banner has-image">
-              <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy" onerror="this.onerror=null; this.closest('.article-card-banner').style.display='none';">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="article-banner-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+                <img src="<?= htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" class="article-banner-img" loading="lazy" onerror="this.onerror=null; this.closest('.article-card-banner').style.display='none';">
+              </a>
               <div class="article-banner-badge-wrapper">
+                <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
                 <?php if (!empty($post['category_name'])): ?>
                   <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
                     <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
@@ -193,9 +196,14 @@
 
           <div class="article-card-body">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <time class="article-date-meta">
-                <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
-              </time>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <?php if (empty($thumbnailUrl)): ?>
+                  <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+                <?php endif; ?>
+                <time class="article-date-meta">
+                  <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
+                </time>
+              </div>
               <?php if (empty($thumbnailUrl) && !empty($post['category_name'])): ?>
                 <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="text-decoration: none;" title="Browse category: <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>">
                   <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
@@ -204,7 +212,7 @@
             </div>
 
             <h3 class="article-card-title">
-              <a href="/article/<?= (int) $post['id'] ?>">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . (int) $post['id']) ?>">
                 <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
               </a>
             </h3>
@@ -220,7 +228,7 @@
               <span style="font-size: 0.8rem; color: var(--text-muted);">
                 <?= date('M j, Y', strtotime($post['published_at'] ?? $post['created_at'])) ?>
               </span>
-              <a href="/article/<?= (int) $post['id'] ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . (int) $post['id']) ?>" class="btn btn-secondary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.8rem;">
                 Read Story →
               </a>
             </div>

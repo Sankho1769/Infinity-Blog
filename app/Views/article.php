@@ -24,14 +24,17 @@
   <!-- Main Article Card -->
   <article class="glass-panel article-main-card">
     <header class="article-header">
-      <?php if (!empty($post['category_name'])): ?>
-        <span class="badge badge-category" style="display: inline-flex; align-items: center; gap: 6px;">
-          <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 14) ?>
-          <span><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
-        </span>
-      <?php else: ?>
-        <span class="badge badge-published">Published Article</span>
-      <?php endif; ?>
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+        <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+        <?php if (!empty($post['category_name'])): ?>
+          <span class="badge badge-category" style="display: inline-flex; align-items: center; gap: 6px;">
+            <?= \InfinityBlog\Categories\CategoryIconHelper::getIcon($post['category_slug'] ?? '', 14) ?>
+            <span><?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?></span>
+          </span>
+        <?php else: ?>
+          <span class="badge badge-published">Published Article</span>
+        <?php endif; ?>
+      </div>
 
       <h1 class="article-title-large">
         <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
@@ -338,6 +341,13 @@
       <?php endif; ?>
     </div>
 
+    <?php if (!empty($reviewsUnavailable)): ?>
+      <section class="glass-panel" style="margin-top: 36px; padding: 24px 28px; border-radius: var(--radius-lg); text-align: center;">
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.95rem;">
+          Ratings and reviews are temporarily unavailable.
+        </p>
+      </section>
+    <?php else: ?>
     <!-- Reader Score Section -->
     <section id="reader-score" class="reader-score-card glass-panel" style="margin-top: 36px; padding: 24px 28px; border-radius: var(--radius-lg); background: var(--glass-bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow-sm);">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px;">
@@ -352,15 +362,12 @@
         </div>
 
         <!-- Aggregate Score Summary Badge -->
-        <div id="reader-score-summary" style="display: flex; align-items: baseline; gap: 8px; background: rgba(255, 255, 255, 0.55); padding: 8px 16px; border-radius: var(--radius-pill); border: 1px solid var(--glass-border);">
+        <div id="reader-score-summary">
           <?php
             $avgScore = (float) ($scoreSummary['average'] ?? 0);
             $scoreCount = (int) ($scoreSummary['count'] ?? 0);
+            echo \InfinityBlog\Support\RatingHelper::getRatingInfo($avgScore, $scoreCount)['badge_html'];
           ?>
-          <span id="score-average-num" style="font-size: 1.35rem; font-weight: 800; color: var(--text-dark);"><?= $scoreCount > 0 ? number_format($avgScore, 1) : '—' ?></span>
-          <span style="color: var(--text-subtle); font-size: 0.85rem;">/ 5</span>
-          <span style="color: var(--border-color);">·</span>
-          <span id="score-count-label" style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);"><?= $scoreCount ?> <?= $scoreCount === 1 ? 'score' : 'scores' ?></span>
         </div>
       </div>
 
@@ -417,6 +424,8 @@
             <button type="button" class="btn btn-primary btn-sm btn-pill" id="toggleReviewComposerBtn" onclick="toggleReviewComposer()">
               ✍️ <?= !empty($userReview) ? 'Edit Your Review' : 'Write a Review' ?>
             </button>
+          <?php elseif (!empty($currentUser) && (int) $currentUser['id'] === (int) ($post['author_id'] ?? 0)): ?>
+            <span style="font-size: 0.82rem; color: var(--text-muted); font-style: italic;">Authors cannot review their own posts.</span>
           <?php elseif (empty($currentUser)): ?>
             <a href="/login?redirect=<?= urlencode('/article/' . (int) $post['id'] . '#reader-reviews') ?>" class="btn btn-secondary btn-sm btn-pill">
               Sign In to Review
@@ -568,6 +577,7 @@
         </div>
       <?php endif; ?>
     </section>
+    <?php endif; ?>
 
     <!-- Remix CTA Banner -->
     <div class="remix-cta-box glass-panel" style="margin-top: 24px; padding: 20px 24px; border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
@@ -827,6 +837,9 @@
               renderStars(currentScore);
               avgNum.textContent = Number(data.data.average).toFixed(1);
               countLabel.textContent = `${data.data.count} ${data.data.count === 1 ? 'score' : 'scores'}`;
+              if (window.setRatingBadgeUI) {
+                window.setRatingBadgeUI('reader-score-summary', data.data.average, data.data.count);
+              }
               feedbackMsg.innerHTML = `<span style="color: #16a34a; font-weight: 600;">You scored this article ${currentScore} / 5 ★ (updated!)</span>`;
               if (typeof setComposerScore === 'function') {
                 setComposerScore(currentScore);
@@ -1036,11 +1049,15 @@
           card.style.transition = 'opacity 0.3s ease';
           setTimeout(() => {
             card.remove();
-            const stream = document.getElementById('reviewsStream');
-            const remaining = stream ? stream.querySelectorAll('.review-card').length : 0;
             const badge = document.getElementById('reviewsCountBadge');
-            if (badge) badge.textContent = remaining;
-            if (remaining === 0) {
+            const newTotal = typeof data.data.total_reviews === 'number'
+              ? data.data.total_reviews
+              : Math.max(0, parseInt(badge?.textContent || '1', 10) - 1);
+            if (badge) badge.textContent = newTotal;
+            if (data.data.score_summary && window.setRatingBadgeUI) {
+              window.setRatingBadgeUI('reader-score-summary', data.data.score_summary.average, data.data.score_summary.count);
+            }
+            if (newTotal === 0) {
               window.location.reload();
             }
           }, 300);
@@ -1075,13 +1092,14 @@
       btn.disabled = true;
       btn.textContent = 'Loading reviews...';
     }
+    const nextPage = currentReviewPage + 1;
     try {
-      currentReviewPage++;
-      const res = await fetch(`/api/posts/${postId}/reviews?page=${currentReviewPage}&per_page=10`, {
+      const res = await fetch(`/api/posts/${postId}/reviews?page=${nextPage}&per_page=10`, {
         headers: { 'Accept': 'application/json' }
       });
       const data = await res.json();
       if (res.ok && data.data?.reviews) {
+        currentReviewPage = nextPage;
         const stream = document.getElementById('reviewsStream');
         data.data.reviews.forEach(rev => {
           if (document.getElementById(`review-card-${rev.id}`)) return;
@@ -1094,11 +1112,16 @@
           btn.disabled = false;
           btn.textContent = 'Load More Reviews ↓';
         }
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Retry Loading Reviews';
+        }
       }
     } catch (e) {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Load More Reviews ↓';
+        btn.textContent = 'Retry Loading Reviews';
       }
     }
   }

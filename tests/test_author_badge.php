@@ -25,6 +25,7 @@ $pdo->exec('CREATE TABLE posts (
     author_id INTEGER NOT NULL,
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
+    content_type VARCHAR(32) NOT NULL DEFAULT \'article\',
     status VARCHAR(20) NOT NULL DEFAULT \'draft\',
     published_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

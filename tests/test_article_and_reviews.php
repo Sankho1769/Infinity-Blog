@@ -71,6 +71,7 @@ $pdo->exec('CREATE TABLE posts (
     cover_image_path VARCHAR(255) NULL,
     video_path VARCHAR(255) NULL,
     remixed_from_post_id INTEGER NULL,
+    content_type VARCHAR(32) NOT NULL DEFAULT \'article\',
     status VARCHAR(20) NOT NULL DEFAULT \'draft\',
     reading_time INTEGER NOT NULL DEFAULT 1,
     published_at DATETIME NULL,

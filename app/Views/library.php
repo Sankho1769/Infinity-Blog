@@ -65,7 +65,7 @@
         <?php foreach ($bookmarks as $post): ?>
           <?php
             $postId = (int) $post['id'];
-            $canonicalPostUrl = '/article/' . $postId;
+            $canonicalPostUrl = ($basePath ?? '') . '/article/' . $postId;
             $authorId = (int) ($post['author_id'] ?? 1);
           ?>
           <article class="glass-panel article-card"
@@ -76,17 +76,20 @@
                    aria-label="Article: <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
                    style="display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border);">
             <div style="padding: 20px; flex: 1; display: flex; flex-direction: column;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <span class="badge" style="background: rgba(37, 99, 235, 0.1); color: var(--primary-color); font-weight: 600; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem;">
-                  <?= htmlspecialchars($post['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?>
-                </span>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+                  <span class="badge" style="background: rgba(37, 99, 235, 0.1); color: var(--primary-color); font-weight: 600; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem;">
+                    <?= htmlspecialchars($post['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?>
+                  </span>
+                </div>
                 <span style="font-size: 0.75rem; color: var(--text-muted);">
                   Saved <?= date('M j, Y', strtotime($post['bookmarked_at'])) ?>
                 </span>
               </div>
 
               <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 10px; line-height: 1.4;">
-                <a href="/article/<?= $postId ?>" style="color: var(--text-main); text-decoration: none;">
+                <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" style="color: var(--text-main); text-decoration: none;">
                   <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
                 </a>
               </h3>
@@ -109,7 +112,7 @@
                   <button type="button" class="btn btn-secondary btn-sm" onclick="removeBookmark(<?= $postId ?>, this)" title="Remove from Library">
                     ✕ Remove
                   </button>
-                  <a href="/article/<?= $postId ?>" class="btn btn-primary btn-sm">Read</a>
+                  <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="btn btn-primary btn-sm">Read</a>
                 </div>
               </div>
             </div>

@@ -390,8 +390,17 @@ final class WebController
         $recent = array_filter($recentResult['posts'], fn($p) => (int) $p['id'] !== $id);
 
         $account = $this->guard->currentAccount();
-        $scoreSummary = $this->scores !== null ? $this->scores->getSummary($id) : ['average' => 0.0, 'count' => 0];
-        $userScore = ($this->scores !== null && $account !== null) ? $this->scores->getUserScore($id, $account->id) : null;
+        $scoresUnavailable = false;
+        $scoreSummary = ['average' => 0.0, 'count' => 0];
+        $userScore = null;
+        if ($this->scores !== null) {
+            try {
+                $scoreSummary = $this->scores->getSummary($id);
+                $userScore = $account !== null ? $this->scores->getUserScore($id, $account->id) : null;
+            } catch (Throwable) {
+                $scoresUnavailable = true;
+            }
+        }
 
         $videoSignedUrl = null;
         if (!empty($post['video_path']) && $this->media !== null && $this->media->getConfig()->isConfigured()) {
@@ -441,12 +450,20 @@ final class WebController
 
         $isBookmarked = false;
         if ($account !== null && $this->library !== null) {
-            $isBookmarked = $this->library->isBookmarked($account->id, $id);
+            try {
+                $isBookmarked = $this->library->isBookmarked($account->id, $id);
+            } catch (Throwable) {
+                $isBookmarked = false;
+            }
         }
 
         $comments = [];
         if ($this->community !== null) {
-            $comments = $this->community->getPostComments($id, $account?->id);
+            try {
+                $comments = $this->community->getPostComments($id, $account?->id);
+            } catch (Throwable) {
+                $comments = [];
+            }
         }
 
         $authorId = (int) ($post['author_id'] ?? 0);
@@ -461,12 +478,17 @@ final class WebController
             }
         }
 
-        $reviewsData = $this->reviews !== null
-            ? $this->reviews->getReviewsForPost($id, $account?->id, 1, 10)
-            : ['reviews' => [], 'total' => 0, 'page' => 1, 'per_page' => 10, 'total_pages' => 0];
-        $userReview = ($this->reviews !== null && $account !== null)
-            ? $this->reviews->getUserReview($id, $account->id)
-            : null;
+        $reviewsUnavailable = false;
+        $reviewsData = ['reviews' => [], 'total' => 0, 'page' => 1, 'per_page' => 10, 'total_pages' => 0];
+        $userReview = null;
+        if ($this->reviews !== null) {
+            try {
+                $reviewsData = $this->reviews->getReviewsForPost($id, $account?->id, 1, 10);
+                $userReview = $account !== null ? $this->reviews->getUserReview($id, $account->id) : null;
+            } catch (Throwable) {
+                $reviewsUnavailable = true;
+            }
+        }
 
         return $this->render('article', [
             'pageTitle' => $post['title'],
@@ -484,10 +506,12 @@ final class WebController
             'recentPosts' => array_values(array_slice($recent, 0, 4)),
             'scoreSummary' => $scoreSummary,
             'userScore' => $userScore,
+            'scoresUnavailable' => $scoresUnavailable,
             'reviews' => $reviewsData['reviews'],
             'reviewsTotal' => $reviewsData['total'],
             'reviewsPage' => $reviewsData['page'],
             'reviewsTotalPages' => $reviewsData['total_pages'],
+            'reviewsUnavailable' => $reviewsUnavailable,
             'userReview' => $userReview,
             'speechData' => $speechData,
             'isBookmarked' => $isBookmarked,
@@ -2522,6 +2546,17 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function serverError(string $requestId = '', string $message = 'An unexpected error occurred while processing your request.'): array
+    {
+        return $this->render('500', [
+            'pageTitle' => 'Something Went Wrong',
+            'activeNav' => '',
+            'errorMessage' => $message,
+            'requestId' => $requestId,
+        ], 500);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     private function redirect(string $url): array
     {
         if (!headers_sent()) {
@@ -2830,11 +2865,20 @@ final class WebController
             $categoryId = !empty($activeCats) ? (int) $activeCats[0]['id'] : null;
         }
 
+        $contentType = isset($input['content_type']) && is_string($input['content_type'])
+            ? \InfinityBlog\Posts\ContentTypeHelper::normalize($input['content_type'])
+            : \InfinityBlog\Posts\ContentTypeHelper::TYPE_ARTICLE;
+        $coverImagePath = isset($input['cover_image_path']) && is_string($input['cover_image_path']) && trim($input['cover_image_path']) !== ''
+            ? trim($input['cover_image_path'])
+            : null;
+
         try {
             $draft = $this->posts->createDraft($account->id, [
                 'title' => $rawTitle,
                 'content' => $rawContent,
                 'category_id' => $categoryId,
+                'content_type' => $contentType,
+                'cover_image_path' => $coverImagePath,
             ]);
 
             $published = $this->posts->publishForAuthor((int) $draft['id'], $account->id);

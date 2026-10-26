@@ -1716,7 +1716,8 @@
           },
           body: JSON.stringify({
             content: rawText,
-            category_id: categoryId
+            category_id: categoryId,
+            content_type: (document.getElementById('composer-content-type-select')?.value || 'article')
           })
         });
 
@@ -2235,9 +2236,43 @@
       const articleUrl = card.getAttribute('data-article-url');
       if (articleUrl) return articleUrl;
       const postId = card.getAttribute('data-post-id');
-      if (postId) return `/article/${postId}`;
+      if (postId) {
+        const basePath = window.APP_BASE_PATH || '';
+        return `${basePath}/article/${postId}`;
+      }
       return null;
     }
+
+    window.setRatingBadgeUI = function(elementOrId, avg, count) {
+      const el = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+      if (!el) return;
+      const cnt = parseInt(count, 10) || 0;
+      const num = parseFloat(avg) || 0.0;
+      if (cnt <= 0 || num <= 0.0) {
+        el.className = 'rating-badge rating-badge-none';
+        el.title = 'Not rated yet';
+        el.innerHTML = '<span class="rating-star">★</span> <span class="rating-val">Not rated yet</span>';
+        return;
+      }
+      const rounded = Math.min(5.0, Math.max(1.0, Math.round(num * 10) / 10)).toFixed(1);
+      let tier = 'poor';
+      let label = 'Poor';
+      if (rounded < 2.0) {
+        tier = 'poor'; label = 'Poor';
+      } else if (rounded < 3.0) {
+        tier = 'below-average'; label = 'Below average';
+      } else if (rounded < 4.0) {
+        tier = 'average'; label = 'Average';
+      } else if (rounded < 4.5) {
+        tier = 'good'; label = 'Good';
+      } else {
+        tier = 'excellent'; label = 'Excellent';
+      }
+      const cntLabel = cnt === 1 ? '1 score' : `${cnt} scores`;
+      el.className = `rating-badge rating-badge-${tier}`;
+      el.title = `Reader Score: ${rounded} out of 5 (${label}) based on ${cntLabel}`;
+      el.innerHTML = `<span class="rating-star">★</span> <span class="rating-val">${rounded}</span> <span class="rating-count">(${cnt})</span>`;
+    };
 
     function shouldIgnoreCardEvent(e, card) {
       // 1. Text selection in progress (user is copying/highlighting text)

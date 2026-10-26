@@ -100,6 +100,14 @@
                 <?php endforeach; ?>
               </select>
 
+              <label for="composer-content-type-select" class="visually-hidden">Select Content Type</label>
+              <select id="composer-content-type-select" class="form-select composer-select" aria-label="Select Content Type" style="max-width: 130px;">
+                <option value="article">ARTICLE</option>
+                <option value="blog">BLOG</option>
+                <option value="research_paper">RESEARCH</option>
+                <option value="photo">PHOTO</option>
+              </select>
+
               <button type="button" class="btn btn-secondary btn-sm btn-pill composer-attach-btn" id="composer-attach-btn" onclick="document.getElementById('composer-image-file-input').click()" title="Attach an image to this post">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
@@ -272,7 +280,7 @@
               $isLiked = ($post['user_score'] ?? 0) === 5;
               $isDisliked = ($post['user_score'] ?? 0) === 1;
               $isBookmarked = !empty($post['is_bookmarked']);
-              $canonicalPostUrl = '/article/' . $postId;
+              $canonicalPostUrl = ($basePath ?? '') . '/article/' . $postId;
               $relativeTime = $post['relative_time'] ?? 'recently';
 
               $rawContent = $post['content'] ?? $post['excerpt'] ?? '';
@@ -332,6 +340,8 @@
 
                     <span class="feed-meta-dot">·</span>
                     <span class="feed-card-timestamp" title="<?= htmlspecialchars($post['published_at'] ?? $post['created_at'] ?? '', ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($relativeTime, ENT_QUOTES, 'UTF-8') ?></span>
+                    <span class="feed-meta-dot">·</span>
+                    <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
                   </div>
 
                   <!-- Overflow Options Menu -->
@@ -365,7 +375,7 @@
                 <div class="feed-card-body">
                   <?php if (!empty($post['title'])): ?>
                     <h3 class="feed-card-title">
-                      <a href="/article/<?= $postId ?>">
+                      <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>">
                         <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
                       </a>
                     </h3>
@@ -380,7 +390,7 @@
                   <!-- Prominent Full-Width Featured Media Image Banner -->
                   <?php if (!empty($thumb)): ?>
                     <div class="feed-card-featured-media feed-card-media">
-                      <a href="/article/<?= $postId ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+                      <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
                         <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>"
                              alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>"
                              class="feed-card-featured-img feed-card-thumb-img"
@@ -390,7 +400,7 @@
                     </div>
                   <?php elseif ($hasInlineImage): ?>
                     <div class="feed-card-featured-media feed-card-media">
-                      <a href="/article/<?= $postId ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
+                      <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
                         <img src="<?= htmlspecialchars($primaryInlineImage['url'], ENT_QUOTES, 'UTF-8') ?>"
                              alt="<?= htmlspecialchars($primaryInlineImage['alt'] ?: $post['title'], ENT_QUOTES, 'UTF-8') ?>"
                              class="feed-card-featured-img feed-card-thumb-img feed-card-inline-image"
@@ -401,22 +411,30 @@
                   <?php endif; ?>
                 </div>
 
-                <!-- Engagement Summary Row (Likes · Comments) -->
-                <div class="feed-card-engagement-summary">
-                  <span class="engagement-summary-stat">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
-                    <span class="engagement-count-val" data-post-id="<?= $postId ?>"><?= $scoreCount ?></span>
-                  </span>
-                  <span class="engagement-dot">·</span>
-                  <span class="engagement-summary-stat comments-stat-trigger"
-                        data-post-id="<?= $postId ?>"
-                        role="button"
-                        tabindex="0"
-                        title="View discussion"
-                        onclick="openCommentsDrawer(event, <?= $postId ?>)">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span class="engagement-comments-count-val" data-post-id="<?= $postId ?>"><?= $commentCount ?> <?= $commentCount === 1 ? 'comment' : 'comments' ?></span>
-                  </span>
+                <!-- Engagement Summary Row (Likes · Comments · Reader Rating) -->
+                <div class="feed-card-engagement-summary" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="engagement-summary-stat">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                      <span class="engagement-count-val" data-post-id="<?= $postId ?>"><?= $scoreCount ?></span>
+                    </span>
+                    <span class="engagement-dot">·</span>
+                    <span class="engagement-summary-stat comments-stat-trigger"
+                          data-post-id="<?= $postId ?>"
+                          role="button"
+                          tabindex="0"
+                          title="View discussion"
+                          onclick="openCommentsDrawer(event, <?= $postId ?>)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                      <span class="engagement-comments-count-val" data-post-id="<?= $postId ?>"><?= $commentCount ?> <?= $commentCount === 1 ? 'comment' : 'comments' ?></span>
+                    </span>
+                  </div>
+                  <div>
+                    <?php
+                      $ratingInfo = \InfinityBlog\Support\RatingHelper::getRatingInfo($post['reader_score']['average'] ?? 0, $post['reader_score']['count'] ?? 0);
+                      echo $ratingInfo['badge_html'];
+                    ?>
+                  </div>
                 </div>
 
                 <!-- Card Footer: Engagement Action Buttons -->

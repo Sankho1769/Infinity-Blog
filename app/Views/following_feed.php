@@ -24,7 +24,7 @@
       <?php foreach ($posts as $post): ?>
         <?php
           $postId = (int) $post['id'];
-          $canonicalPostUrl = '/article/' . $postId;
+          $canonicalPostUrl = ($basePath ?? '') . '/article/' . $postId;
           $thumb = \InfinityBlog\Posts\ArticleImageHelper::resolveThumbnail($post, 0);
           $authorId = (int) ($post['author_id'] ?? 1);
         ?>
@@ -37,12 +37,17 @@
                  style="display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border);">
           <?php if (!empty($thumb)): ?>
             <div style="height: 180px; overflow: hidden; position: relative;">
-              <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.parentElement.style.display='none';">
-              <?php if (!empty($post['category_name'])): ?>
-                <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="position: absolute; top: 12px; left: 12px; background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; text-decoration: none;">
-                  <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
-                </a>
-              <?php endif; ?>
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" class="feed-media-link" aria-label="Read <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="display: block; width: 100%; height: 100%;">
+                <img src="<?= htmlspecialchars($thumb, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.parentElement.parentElement.style.display='none';">
+              </a>
+              <div style="position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; align-items: center; z-index: 2;">
+                <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+                <?php if (!empty($post['category_name'])): ?>
+                  <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="background: rgba(255,255,255,0.9); color: var(--primary-color); font-weight: 700; padding: 4px 10px; border-radius: 20px; font-size: 0.78rem; text-decoration: none;">
+                    <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                  </a>
+                <?php endif; ?>
+              </div>
             </div>
           <?php endif; ?>
 
@@ -72,6 +77,9 @@
                 <?= htmlspecialchars($post['author_name'] ?? 'Author', ENT_QUOTES, 'UTF-8') ?>
               </a>
               <span style="font-size: 0.75rem; color: var(--text-muted);">● <?= date('M j, Y', strtotime($post['published_at'])) ?></span>
+              <?php if (empty($thumb)): ?>
+                <?= \InfinityBlog\Posts\ContentTypeHelper::renderBadge($post['content_type'] ?? 'article') ?>
+              <?php endif; ?>
               <?php if (empty($thumb) && !empty($post['category_name'])): ?>
                 <a href="/explore?category=<?= urlencode($post['category_slug'] ?? '') ?>" class="badge badge-category" style="margin-left: auto; font-size: 0.78rem; text-decoration: none;">
                   <?= htmlspecialchars($post['category_name'], ENT_QUOTES, 'UTF-8') ?>
@@ -80,7 +88,7 @@
             </div>
 
             <h3 style="font-size: 1.18rem; font-weight: 700; margin: 0 0 10px; line-height: 1.35;">
-              <a href="/article/<?= $postId ?>" style="color: var(--text-main); text-decoration: none;">
+              <a href="<?= htmlspecialchars(($basePath ?? '') . '/article/' . $postId) ?>" style="color: var(--text-main); text-decoration: none;">
                 <?= htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>
               </a>
             </h3>

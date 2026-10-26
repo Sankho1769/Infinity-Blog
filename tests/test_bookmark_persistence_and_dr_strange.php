@@ -83,6 +83,7 @@ $pdo->exec('CREATE TABLE posts (
     summary TEXT NULL,
     summary_status VARCHAR(20) NOT NULL DEFAULT "ready",
     summary_source_hash VARCHAR(64) NULL,
+    content_type VARCHAR(32) NOT NULL DEFAULT "article",
     status VARCHAR(20) NOT NULL DEFAULT "published",
     cover_image_path VARCHAR(255) NULL,
     video_path VARCHAR(255) NULL,

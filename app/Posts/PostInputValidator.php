@@ -14,7 +14,7 @@ final class PostInputValidator
         $fields = [];
         $errors = [];
         foreach (array_keys($input) as $key) {
-            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id', 'cover_image_path', 'video_path', 'scheduled_at'], true)) {
+            if (!in_array($key, ['title', 'content', 'category_id', 'status', 'remixed_from_post_id', 'cover_image_path', 'video_path', 'scheduled_at', 'content_type'], true)) {
                 $errors[$key === 'author_id' ? 'author_id' : '_request'] = $key === 'author_id'
                     ? 'The author is assigned by the authenticated session.'
                     : 'Unsupported post field.';
@@ -25,11 +25,30 @@ final class PostInputValidator
         } elseif (!$creating && array_key_exists('status', $input)) {
             $errors['status'] = 'Use the publish or unpublish operation to change status.';
         }
+
+        $effectiveContentType = null;
+        if (array_key_exists('content_type', $input)) {
+            $ct = $input['content_type'];
+            if (!is_string($ct) || !in_array(strtolower(trim($ct)), ContentTypeHelper::ALL_TYPES, true)) {
+                $errors['content_type'] = 'Enter a valid content type (article, blog, research_paper, photo).';
+            } else {
+                $effectiveContentType = strtolower(trim($ct));
+                $fields['content_type'] = $effectiveContentType;
+            }
+        } elseif ($creating) {
+            $effectiveContentType = ContentTypeHelper::TYPE_ARTICLE;
+            $fields['content_type'] = ContentTypeHelper::TYPE_ARTICLE;
+        }
+
         if ($creating && !array_key_exists('title', $input)) {
             $errors['title'] = 'A post title is required.';
         }
         if ($creating && !array_key_exists('content', $input)) {
-            $errors['content'] = 'Article content is required.';
+            if ($effectiveContentType === ContentTypeHelper::TYPE_PHOTO) {
+                $fields['content'] = '';
+            } else {
+                $errors['content'] = 'Article content is required.';
+            }
         }
         if (array_key_exists('title', $input)) {
             $title = $input['title'];
@@ -51,7 +70,11 @@ final class PostInputValidator
                 || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', $content) === 1) {
                 $errors['content'] = 'Enter valid UTF-8 article content.';
             } elseif (trim($content) === '') {
-                $errors['content'] = 'Article content cannot be empty.';
+                if ($effectiveContentType === ContentTypeHelper::TYPE_PHOTO) {
+                    $fields['content'] = '';
+                } else {
+                    $errors['content'] = 'Article content cannot be empty.';
+                }
             } elseif (strlen($content) > 524288) {
                 $errors['content'] = 'Article content may not exceed 512 KiB.';
             } else {
@@ -116,7 +139,7 @@ final class PostInputValidator
             $fields['scheduled_at'] = null;
         }
         if (!$creating && $fields === [] && $errors === []) {
-            $errors['_request'] = 'Provide a title, content, category_id, cover_image_path, video_path, or scheduled_at to update.';
+            $errors['_request'] = 'Provide a title, content, content_type, category_id, cover_image_path, video_path, or scheduled_at to update.';
         }
 
         return [$fields, $errors];

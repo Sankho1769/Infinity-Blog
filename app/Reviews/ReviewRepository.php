@@ -319,18 +319,28 @@ final class ReviewRepository
      */
     public function deleteReview(int $reviewId, int $userId, bool $isAdmin = false): bool
     {
+        $res = $this->deleteReviewWithSummary($reviewId, $userId, $isAdmin);
+        return $res !== null && !empty($res['deleted']);
+    }
+
+    /**
+     * @return array{deleted: bool, post_id: int, total_reviews: int, score_summary: array{average: float, count: int}}|null
+     */
+    public function deleteReviewWithSummary(int $reviewId, int $userId, bool $isAdmin = false): ?array
+    {
         $stmt = $this->pdo->prepare('SELECT id, post_id, user_id FROM post_reviews WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $reviewId]);
         $review = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$review) {
-            return false;
+            return null;
         }
 
         if ((int) $review['user_id'] !== $userId && !$isAdmin) {
             throw new ReviewValidationException('You are not authorized to delete this review.');
         }
 
+        $postId = (int) $review['post_id'];
         $this->begin();
         try {
             $delStmt = $this->pdo->prepare('DELETE FROM post_reviews WHERE id = :id');
@@ -340,7 +350,7 @@ final class ReviewRepository
             try {
                 $delScoreStmt = $this->pdo->prepare('DELETE FROM post_scores WHERE post_id = :post_id AND user_id = :user_id');
                 $delScoreStmt->execute([
-                    'post_id' => (int) $review['post_id'],
+                    'post_id' => $postId,
                     'user_id' => (int) $review['user_id'],
                 ]);
             } catch (\Throwable) {
@@ -354,15 +364,31 @@ final class ReviewRepository
             $auditStmt->execute([
                 'actor_id' => $userId,
                 'entity_id' => $reviewId,
-                'metadata' => json_encode(['post_id' => (int) $review['post_id']], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                'metadata' => json_encode(['post_id' => $postId], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
             ]);
 
             $this->pdo->commit();
-            return true;
+
+            $totalReviews = $this->getReviewCountForPost($postId);
+            $scoreSummary = $this->scores->getSummary($postId);
+
+            return [
+                'deleted' => true,
+                'post_id' => $postId,
+                'total_reviews' => $totalReviews,
+                'score_summary' => $scoreSummary,
+            ];
         } catch (Throwable $e) {
             $this->rollback();
             throw $e;
         }
+    }
+
+    public function getReviewCountForPost(int $postId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM post_reviews WHERE post_id = :post_id AND status = \'published\'');
+        $stmt->execute(['post_id' => $postId]);
+        return (int) $stmt->fetchColumn();
     }
 
     /**

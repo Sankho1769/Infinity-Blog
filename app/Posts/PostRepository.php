@@ -52,7 +52,7 @@ final class PostRepository
         };
 
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, u.username AS author_username, ' . $this->avatarColumnSql() . ', ' .
+            'SELECT p.id, p.author_id, p.title, p.content, p.category_id, p.cover_image_path, p.video_path, p.content_type, p.remixed_from_post_id, c.name AS category_name, c.slug AS category_slug, u.display_name AS author_name, u.username AS author_username, ' . $this->avatarColumnSql() . ', ' .
             'p.summary, p.summary_status, p.summary_source_hash, p.summary_generated_at, p.status, p.published_at, p.created_at ' .
             'FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
             $scoreJoin .
@@ -120,6 +120,7 @@ final class PostRepository
                 'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
                 'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
                 'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
+                'content_type' => isset($row['content_type']) && is_string($row['content_type']) && $row['content_type'] !== '' ? $row['content_type'] : 'article',
                 'audio_path' => isset($row['audio_path']) && is_string($row['audio_path']) ? $row['audio_path'] : null,
                 'audio_status' => isset($row['audio_status']) && is_string($row['audio_status']) ? $row['audio_status'] : 'idle',
                 'audio_duration' => isset($row['audio_duration']) && $row['audio_duration'] !== null ? (int) $row['audio_duration'] : null,
@@ -262,10 +263,13 @@ final class PostRepository
             $coverImagePath = isset($post['cover_image_path']) && is_string($post['cover_image_path']) ? $post['cover_image_path'] : null;
             $videoPath = isset($post['video_path']) && is_string($post['video_path']) ? $post['video_path'] : null;
             $scheduledAt = isset($post['scheduled_at']) && is_string($post['scheduled_at']) ? $post['scheduled_at'] : null;
+            $contentType = isset($post['content_type']) && is_string($post['content_type']) && in_array($post['content_type'], ['article', 'blog', 'research_paper', 'photo'], true)
+                ? $post['content_type']
+                : 'article';
 
             $insert = $this->pdo->prepare(
-                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, cover_image_path, video_path, title, content, status, scheduled_at) " .
-                "VALUES (:author_id, :category_id, :remixed_from_post_id, :cover_image_path, :video_path, :title, :content, 'draft', :scheduled_at)"
+                "INSERT INTO posts (author_id, category_id, remixed_from_post_id, cover_image_path, video_path, title, content, status, scheduled_at, content_type) " .
+                "VALUES (:author_id, :category_id, :remixed_from_post_id, :cover_image_path, :video_path, :title, :content, 'draft', :scheduled_at, :content_type)"
             );
             $insert->execute([
                 'author_id' => $authorId,
@@ -276,10 +280,11 @@ final class PostRepository
                 'title' => $post['title'],
                 'content' => $post['content'],
                 'scheduled_at' => $scheduledAt,
+                'content_type' => $contentType,
             ]);
             $postId = (int) $this->pdo->lastInsertId();
             $this->writeAudit('post.created', $postId, $authorId, [
-                'fields' => ['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at'],
+                'fields' => ['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at', 'content_type'],
                 'remixed_from_post_id' => $remixedFromId,
             ]);
             $saved = $this->find($postId, $authorId, false);
@@ -580,7 +585,7 @@ final class PostRepository
             if ($ownerId !== null) {
                 $parameters['author_id'] = $ownerId;
             }
-            foreach (['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at'] as $field) {
+            foreach (['title', 'content', 'category_id', 'cover_image_path', 'video_path', 'scheduled_at', 'content_type'] as $field) {
                 if (array_key_exists($field, $changes)) {
                     $sets[] = $field . ' = :' . $field;
                     $parameters[$field] = $changes[$field];
@@ -621,8 +626,15 @@ final class PostRepository
             }
             $updatedAt = gmdate('Y-m-d H:i:s');
             if ($publish) {
-                if (trim((string) $current['title']) === '' || trim((string) $current['content']) === '') {
+                if (trim((string) $current['title']) === '') {
+                    throw new PostValidationException(['post' => 'A title is required before publishing.']);
+                }
+                $cType = $current['content_type'] ?? 'article';
+                if ($cType !== 'photo' && trim((string) $current['content']) === '') {
                     throw new PostValidationException(['post' => 'A title and article body are required before publishing.']);
+                }
+                if ($cType === 'photo' && empty($current['cover_image_path']) && trim((string) $current['content']) === '') {
+                    throw new PostValidationException(['post' => 'A photo or cover image is required to publish a photo post.']);
                 }
                 if ($current['category_id'] === null) {
                     throw new PostValidationException(['category_id' => 'Choose an active category before publishing.']);
@@ -696,7 +708,7 @@ final class PostRepository
         $total = (int) $count->fetchColumn();
 
         $statement = $this->pdo->prepare(
-            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, p.cover_image_path, p.video_path, p.remixed_from_post_id, ' .
+            'SELECT p.id, p.author_id, p.title, SUBSTR(p.content, 1, 1200) AS preview, p.category_id, p.cover_image_path, p.video_path, p.content_type, p.remixed_from_post_id, ' .
             'c.name AS category_name, p.status, p.published_at, p.created_at, p.updated_at, ' .
             'u.display_name AS author_name' . ($includeSummary ? ', p.summary, p.summary_status, p.summary_generated_at' : '') .
             ' FROM posts p LEFT JOIN categories c ON c.id = p.category_id JOIN users u ON u.id = p.author_id ' .
@@ -719,6 +731,7 @@ final class PostRepository
                 'category_name' => $row['category_name'] === null ? null : (string) $row['category_name'],
                 'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
                 'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
+                'content_type' => isset($row['content_type']) && is_string($row['content_type']) && $row['content_type'] !== '' ? $row['content_type'] : 'article',
                 'remixed_from_post_id' => $row['remixed_from_post_id'] === null ? null : (int) $row['remixed_from_post_id'],
                 'status' => (string) $row['status'],
                 'published_at' => $row['published_at'] === null ? null : (string) $row['published_at'],
@@ -927,6 +940,7 @@ final class PostRepository
             'category_slug' => isset($row['category_slug']) ? (string) $row['category_slug'] : null,
             'cover_image_path' => isset($row['cover_image_path']) && is_string($row['cover_image_path']) ? $row['cover_image_path'] : null,
             'video_path' => isset($row['video_path']) && is_string($row['video_path']) ? $row['video_path'] : null,
+            'content_type' => isset($row['content_type']) && is_string($row['content_type']) && $row['content_type'] !== '' ? $row['content_type'] : 'article',
             'audio_path' => isset($row['audio_path']) && is_string($row['audio_path']) ? $row['audio_path'] : null,
             'audio_status' => isset($row['audio_status']) && is_string($row['audio_status']) ? $row['audio_status'] : 'idle',
             'audio_duration' => isset($row['audio_duration']) && $row['audio_duration'] !== null ? (int) $row['audio_duration'] : null,

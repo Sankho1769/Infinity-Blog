@@ -167,9 +167,9 @@ final class ReviewController
 
         try {
             $isAdmin = ($account->role === 'admin');
-            $deleted = $this->reviews->deleteReview($reviewId, $account->id, $isAdmin);
+            $result = $this->reviews->deleteReviewWithSummary($reviewId, $account->id, $isAdmin);
 
-            if (!$deleted) {
+            if ($result === null) {
                 return $this->error(404, 'NOT_FOUND', 'Review not found or already deleted.');
             }
 
@@ -179,6 +179,9 @@ final class ReviewController
                     'data' => [
                         'review_id' => $reviewId,
                         'deleted' => true,
+                        'post_id' => $result['post_id'],
+                        'total_reviews' => $result['total_reviews'],
+                        'score_summary' => $result['score_summary'],
                         'message' => 'Review successfully removed.',
                     ],
                 ],

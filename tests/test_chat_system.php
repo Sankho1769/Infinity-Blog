@@ -87,6 +87,7 @@ $pdo->exec('CREATE TABLE posts (
     category_id INTEGER NULL,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT \'article\',
     status TEXT NOT NULL DEFAULT \'published\',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )');

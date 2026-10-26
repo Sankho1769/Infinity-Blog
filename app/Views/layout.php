@@ -70,6 +70,7 @@
       }
     })();
   </script>
+  <script>window.APP_BASE_PATH = <?= json_encode($basePath ?? '') ?>;</script>
   <link rel="stylesheet" href="/assets/css/style.css?v=<?= $cssVersion ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

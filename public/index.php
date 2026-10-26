@@ -562,6 +562,17 @@ try {
     }
     JsonResponse::send($result['status'], $result['body']);
 } catch (RequestException $exception) {
+    $isApi = str_starts_with($request->path, '/api/') || str_contains((string) $request->header('Accept'), 'application/json') || $request->isJson();
+    if (!$isApi && isset($webController)) {
+        http_response_code($exception->httpStatus);
+        header('Content-Type: text/html; charset=utf-8');
+        try {
+            $errResult = $webController->notFound($exception->getMessage());
+            echo $errResult['body'];
+            return;
+        } catch (Throwable) {
+        }
+    }
     JsonResponse::send($exception->httpStatus, ApiErrorResponder::build(
         $exception->errorCode,
         $exception->getMessage(),
@@ -570,5 +581,18 @@ try {
     ));
 } catch (Throwable $exception) {
     $errorLogger->log($exception, $requestId);
+    $isApi = str_starts_with($request->path, '/api/') || str_contains((string) $request->header('Accept'), 'application/json') || $request->isJson();
+    if (!$isApi && isset($webController)) {
+        http_response_code(500);
+        header('Content-Type: text/html; charset=utf-8');
+        try {
+            $errResult = $webController->serverError($requestId);
+            echo $errResult['body'];
+            return;
+        } catch (Throwable) {
+            echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>500 - Server Error</title><link rel=\"stylesheet\" href=\"/assets/css/style.css\"></head><body style=\"background:#0f172a;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;\"><div style=\"text-align:center;max-width:540px;padding:2rem;background:rgba(30,41,59,0.7);border-radius:1rem;border:1px solid rgba(255,255,255,0.1);backdrop-filter:blur(10px);\"><h1 style=\"font-size:2rem;margin-bottom:1rem;\">500 - Something Went Wrong</h1><p style=\"color:#94a3b8;margin-bottom:1.5rem;\">An unexpected error occurred while loading this page.</p><p style=\"font-size:0.875rem;color:#64748b;\">Reference ID: " . htmlspecialchars($requestId, ENT_QUOTES, 'UTF-8') . "</p><a href=\"/\" style=\"display:inline-block;margin-top:1.5rem;padding:0.75rem 1.5rem;background:#3b82f6;color:#fff;border-radius:9999px;text-decoration:none;\">Back to Home</a></div></body></html>";
+            return;
+        }
+    }
     JsonResponse::send(500, ApiErrorResponder::internalFailure($requestId));
 }
