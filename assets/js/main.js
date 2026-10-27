@@ -85,22 +85,36 @@ export function escapeHtml(str) {
 }
 
 export async function initAppShell() {
-    const user = await authService.getCurrentUser();
     const navMenu = document.querySelector('.nav-menu');
     const headerActions = document.querySelector('.header-actions');
-
     const currentPath = window.location.pathname;
 
-    if (navMenu) {
-        let navHtml = `
+    // 1. Immediately render default public shell so buttons are never missing
+    if (navMenu && !navMenu.children.length) {
+        navMenu.innerHTML = `
             <li><a href="index.html" class="nav-link ${currentPath.endsWith('index.html') || currentPath.endsWith('/') ? 'active' : ''}">Home</a></li>
             <li><a href="categories.html" class="nav-link ${currentPath.includes('categories.html') ? 'active' : ''}">Categories</a></li>
             <li><a href="authors.html" class="nav-link ${currentPath.includes('authors.html') ? 'active' : ''}">Authors</a></li>
             <li><a href="index.html#about" class="nav-link">About</a></li>
         `;
+    }
+    if (headerActions && !headerActions.children.length) {
+        headerActions.innerHTML = `
+            <a href="signup.html" class="btn btn-secondary btn-sm" style="margin-right:6px;">Sign Up</a>
+            <a href="login.html" class="btn btn-primary btn-sm">Sign In</a>
+        `;
+    }
 
-        if (user) {
-            navHtml += `
+    // 2. Check current session and enhance navigation for authenticated authors/admins
+    try {
+        const user = await authService.getCurrentUser();
+
+        if (user && navMenu) {
+            let navHtml = `
+                <li><a href="index.html" class="nav-link ${currentPath.endsWith('index.html') || currentPath.endsWith('/') ? 'active' : ''}">Home</a></li>
+                <li><a href="categories.html" class="nav-link ${currentPath.includes('categories.html') ? 'active' : ''}">Categories</a></li>
+                <li><a href="authors.html" class="nav-link ${currentPath.includes('authors.html') ? 'active' : ''}">Authors</a></li>
+                <li><a href="index.html#about" class="nav-link">About</a></li>
                 <li><a href="dashboard.html" class="nav-link ${currentPath.includes('dashboard.html') ? 'active' : ''}">Dashboard</a></li>
                 <li><a href="posts.html" class="nav-link ${currentPath.includes('posts.html') ? 'active' : ''}">Posts</a></li>
                 <li><a href="create-post.html" class="nav-link ${currentPath.includes('create-post.html') ? 'active' : ''}">Create Post</a></li>
@@ -108,13 +122,10 @@ export async function initAppShell() {
             if (user.role === 'admin') {
                 navHtml += `<li><a href="admin.html" class="nav-link ${currentPath.includes('admin.html') ? 'active' : ''}">Admin Panel</a></li>`;
             }
+            navMenu.innerHTML = navHtml;
         }
 
-        navMenu.innerHTML = navHtml;
-    }
-
-    if (headerActions) {
-        if (user) {
+        if (user && headerActions) {
             headerActions.innerHTML = `
                 <div style="display:flex;align-items:center;gap:10px;">
                     <a href="profile.html" class="user-profile-pill" title="View & Edit Profile" style="text-decoration:none;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-sm);background:rgba(37,99,235,0.06);transition:background 0.15s ease;">
@@ -139,12 +150,9 @@ export async function initAppShell() {
                     }
                 };
             }
-        } else {
-            headerActions.innerHTML = `
-                <a href="signup.html" class="btn btn-secondary btn-sm" style="margin-right:6px;">Sign Up</a>
-                <a href="login.html" class="btn btn-primary btn-sm">Sign In</a>
-            `;
         }
+    } catch (err) {
+        // Graceful fallback to default public shell
     }
 }
 

@@ -5,7 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Author Profile — Infinity Blog</title>
   <link rel="stylesheet" href="assets/css/style.css">
-  <link rel="stylesheet" href="assets/css/public.css">
+  <script>
+    if (window.location.protocol === 'file:') {
+      window.addEventListener('DOMContentLoaded', function() {
+        var alertBox = document.createElement('div');
+        alertBox.style.cssText = 'background:#dc2626;color:#ffffff;padding:14px 20px;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;box-shadow:0 4px 12px rgba(0,0,0,0.15);position:sticky;top:0;z-index:99999;border-bottom:2px solid #991b1b;text-align:center;';
+        alertBox.innerHTML = '<strong>⚠️ Local Web Server Required:</strong> You opened this file directly from your disk (<code>file:///</code>). Modern browsers block JavaScript modules and API requests on local files. To run Infinity Blog with all buttons and features, place this folder inside your local server (e.g. XAMPP <code>htdocs</code>) and open <strong><a href="http://localhost/infinity-blog/" style="color:#fef08a;text-decoration:underline;">http://localhost/infinity-blog/</a></strong> in your browser.';
+        document.body.insertBefore(alertBox, document.body.firstChild);
+      });
+    }
+  </script>
 </head>
 <body>
   <!-- Header -->
@@ -16,9 +25,17 @@
         <span>Infinity Blog</span>
       </a>
       <nav>
-        <ul class="nav-menu"></ul>
+        <ul class="nav-menu">
+          <li><a href="index.html" class="nav-link">Home</a></li>
+          <li><a href="categories.html" class="nav-link">Categories</a></li>
+          <li><a href="authors.html" class="nav-link">Authors</a></li>
+          <li><a href="index.html#about" class="nav-link">About</a></li>
+        </ul>
       </nav>
-      <div class="header-actions"></div>
+      <div class="header-actions">
+        <a href="signup.html" class="btn btn-secondary btn-sm" style="margin-right:6px;">Sign Up</a>
+        <a href="login.html" class="btn btn-primary btn-sm">Sign In</a>
+      </div>
     </div>
   </header>
 

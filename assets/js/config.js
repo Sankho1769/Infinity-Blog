@@ -6,12 +6,15 @@
 const computeDefaultApiBase = () => {
     const origin = window.location.origin;
     const pathname = window.location.pathname;
-    
-    // If hosted inside /infinity-blog/ subdirectory
-    if (pathname.includes('/infinity-blog')) {
-        return `${origin}/infinity-blog/api/v1`;
+
+    // If served via standard HTTP/HTTPS
+    if (origin && origin !== 'null' && origin !== 'file://') {
+        const lastSlash = pathname.lastIndexOf('/');
+        const basePath = lastSlash >= 0 ? pathname.substring(0, lastSlash + 1) : '/';
+        return `${origin}${basePath}api/v1`.replace(/\/+api\/v1$/, '/api/v1');
     }
-    return `${origin}/api/v1`;
+
+    return '/api/v1';
 };
 
 export const CONFIG = {
