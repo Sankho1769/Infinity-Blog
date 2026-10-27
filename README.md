@@ -161,12 +161,27 @@ Default development accounts configured if not already present:
 * Initial active categories (`Technology`, `Education`, `Lifestyle`, `Photography`) and sample posts are verified.
 
 ### Step 3: Access the Application
-Open your browser and navigate to:
+
+Infinity Blog can be run using any of the following 3 methods:
+
+#### Method A: 1-Click Windows Launcher (Recommended for Local Testing)
+Simply double-click [`run-infinity-blog.bat`](run-infinity-blog.bat) in the project root.
+- Automatically locates your local PHP executable.
+- Launches the built-in web server with full REST API routing at `http://localhost:8000/`.
+- Opens your default web browser automatically.
+
+#### Method B: Full XAMPP / Apache Web Server
+If running via XAMPP with Apache and MySQL started:
 * **Public Blog:** [http://localhost/infinity-blog/index.html](http://localhost/infinity-blog/index.html)
 * **Sign Up Portal:** [http://localhost/infinity-blog/signup.html](http://localhost/infinity-blog/signup.html)
 * **Login Portal:** [http://localhost/infinity-blog/login.html](http://localhost/infinity-blog/login.html)
 * **Author Dashboard:** [http://localhost/infinity-blog/dashboard.html](http://localhost/infinity-blog/dashboard.html)
 * **Admin Console:** [http://localhost/infinity-blog/admin.html](http://localhost/infinity-blog/admin.html)
+
+#### Method C: Instant Zero-Setup Offline Preview
+If you send the project folder to someone without a web server or PHP, they can directly double-click [`index.html`](index.html).
+- The built-in Standalone Preview Engine activates seamlessly on `file:///` URLs.
+- Renders all buttons, category chips, sample articles, search filters, metrics, and navigation pages without requiring any server.
 
 ---
 
@@ -177,7 +192,7 @@ Run the test suite directly from your terminal:
 php tests/integration_test.php
 ```
 
-### Test Coverage (124 Assertions across 16 Domains — 100% Passing):
+### Test Coverage (144 Assertions across 17 Domains — 100% Passing):
 1. **Web Access Controls & File Protections:** Verifies that `.git/HEAD`, `.git/config`, `.env`, `database/setup.php`, `backend/`, and `tests/` return HTTP 403 Forbidden.
 2. **Security HTTP Headers & Transport Policies:** X-Content-Type-Options (`nosniff`), X-Frame-Options (`DENY`), Referrer-Policy, CSP, and CORS preflight.
 3. **Atomic Rate Limiting Engine:** Tests atomic sliding-window throttling and verified removal of test-runner bypass headers.
