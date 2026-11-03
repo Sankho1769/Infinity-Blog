@@ -58,6 +58,37 @@
           $myAvatar = !empty($currentUser['avatar_url']) ? $currentUser['avatar_url'] : \InfinityBlog\Posts\ArticleImageHelper::resolveAvatarUrl($currentUser['avatar_path'] ?? null);
           $myInitial = strtoupper(mb_substr($currentUser['display_name'] ?? $currentUser['username'] ?? 'U', 0, 1));
         ?>
+        <!-- Content Type Selector Tabs -->
+        <div class="composer-type-nav" id="composer-type-nav" role="tablist" aria-label="Composer content type" style="display: none;">
+          <button type="button" class="composer-type-tab active" data-type="discussion" role="tab" aria-selected="true" onclick="setComposerContentType('discussion')">
+            <span class="composer-tab-icon">💬</span>
+            <span class="composer-tab-label">Discussion</span>
+          </button>
+          <button type="button" class="composer-type-tab" data-type="question" role="tab" aria-selected="false" onclick="setComposerContentType('question')">
+            <span class="composer-tab-icon">❓</span>
+            <span class="composer-tab-label">Question</span>
+          </button>
+          <button type="button" class="composer-type-tab" data-type="article" role="tab" aria-selected="false" onclick="setComposerContentType('article')">
+            <span class="composer-tab-icon">📰</span>
+            <span class="composer-tab-label">Article</span>
+          </button>
+          <button type="button" class="composer-type-tab" data-type="photo" role="tab" aria-selected="false" onclick="setComposerContentType('photo')">
+            <span class="composer-tab-icon">📷</span>
+            <span class="composer-tab-label">Photo</span>
+          </button>
+        </div>
+
+        <!-- Optional Title Field for Question or Article -->
+        <div class="composer-title-wrapper" id="composer-title-wrapper" style="display: none;">
+          <input type="text"
+                 id="composer-title-input"
+                 class="composer-title-input"
+                 placeholder="What's your question?"
+                 maxlength="200"
+                 aria-label="Post title"
+                 oninput="updateComposerCharCount()">
+        </div>
+
         <div class="composer-header-row">
           <?php if (!empty($myAvatar)): ?>
             <img src="<?= htmlspecialchars($myAvatar, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($currentUser['display_name'] ?? 'You', ENT_QUOTES, 'UTF-8') ?>" class="composer-user-avatar">
@@ -66,15 +97,15 @@
           <?php endif; ?>
 
           <div class="composer-field-wrapper">
-            <!-- Exactly ONE single text input field that expands smoothly -->
             <textarea id="composer-text-input"
                       class="composer-text-input"
                       rows="1"
                       placeholder="Share an idea, ask a question, or start a discussion…"
-                      maxlength="10000"
+                      maxlength="5000"
                       aria-label="Compose post"
                       onclick="toggleFeedComposer(true)"
-                      onfocus="toggleFeedComposer(true)"></textarea>
+                      onfocus="toggleFeedComposer(true)"
+                      oninput="updateComposerCharCount()"></textarea>
           </div>
         </div>
 
@@ -82,31 +113,31 @@
         <div id="composer-image-preview-tray" class="composer-image-preview-tray" style="display: none;">
           <div class="composer-image-preview-wrapper">
             <img id="composer-image-preview" src="" alt="Attached post preview">
-            <button type="button" class="composer-remove-image-btn" onclick="removeComposerAttachedImage()" title="Remove attached image" aria-label="Remove attached image">×</button>
+            <div class="composer-image-meta">
+              <span id="composer-image-name" class="composer-image-name">Image attached</span>
+              <button type="button" class="composer-remove-image-btn" onclick="removeComposerAttachedImage()" title="Remove attached image" aria-label="Remove attached image">✕</button>
+            </div>
           </div>
         </div>
 
         <!-- Hidden File Input for Image Upload -->
         <input type="file" id="composer-image-file-input" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="handleComposerImageUpload(this)">
 
-        <!-- Expandable Controls Tray: Category, Image Attach, Cancel, Publish -->
+        <!-- Hidden input for active content type -->
+        <input type="hidden" id="composer-content-type-input" value="discussion">
+
+        <!-- Expandable Controls Tray: Category, Image Attach, Counter, Cancel, Actions -->
         <div id="composer-expanded-tray" class="composer-expanded-tray" style="display: none;">
           <div class="composer-tray-footer">
             <div class="composer-tray-meta">
-              <label for="composer-category-select" class="visually-hidden">Select Topic</label>
-              <select id="composer-category-select" class="form-select composer-select" aria-label="Select Category">
-                <?php foreach (($categories ?? []) as $cat): ?>
-                  <option value="<?= (int) $cat['id'] ?>"><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></option>
-                <?php endforeach; ?>
-              </select>
-
-              <label for="composer-content-type-select" class="visually-hidden">Select Content Type</label>
-              <select id="composer-content-type-select" class="form-select composer-select" aria-label="Select Content Type" style="max-width: 130px;">
-                <option value="article">ARTICLE</option>
-                <option value="blog">BLOG</option>
-                <option value="research_paper">RESEARCH</option>
-                <option value="photo">PHOTO</option>
-              </select>
+              <div class="composer-meta-item">
+                <label for="composer-category-select" class="visually-hidden">Select Topic</label>
+                <select id="composer-category-select" class="form-select composer-select" aria-label="Select Category">
+                  <?php foreach (($categories ?? []) as $cat): ?>
+                    <option value="<?= (int) $cat['id'] ?>"><?= htmlspecialchars($cat['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
 
               <button type="button" class="btn btn-secondary btn-sm btn-pill composer-attach-btn" id="composer-attach-btn" onclick="document.getElementById('composer-image-file-input').click()" title="Attach an image to this post">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -117,18 +148,26 @@
                 <span>Add Image</span>
               </button>
 
-              <a href="/posts/new" class="composer-full-editor-link" title="Open full rich Markdown editor">Switch to Full Editor →</a>
+              <button type="button" class="composer-full-editor-link-btn" id="composer-full-editor-btn" onclick="openFullEditorFromComposer(event)" title="Open full rich Markdown editor">
+                Switch to Full Editor →
+              </button>
             </div>
 
             <div class="composer-tray-actions">
+              <span id="composer-char-counter" class="composer-char-counter" aria-live="polite">0 / 5,000</span>
               <button type="button" id="composer-cancel-btn" class="btn btn-secondary btn-sm btn-pill" onclick="toggleFeedComposer(false)">Cancel</button>
-              <button type="button" id="composer-submit-btn" class="btn btn-primary btn-sm btn-pill" onclick="submitQuickPost(event)">Publish Idea ✦</button>
+              <button type="button" id="composer-submit-btn" class="btn btn-primary btn-sm btn-pill" onclick="submitQuickPost(event)">Publish Discussion</button>
             </div>
           </div>
         </div>
       <?php else: ?>
         <div class="composer-top-row">
-          <div class="composer-user-avatar composer-avatar-fallback">✦</div>
+          <div class="composer-user-avatar composer-avatar-fallback">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+            </svg>
+          </div>
           <div class="composer-guest-trigger" onclick="location.href='/login?redirect=' + encodeURIComponent(window.location.pathname)">
             <span class="composer-placeholder-text">Share an idea, ask a question, or start a discussion…</span>
             <span class="btn btn-primary btn-sm btn-pill" style="padding: 4px 12px; font-size: 0.78rem;">Sign In</span>

@@ -21,12 +21,16 @@
     const saveDot = document.getElementById('studio-save-dot');
     const saveText = document.getElementById('studio-save-text');
 
-    const postIdInput = document.getElementById('post-id');
-    const isEdit = !!postIdInput;
-    const postId = isEdit ? parseInt(postIdInput.value, 10) : null;
-    const draftStorageKey = 'infinity_blog_draft_' + (postId ? postId : 'new');
+    function getActivePostId() {
+      const el = document.getElementById('post-id');
+      const val = el ? parseInt(el.value, 10) : NaN;
+      return (!isNaN(val) && val > 0) ? val : null;
+    }
 
-    const apiBase = window.BlogCMS?.apiBase || '/author/posts';
+    const initialPostId = getActivePostId();
+    const draftStorageKey = 'infinity_blog_draft_' + (initialPostId ? initialPostId : 'new');
+
+    const apiBase = studioContainer.dataset.apiBase || window.BlogCMS?.apiBase || '/author/posts';
     let isDirty = false;
     let autosaveTimer = null;
     let lastSavedTime = new Date();
@@ -260,14 +264,14 @@
         saveDot.classList.add('is-saving');
         saveText.textContent = message || 'Saving...';
       } else if (state === 'saved') {
-        saveText.textContent = message || 'Saved just now';
+        saveText.textContent = message || 'Saved';
         lastSavedTime = new Date();
       } else if (state === 'dirty') {
         saveDot.classList.add('is-dirty');
         saveText.textContent = message || 'Unsaved changes';
       } else if (state === 'error') {
         saveDot.classList.add('is-error');
-        saveText.textContent = message || 'Save failed';
+        saveText.textContent = message || 'Unable to save';
       }
     }
 
@@ -311,8 +315,9 @@
       };
 
       try {
-        let url = isEdit ? `${apiBase}/${postId}` : apiBase;
-        let method = isEdit ? 'PATCH' : 'POST';
+        const activeId = getActivePostId();
+        let url = activeId ? `${apiBase}/${activeId}` : apiBase;
+        let method = activeId ? 'PATCH' : 'POST';
 
         const res = await fetch(url, {
           method,
@@ -326,15 +331,18 @@
 
         if (res.ok) {
           const data = await res.json();
-          if (!isEdit && data.data?.post?.id) {
+          if (!activeId && data.data?.post?.id) {
             // Update URL and postId without reloading page
             const newId = data.data.post.id;
             window.history.replaceState({}, '', `/posts/${newId}/edit`);
-            const hiddenId = document.createElement('input');
-            hiddenId.type = 'hidden';
-            hiddenId.id = 'post-id';
+            let hiddenId = document.getElementById('post-id');
+            if (!hiddenId) {
+              hiddenId = document.createElement('input');
+              hiddenId.type = 'hidden';
+              hiddenId.id = 'post-id';
+              form.appendChild(hiddenId);
+            }
             hiddenId.value = newId;
-            form.appendChild(hiddenId);
           }
           isDirty = false;
           setSaveStatus('saved');
@@ -362,8 +370,44 @@
     }, 30000);
 
     // =========================================================================
-    // 5. LOCAL DRAFT RECOVERY
+    // 5. LOCAL DRAFT RECOVERY & COMPOSER TRANSFER
     // =========================================================================
+    // 5a. Seamless Quick Composer Transfer (if user clicked "Switch to Full Editor")
+    try {
+      if (!getActivePostId()) {
+        const transferJson = localStorage.getItem('infinity_blog_composer_transfer');
+        if (transferJson) {
+          const transferData = JSON.parse(transferJson);
+          if (transferData && (transferData.title || transferData.content || transferData.cover_image_path)) {
+            if (transferData.title && titleInput && !titleInput.value) {
+              titleInput.value = transferData.title;
+            }
+            if (transferData.content && contentTextarea && !contentTextarea.value) {
+              contentTextarea.value = transferData.content;
+            }
+            if (transferData.category_id && categorySelect) {
+              categorySelect.value = transferData.category_id;
+            }
+            if (transferData.content_type) {
+              const ctSelect = document.getElementById('post-content-type');
+              if (ctSelect) ctSelect.value = transferData.content_type;
+            }
+            if (transferData.cover_image_path) {
+              const coverInput = document.getElementById('post-cover-image-path');
+              const coverBanner = document.getElementById('studio-cover-banner');
+              const coverImg = document.getElementById('studio-cover-img');
+              if (coverInput) coverInput.value = transferData.cover_image_path;
+              if (coverImg) coverImg.src = transferData.cover_image_path;
+              if (coverBanner) coverBanner.style.display = 'block';
+            }
+            localStorage.removeItem('infinity_blog_composer_transfer');
+            updateMetrics();
+            updateOutline();
+            markDirty();
+          }
+        }
+      }
+    } catch (e) {}
     try {
       const stored = localStorage.getItem(draftStorageKey);
       if (stored) {
@@ -924,16 +968,34 @@
     // 9. FOCUS MODE — ZEN DISTRACTION FREE
     // =========================================================================
     const focusToggle = document.getElementById('studio-focus-mode-toggle');
+    const topFocusBtn = document.getElementById('studio-topbar-focus-btn');
+
+    function setFocusMode(enabled) {
+      studioContainer.classList.toggle('is-focus-mode', enabled);
+      if (focusToggle) focusToggle.checked = enabled;
+      topFocusBtn?.classList.toggle('active', enabled);
+    }
+
     focusToggle?.addEventListener('change', (e) => {
-      studioContainer.classList.toggle('is-focus-mode', e.target.checked);
+      setFocusMode(e.target.checked);
     });
 
-    // ESC shortcut exits focus mode or drawers
+    topFocusBtn?.addEventListener('click', () => {
+      const isCurrentlyFocus = studioContainer.classList.contains('is-focus-mode');
+      setFocusMode(!isCurrentlyFocus);
+    });
+
+    // ESC shortcut exits focus mode or drawers; Alt+F or Ctrl+Shift+F toggles Focus Mode
     window.addEventListener('keydown', (e) => {
+      if ((e.altKey && e.key.toLowerCase() === 'f') || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f')) {
+        e.preventDefault();
+        const isCurrentlyFocus = studioContainer.classList.contains('is-focus-mode');
+        setFocusMode(!isCurrentlyFocus);
+        return;
+      }
       if (e.key === 'Escape') {
         if (studioContainer.classList.contains('is-focus-mode')) {
-          studioContainer.classList.remove('is-focus-mode');
-          if (focusToggle) focusToggle.checked = false;
+          setFocusMode(false);
         }
         document.getElementById('studio-settings-drawer')?.classList.remove('is-open');
         document.getElementById('studio-ai-panel')?.classList.remove('is-open');
@@ -1104,8 +1166,10 @@
         if (errorAlert) {
           errorAlert.textContent = 'Please enter an article title.';
           errorAlert.style.display = 'flex';
+          errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         titleInput?.focus();
+        titleInput?.classList.add('is-invalid');
         return;
       }
       const contentType = document.getElementById('post-content-type')?.value || 'article';
@@ -1115,23 +1179,36 @@
         if (errorAlert) {
           errorAlert.textContent = 'Please write article content.';
           errorAlert.style.display = 'flex';
+          errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         contentTextarea?.focus();
+        contentTextarea?.classList.add('is-invalid');
         return;
       }
       if (contentType === 'photo' && !coverImagePath && !content) {
         if (errorAlert) {
           errorAlert.textContent = 'Please upload a photo/cover image for your photo post.';
           errorAlert.style.display = 'flex';
+          errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         return;
       }
       if (targetStatus === 'published' && !categoryId) {
         if (errorAlert) {
-          errorAlert.textContent = 'A valid category is required before publishing your article.';
+          errorAlert.textContent = 'Please select a category before publishing.';
           errorAlert.style.display = 'flex';
+          errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         categorySelect?.focus();
+        categorySelect?.classList.add('is-invalid');
+        if (categorySelect) {
+          categorySelect.style.borderColor = '#ef4444';
+          categorySelect.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.2)';
+          setTimeout(() => {
+            categorySelect.style.borderColor = '';
+            categorySelect.style.boxShadow = '';
+          }, 4000);
+        }
         return;
       }
 
@@ -1150,8 +1227,9 @@
       };
 
       try {
-        let url = isEdit ? `${apiBase}/${postId}` : apiBase;
-        let method = isEdit ? 'PATCH' : 'POST';
+        const activeId = getActivePostId();
+        let url = activeId ? `${apiBase}/${activeId}` : apiBase;
+        let method = activeId ? 'PATCH' : 'POST';
 
         const res = await fetch(url, {
           method,
@@ -1168,13 +1246,35 @@
           isDirty = false;
           try { localStorage.removeItem(draftStorageKey); } catch (e) {}
 
-          const effectiveId = isEdit ? postId : data.data?.post?.id;
+          const effectiveId = activeId || data.data?.post?.id;
+          if (effectiveId && !activeId) {
+            let hiddenId = document.getElementById('post-id');
+            if (!hiddenId) {
+              hiddenId = document.createElement('input');
+              hiddenId.type = 'hidden';
+              hiddenId.id = 'post-id';
+              form.appendChild(hiddenId);
+            }
+            hiddenId.value = effectiveId;
+            window.history.replaceState({}, '', `/posts/${effectiveId}/edit`);
+          }
+
           if (targetStatus === 'published') {
-            await fetch(`${apiBase}/${effectiveId}/publish`, {
+            const pubRes = await fetch(`${apiBase}/${effectiveId}/publish`, {
               method: 'POST',
               headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrf }
             });
-            window.location.href = '/posts/manage?published=1';
+            if (pubRes.ok) {
+              window.location.href = '/posts/manage?published=1';
+            } else {
+              const pubData = await pubRes.json().catch(() => ({}));
+              setSaveStatus('error');
+              if (errorAlert) {
+                errorAlert.textContent = pubData.error?.message || 'Failed to publish post.';
+                errorAlert.style.display = 'flex';
+                errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+            }
           } else {
             setSaveStatus('saved', 'Draft saved');
             persistStudioData();
@@ -1185,12 +1285,26 @@
           if (errorAlert) {
             errorAlert.textContent = data.error?.message || 'Failed to save post.';
             errorAlert.style.display = 'flex';
+            errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }
         }
       } catch (err) {
         setSaveStatus('error', 'Network error');
       }
     }
+
+    titleInput?.addEventListener('input', () => {
+      titleInput.classList.remove('is-invalid');
+      if (errorAlert) errorAlert.style.display = 'none';
+    });
+    contentTextarea?.addEventListener('input', () => {
+      contentTextarea.classList.remove('is-invalid');
+      if (errorAlert) errorAlert.style.display = 'none';
+    });
+    categorySelect?.addEventListener('change', () => {
+      categorySelect.classList.remove('is-invalid');
+      if (errorAlert) errorAlert.style.display = 'none';
+    });
 
     publishBtn?.addEventListener('click', () => submitPost('published'));
     document.getElementById('menu-publish-now-btn')?.addEventListener('click', () => submitPost('published'));
@@ -1211,13 +1325,24 @@
 
     // Unpublish
     document.getElementById('menu-unpublish-btn')?.addEventListener('click', async () => {
+      const activeId = getActivePostId();
+      if (!activeId) return;
       if (!confirm('Revert this published article back to draft status?')) return;
       const csrf = await getCsrfToken();
-      await fetch(`${apiBase}/${postId}/unpublish`, {
+      const res = await fetch(`${apiBase}/${activeId}/unpublish`, {
         method: 'POST',
         headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrf }
       });
-      window.location.href = '/posts/manage?unpublished=1';
+      if (res.ok) {
+        window.location.href = '/posts/manage?unpublished=1';
+      } else {
+        const unpubData = await res.json().catch(() => ({}));
+        if (errorAlert) {
+          errorAlert.textContent = unpubData.error?.message || 'Failed to unpublish post.';
+          errorAlert.style.display = 'flex';
+          errorAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
     });
 
     // =========================================================================

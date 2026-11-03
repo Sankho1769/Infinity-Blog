@@ -20,6 +20,7 @@ final class AuthController
     private UserRepository $users;
     private ?LoginChallengeService $challenges;
     private ?RegistrationChallengeService $registrationChallenges;
+    private ?\InfinityBlog\Auth\PasswordResetService $passwordResets;
 
     public function __construct(
         AuthenticationService $authentication,
@@ -27,7 +28,8 @@ final class AuthController
         SessionManager $sessions,
         ?UserRepository $users = null,
         ?LoginChallengeService $challenges = null,
-        ?RegistrationChallengeService $registrationChallenges = null
+        ?RegistrationChallengeService $registrationChallenges = null,
+        ?\InfinityBlog\Auth\PasswordResetService $passwordResets = null
     ) {
         $this->authentication = $authentication;
         $this->guard = $guard;
@@ -35,6 +37,7 @@ final class AuthController
         $this->users = $users ?? $authentication->users();
         $this->challenges = $challenges;
         $this->registrationChallenges = $registrationChallenges;
+        $this->passwordResets = $passwordResets;
     }
 
     private function resolveRegistrationChallenges(): ?RegistrationChallengeService
@@ -42,8 +45,9 @@ final class AuthController
         if ($this->registrationChallenges !== null) {
             return $this->registrationChallenges;
         }
-        $toggle = getenv('REGISTRATION_EMAIL_VERIFICATION') ?: getenv('REGISTRATION_PHONE_VERIFICATION') ?: getenv('REGISTRATION_OTP_VERIFICATION');
-        if ($toggle === '1' || $toggle === 'true') {
+        $toggle = getenv('REGISTRATION_EMAIL_VERIFICATION') ?: (getenv('REGISTRATION_PHONE_VERIFICATION') ?: (getenv('REGISTRATION_OTP_VERIFICATION') ?: ($_ENV['REGISTRATION_EMAIL_VERIFICATION'] ?? null)));
+        $enabled = filter_var($toggle, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) === true;
+        if ($enabled) {
             if (method_exists($this->users, 'getPdo')) {
                 $this->registrationChallenges = new RegistrationChallengeService($this->users->getPdo(), null, null, $this->users);
                 return $this->registrationChallenges;
@@ -57,13 +61,31 @@ final class AuthController
         if ($this->challenges !== null) {
             return $this->challenges;
         }
-        if (getenv('LOGIN_EMAIL_CHALLENGE') === '1' || getenv('LOGIN_EMAIL_CHALLENGE') === 'true') {
+        $toggle = getenv('LOGIN_EMAIL_CHALLENGE');
+        if ($toggle === false || $toggle === '') {
+            $toggle = $_ENV['LOGIN_EMAIL_CHALLENGE'] ?? null;
+        }
+        $enabled = filter_var($toggle, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) === true;
+        if ($enabled) {
             if (method_exists($this->users, 'getPdo')) {
                 $this->challenges = new LoginChallengeService($this->users->getPdo());
                 return $this->challenges;
             }
         }
         return null;
+    }
+
+    private function resolvePasswordResets(): \InfinityBlog\Auth\PasswordResetService
+    {
+        if ($this->passwordResets !== null) {
+            return $this->passwordResets;
+        }
+        $pdo = method_exists($this->users, 'getPdo') ? $this->users->getPdo() : null;
+        if ($pdo === null) {
+            throw new \RuntimeException('Database connection unavailable for password resets.');
+        }
+        $this->passwordResets = new \InfinityBlog\Auth\PasswordResetService($pdo, $this->users);
+        return $this->passwordResets;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -76,6 +98,8 @@ final class AuthController
             ['POST', '/auth/register'], ['POST', '/register'] => $this->register($request),
             ['POST', '/auth/register/verify'], ['POST', '/register/verify'], ['POST', '/api/auth/register/verify'] => $this->verifyRegistration($request),
             ['POST', '/auth/register/resend'], ['POST', '/register/resend'], ['POST', '/api/auth/register/resend'] => $this->resendRegistration($request),
+            ['POST', '/auth/password/forgot'], ['POST', '/password/forgot'], ['POST', '/api/auth/password/forgot'] => $this->forgotPassword($request),
+            ['POST', '/auth/password/reset'], ['POST', '/password/reset'], ['POST', '/api/auth/password/reset'] => $this->resetPassword($request),
             ['POST', '/auth/logout'], ['POST', '/logout'] => $this->logout($request),
             ['GET', '/auth/me'], ['GET', '/me'] => $this->me(),
             ['GET', '/auth/csrf'], ['GET', '/csrf'] => $this->csrf(),
@@ -92,6 +116,8 @@ final class AuthController
             '/auth/register', '/register',
             '/auth/register/verify', '/register/verify', '/api/auth/register/verify',
             '/auth/register/resend', '/register/resend', '/api/auth/register/resend',
+            '/auth/password/forgot', '/password/forgot', '/api/auth/password/forgot',
+            '/auth/password/reset', '/password/reset', '/api/auth/password/reset',
             '/auth/logout', '/logout',
             '/auth/me', '/auth/csrf'
         ], true);
@@ -137,7 +163,18 @@ final class AuthController
             ];
         }
 
-        $result = $this->authentication->login($identifier, $password, $request->sourceAddress);
+        try {
+            $result = $this->authentication->login($identifier, $password, $request->sourceAddress);
+        } catch (\Throwable $exception) {
+            $errorLogger = new ApiErrorLogger();
+            $requestId = bin2hex(random_bytes(16));
+            $errorLogger->log($exception, $requestId);
+            return [
+                'status' => 500,
+                'body' => ApiErrorResponder::internalFailure($requestId),
+            ];
+        }
+
         if ($result->status === LoginResult::LIMITED) {
             return $this->error(429, 'RATE_LIMITED', 'The login request could not be completed. Try again later.');
         }
@@ -318,6 +355,82 @@ final class AuthController
                     'delivery_status' => $challengeData['delivery_status'],
                     'expires_in' => $challengeData['expires_in'],
                     'dev_code' => $challengeData['dev_code'] ?? null,
+                    'csrf_token' => $this->sessions->csrfToken(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function forgotPassword(Request $request): array
+    {
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
+            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+        }
+
+        $input = $request->input();
+        $identifier = $input['identifier'] ?? ($input['email'] ?? null);
+        if (!is_string($identifier) || trim($identifier) === '') {
+            return $this->error(422, 'VALIDATION_ERROR', 'Please enter your email or username.');
+        }
+
+        $service = $this->resolvePasswordResets();
+        $result = $service->requestReset((string) $identifier, $request->sourceAddress);
+        if (!empty($result['rate_limited'])) {
+            return $this->error(429, 'RATE_LIMITED', $result['message']);
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'data' => [
+                    'message' => $result['message'],
+                    'csrf_token' => $this->sessions->csrfToken(),
+                ],
+            ],
+        ];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function resetPassword(Request $request): array
+    {
+        $csrfToken = $request->header('X-CSRF-Token') ?? $request->postParameter('csrf_token') ?? ($_POST['csrf_token'] ?? null);
+        if (!is_string($csrfToken) || !$this->sessions->validateCsrfToken($csrfToken)) {
+            return $this->error(403, 'CSRF_INVALID', 'The request could not be verified.');
+        }
+
+        $input = $request->input();
+        $token = $input['token'] ?? null;
+        $password = $input['password'] ?? null;
+        $confirmPassword = $input['confirm_password'] ?? ($input['password_confirmation'] ?? null);
+
+        if (!is_string($token) || trim($token) === '') {
+            return $this->error(422, 'VALIDATION_ERROR', 'Reset token is required.');
+        }
+        if (!is_string($password) || $password === '') {
+            return $this->error(422, 'VALIDATION_ERROR', 'New password is required.');
+        }
+        if (!is_string($confirmPassword) || $confirmPassword === '') {
+            return $this->error(422, 'VALIDATION_ERROR', 'Please confirm your new password.');
+        }
+
+        $service = $this->resolvePasswordResets();
+        $result = $service->resetPassword((string) $token, (string) $password, (string) $confirmPassword);
+        if (!$result['success']) {
+            $errCode = $result['error'] ?? 'RESET_FAILED';
+            $status = match ($errCode) {
+                'TOKEN_EXPIRED', 'TOKEN_NOT_FOUND', 'TOKEN_ALREADY_USED' => 400,
+                default => 422,
+            };
+            return $this->error($status, $errCode, $result['message'] ?? 'Password reset failed.');
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'data' => [
+                    'message' => $result['message'],
                     'csrf_token' => $this->sessions->csrfToken(),
                 ],
             ],

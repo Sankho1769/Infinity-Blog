@@ -45,7 +45,7 @@
   }
 ?>
 
-<div id="infinity-writing-studio" class="studio-container studio-theme-<?= htmlspecialchars($activeTheme, ENT_QUOTES, 'UTF-8') ?> studio-font-<?= htmlspecialchars($activeFont, ENT_QUOTES, 'UTF-8') ?>">
+<div id="infinity-writing-studio" class="studio-container studio-theme-<?= htmlspecialchars($activeTheme, ENT_QUOTES, 'UTF-8') ?> studio-font-<?= htmlspecialchars($activeFont, ENT_QUOTES, 'UTF-8') ?>" data-api-base="<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>">
 
   <!-- TOP NAVIGATION TOOLBAR -->
   <header class="studio-topbar" role="toolbar" aria-label="Writing Studio Toolbar">
@@ -74,8 +74,16 @@
       <!-- Live Truthful Save Indicator -->
       <div id="studio-save-indicator" class="studio-save-indicator" title="Draft Save Status">
         <span id="studio-save-dot" class="studio-save-dot"></span>
-        <span id="studio-save-text">Saved just now</span>
+        <span id="studio-save-text">Saved</span>
       </div>
+
+      <!-- Focus Mode Toggle (Quick Discovery) -->
+      <button type="button" id="studio-topbar-focus-btn" class="studio-top-btn" title="Toggle Distraction-free Focus Mode (Alt+F)" aria-label="Toggle Focus Mode">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+        <span class="studio-top-btn-label">Focus</span>
+      </button>
 
       <!-- Preview Button -->
       <button type="button" id="studio-preview-toggle-btn" class="studio-top-btn" title="Toggle Live Preview">
@@ -287,57 +295,71 @@
 
         <!-- Editorial Formatting Toolbar (Sticky) -->
         <div class="studio-formatting-toolbar" id="studio-formatting-toolbar" role="toolbar" aria-label="Rich text formatting">
-          <!-- Heading / Block Dropdown -->
-          <select id="studio-block-type-select" class="studio-tool-dropdown" title="Text Style">
-            <option value="p">Paragraph</option>
-            <option value="h1">Heading 1</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="quote">Blockquote</option>
-            <option value="code">Code Block</option>
-          </select>
+          <!-- Group 1: Text Styles -->
+          <div class="studio-toolbar-group" role="group" aria-label="Text styles">
+            <select id="studio-block-type-select" class="studio-tool-dropdown" title="Text Style">
+              <option value="p">Paragraph</option>
+              <option value="h1">Heading 1</option>
+              <option value="h2">Heading 2</option>
+              <option value="h3">Heading 3</option>
+              <option value="quote">Blockquote</option>
+              <option value="code">Code Block</option>
+            </select>
+          </div>
 
           <div class="studio-toolbar-divider"></div>
 
-          <!-- Inline Text Styles -->
-          <button type="button" class="studio-tool-btn" id="format-bold-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
-          <button type="button" class="studio-tool-btn" id="format-italic-btn" title="Italic (Ctrl+I)"><em>I</em></button>
-          <button type="button" class="studio-tool-btn" id="format-underline-btn" title="Underline (Ctrl+U)"><span style="text-decoration: underline;">U</span></button>
-          <button type="button" class="studio-tool-btn" id="format-strike-btn" title="Strikethrough"><span style="text-decoration: line-through;">S</span></button>
+          <!-- Group 2: Inline Formatting -->
+          <div class="studio-toolbar-group" role="group" aria-label="Inline text formatting">
+            <button type="button" class="studio-tool-btn" id="format-bold-btn" title="Bold (Ctrl+B)"><strong>B</strong></button>
+            <button type="button" class="studio-tool-btn" id="format-italic-btn" title="Italic (Ctrl+I)"><em>I</em></button>
+            <button type="button" class="studio-tool-btn" id="format-underline-btn" title="Underline (Ctrl+U)"><span style="text-decoration: underline;">U</span></button>
+            <button type="button" class="studio-tool-btn" id="format-strike-btn" title="Strikethrough"><span style="text-decoration: line-through;">S</span></button>
+          </div>
 
           <div class="studio-toolbar-divider"></div>
 
-          <!-- Lists & Indents -->
-          <button type="button" class="studio-tool-btn" id="format-bullet-btn" title="Bullet List">•≡</button>
-          <button type="button" class="studio-tool-btn" id="format-number-btn" title="Numbered List">1.≡</button>
-          <button type="button" class="studio-tool-btn" id="format-align-left-btn" title="Align Left">⇤</button>
-          <button type="button" class="studio-tool-btn" id="format-align-center-btn" title="Align Center">⇥</button>
+          <!-- Group 3: Lists -->
+          <div class="studio-toolbar-group" role="group" aria-label="Lists">
+            <button type="button" class="studio-tool-btn" id="format-bullet-btn" title="Bullet List">•≡</button>
+            <button type="button" class="studio-tool-btn" id="format-number-btn" title="Numbered List">1.≡</button>
+          </div>
 
           <div class="studio-toolbar-divider"></div>
 
-          <!-- Inserts -->
-          <button type="button" class="studio-tool-btn" id="format-link-btn" title="Insert Link">🔗</button>
-          <button type="button" class="studio-tool-btn" id="format-quote-btn" title="Insert Quote">”</button>
-          <button type="button" class="studio-tool-btn" id="format-image-btn" title="Upload and Insert Image">🖼️</button>
-          <button type="button" class="studio-tool-btn" id="format-video-btn" title="Insert Video / Embed">🎥</button>
-          <button type="button" class="studio-tool-btn" id="format-code-btn" title="Code Block">{ }</button>
+          <!-- Group 4: Alignment & Indents -->
+          <div class="studio-toolbar-group" role="group" aria-label="Alignment and Indentation">
+            <button type="button" class="studio-tool-btn" id="format-align-left-btn" title="Align Left">⇤</button>
+            <button type="button" class="studio-tool-btn" id="format-align-center-btn" title="Align Center">⇥</button>
+          </div>
 
           <div class="studio-toolbar-divider"></div>
 
-          <!-- AI Assistant Quick Trigger -->
-          <button type="button" class="studio-tool-btn studio-ai-pill-btn" id="open-ai-panel-btn" title="Open AI Writing Assistant">
-            <span>✨ AI</span>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left: 3px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </button>
+          <!-- Group 5: Inserts -->
+          <div class="studio-toolbar-group" role="group" aria-label="Insert elements">
+            <button type="button" class="studio-tool-btn" id="format-link-btn" title="Insert Link">🔗</button>
+            <button type="button" class="studio-tool-btn" id="format-quote-btn" title="Insert Quote">”</button>
+            <button type="button" class="studio-tool-btn" id="format-image-btn" title="Upload and Insert Image">🖼️</button>
+            <button type="button" class="studio-tool-btn" id="format-video-btn" title="Insert Video / Embed">🎥</button>
+            <button type="button" class="studio-tool-btn" id="format-code-btn" title="Code Block">{ }</button>
+          </div>
 
-          <!-- Studio Settings Trigger -->
-          <button type="button" class="studio-tool-btn" id="open-settings-drawer-btn" title="Appearance & Editor Settings" style="margin-left: auto;">
-            ⚙️
-          </button>
+          <div class="studio-toolbar-divider"></div>
+
+          <!-- Group 6: AI Assistant & Settings -->
+          <div class="studio-toolbar-group studio-toolbar-actions" role="group" aria-label="Assistant and settings">
+            <button type="button" class="studio-tool-btn studio-ai-pill-btn" id="open-ai-panel-btn" title="Open AI Writing Assistant">
+              <span>✨ AI</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-left: 3px;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <button type="button" class="studio-tool-btn" id="open-settings-drawer-btn" title="Appearance & Editor Settings">
+              ⚙️
+            </button>
+          </div>
         </div>
 
         <!-- Form for hidden inputs and sync -->
-        <form id="post-editor-form" method="POST" action="<?= $isEdit ? '/author/posts/' . (int) $post['id'] : '/author/posts' ?>">
+        <form id="post-editor-form" method="POST" action="<?= $isEdit ? ((($currentUser['role'] ?? '') === 'admin') ? '/admin/posts/' . (int) $post['id'] : '/author/posts/' . (int) $post['id']) : ((($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts') ?>">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
           <?php if ($isEdit): ?>
             <input type="hidden" id="post-id" value="<?= (int) $post['id'] ?>">
@@ -362,6 +384,8 @@
                 <option value="blog" <?= $selectedType === 'blog' ? 'selected' : '' ?>>BLOG</option>
                 <option value="research_paper" <?= $selectedType === 'research_paper' ? 'selected' : '' ?>>RESEARCH PAPER</option>
                 <option value="photo" <?= $selectedType === 'photo' ? 'selected' : '' ?>>PHOTO</option>
+                <option value="discussion" <?= $selectedType === 'discussion' ? 'selected' : '' ?>>DISCUSSION</option>
+                <option value="question" <?= $selectedType === 'question' ? 'selected' : '' ?>>QUESTION</option>
               </select>
             </div>
 
@@ -424,7 +448,7 @@
               <span style="font-size: 1.3rem;">🎬</span>
               <div>
                 <strong id="studio-video-label" style="font-size: 0.88rem;"><?= htmlspecialchars(basename($initialVideoPath), ENT_QUOTES, 'UTF-8') ?></strong>
-                <div style="font-size: 0.74rem; color: var(--studio-muted);">Protected video playable via signed access</div>
+                <div style="font-size: 0.76rem; color: #10b981; font-weight: 600; display: flex; align-items: center; gap: 5px;"><span>●</span> Video attached • Ready for publication</div>
               </div>
             </div>
             <button type="button" class="btn btn-danger-subtle btn-sm btn-pill" id="remove-video-banner-btn">Remove</button>
@@ -819,7 +843,7 @@
             <polygon points="5 3 19 12 5 21 5 3"></polygon>
           </svg>
           <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-dark);">Click to select video file</div>
-          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Stored in private bucket with short-lived playback signatures.</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Files are uploaded securely to private cloud storage.</div>
         </div>
         <input type="file" id="modal-video-file-input" accept="video/mp4,video/webm" style="display: none;">
         <div id="modal-video-upload-status" style="font-size: 0.82rem; margin-top: 8px; display: none;"></div>
@@ -898,4 +922,8 @@
 </div>
 
 <!-- SCRIPT: WRITING STUDIO CONTROLLER -->
+<script>
+  window.BlogCMS = window.BlogCMS || {};
+  window.BlogCMS.apiBase = '<?= (($currentUser['role'] ?? '') === 'admin') ? '/admin/posts' : '/author/posts' ?>';
+</script>
 <script src="/assets/js/studio.js"></script>

@@ -221,12 +221,12 @@
 
   // Expose immediately so page scripts can access anytime
   window.ThemeManager = ThemeManager;
-  window.InfinityBlog = window.BlogCMS = {
+  window.InfinityBlog = window.BlogCMS = Object.assign(window.BlogCMS || window.InfinityBlog || {}, {
     getCsrfToken,
     ensureCsrfToken,
     showAlert,
     ThemeManager
-  };
+  });
 
   // Initialize Theme Manager immediately if DOM is ready, or on DOMContentLoaded
   if (document.readyState === 'loading') {
@@ -1582,30 +1582,141 @@
     initNotifications();
 
     // =========================================================================
-    // Community Feed Controller (Single Composer, Scores, Bookmarks, Menus, Reporting)
+    // Community Feed Controller (Quick Composer, Content Types, Draft Transfer)
     // =========================================================================
     let attachedComposerImageUrl = null;
+    let activeComposerContentType = 'discussion';
+
+    window.setComposerContentType = function (type) {
+      activeComposerContentType = type || 'discussion';
+      const typeInput = document.getElementById('composer-content-type-input');
+      if (typeInput) typeInput.value = activeComposerContentType;
+
+      document.querySelectorAll('.composer-type-tab').forEach(tab => {
+        const isMatch = tab.dataset.type === activeComposerContentType;
+        tab.classList.toggle('active', isMatch);
+        tab.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+      });
+
+      const titleWrapper = document.getElementById('composer-title-wrapper');
+      const titleInput = document.getElementById('composer-title-input');
+      const textInput = document.getElementById('composer-text-input');
+      const submitBtn = document.getElementById('composer-submit-btn');
+
+      if (activeComposerContentType === 'question') {
+        if (titleWrapper) titleWrapper.style.display = 'block';
+        if (titleInput) {
+          titleInput.placeholder = "What is your question?";
+          titleInput.focus();
+        }
+        if (textInput) textInput.placeholder = "Add background context or additional details (optional)...";
+        if (submitBtn) submitBtn.textContent = 'Publish Question';
+      } else if (activeComposerContentType === 'article') {
+        if (titleWrapper) titleWrapper.style.display = 'block';
+        if (titleInput) {
+          titleInput.placeholder = "Article Title";
+          titleInput.focus();
+        }
+        if (textInput) textInput.placeholder = "Write a summary, outline, or opening intro to continue in the Full Editor...";
+        if (submitBtn) submitBtn.textContent = 'Continue in Full Editor →';
+      } else if (activeComposerContentType === 'photo') {
+        if (titleWrapper) titleWrapper.style.display = 'none';
+        if (textInput) textInput.placeholder = "Add a caption for your photo...";
+        if (submitBtn) submitBtn.textContent = 'Publish Photo';
+        if (!attachedComposerImageUrl) {
+          document.getElementById('composer-image-file-input')?.click();
+        }
+      } else {
+        if (titleWrapper) titleWrapper.style.display = 'none';
+        if (textInput) textInput.placeholder = "Share an idea, thought, or start a discussion…";
+        if (submitBtn) submitBtn.textContent = 'Publish Discussion';
+      }
+      updateComposerCharCount();
+    };
+
+    window.updateComposerCharCount = function () {
+      const counter = document.getElementById('composer-char-counter');
+      if (!counter) return;
+      const textInput = document.getElementById('composer-text-input');
+      const titleInput = document.getElementById('composer-title-input');
+      const titleLen = (titleInput && titleInput.offsetParent !== null) ? (titleInput.value || '').length : 0;
+      const bodyLen = (textInput?.value || '').length;
+      const total = titleLen + bodyLen;
+      counter.textContent = total.toLocaleString() + ' / 5,000';
+      if (total > 5000) {
+        counter.classList.add('is-over-limit');
+      } else {
+        counter.classList.remove('is-over-limit');
+      }
+    };
+
+    window.openFullEditorFromComposer = function (e) {
+      if (e) e.preventDefault();
+      const titleInput = document.getElementById('composer-title-input');
+      const textInput = document.getElementById('composer-text-input');
+      const catSelect = document.getElementById('composer-category-select');
+
+      let title = titleInput?.value?.trim() || '';
+      let content = textInput?.value?.trim() || '';
+
+      if (!title && content) {
+        const firstLine = content.split('\n')[0].trim().replace(/^#+\s*/, '');
+        if (firstLine.length > 0) {
+          title = firstLine.substring(0, 100);
+        }
+      }
+
+      const draftPayload = {
+        title: title,
+        content: content,
+        category_id: catSelect ? catSelect.value : '',
+        content_type: activeComposerContentType === 'photo' ? 'photo' : (activeComposerContentType === 'question' ? 'question' : (activeComposerContentType === 'discussion' ? 'discussion' : 'article')),
+        cover_image_path: attachedComposerImageUrl || '',
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        localStorage.setItem('infinity_blog_composer_transfer', JSON.stringify(draftPayload));
+      } catch (err) {}
+
+      window.location.href = '/posts/new';
+    };
 
     window.toggleFeedComposer = function (open) {
       const card = document.getElementById('feed-composer-card');
       const tray = document.getElementById('composer-expanded-tray');
+      const typeNav = document.getElementById('composer-type-nav');
       const textInput = document.getElementById('composer-text-input');
+      const titleInput = document.getElementById('composer-title-input');
+      const titleWrapper = document.getElementById('composer-title-wrapper');
       if (!tray) return;
 
       if (open) {
         card?.classList.add('is-expanded');
+        if (typeNav) typeNav.style.display = 'flex';
         tray.style.display = 'flex';
-        if (textInput) {
-          textInput.focus();
+        if (activeComposerContentType === 'question' || activeComposerContentType === 'article') {
+          if (titleWrapper) titleWrapper.style.display = 'block';
+          titleInput?.focus();
+        } else {
+          textInput?.focus();
         }
+        updateComposerCharCount();
       } else {
         card?.classList.remove('is-expanded');
+        if (typeNav) typeNav.style.display = 'none';
+        if (titleWrapper) titleWrapper.style.display = 'none';
         tray.style.display = 'none';
         if (textInput) {
           textInput.value = '';
-          textInput.style.height = '46px';
+          textInput.style.height = '';
+        }
+        if (titleInput) {
+          titleInput.value = '';
         }
         removeComposerAttachedImage();
+        setComposerContentType('discussion');
+        updateComposerCharCount();
       }
     };
 
@@ -1629,7 +1740,7 @@
       const attachBtn = document.getElementById('composer-attach-btn');
       if (attachBtn) {
         attachBtn.disabled = true;
-        attachBtn.innerHTML = `<span>⏳</span> Uploading...`;
+        attachBtn.innerHTML = '<span>⏳</span> Uploading...';
       }
 
       try {
@@ -1651,8 +1762,10 @@
           attachedComposerImageUrl = json.data.url;
           const previewImg = document.getElementById('composer-image-preview');
           const previewTray = document.getElementById('composer-image-preview-tray');
+          const imageName = document.getElementById('composer-image-name');
           if (previewImg && previewTray) {
             previewImg.src = json.data.url;
+            if (imageName) imageName.textContent = file.name || 'Image attached';
             previewTray.style.display = 'block';
           }
           toggleFeedComposer(true);
@@ -1666,7 +1779,7 @@
       } finally {
         if (attachBtn) {
           attachBtn.disabled = false;
-          attachBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg> <span>Add Image</span>`;
+          attachBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg> <span>Add Image</span>';
         }
       }
     };
@@ -1683,22 +1796,48 @@
 
     window.submitQuickPost = async function (e) {
       if (e) e.preventDefault();
+      if (activeComposerContentType === 'article') {
+        return openFullEditorFromComposer(e);
+      }
+
       const submitBtn = document.getElementById('composer-submit-btn');
       const textInput = document.getElementById('composer-text-input');
+      const titleInput = document.getElementById('composer-title-input');
       const catSelect = document.getElementById('composer-category-select');
 
+      let rawTitle = titleInput && titleInput.offsetParent !== null ? titleInput.value.trim() : '';
       let rawText = textInput?.value?.trim() || '';
+
       if (attachedComposerImageUrl) {
-        rawText = rawText ? `${rawText}\n\n![Embedded Image](${attachedComposerImageUrl})` : `![Embedded Image](${attachedComposerImageUrl})`;
+        rawText = rawText ? rawText + '\n\n![Attached Image](' + attachedComposerImageUrl + ')' : '![Attached Image](' + attachedComposerImageUrl + ')';
+      }
+
+      if (activeComposerContentType === 'question') {
+        if (!rawTitle) {
+          showAlert('Please enter your question title.', 'error');
+          titleInput?.focus();
+          return;
+        }
+        if (!rawText) {
+          rawText = rawTitle;
+        }
+      } else if (activeComposerContentType === 'photo') {
+        if (!attachedComposerImageUrl && !rawText) {
+          showAlert('Please attach a photo or write a caption.', 'error');
+          return;
+        }
+        if (!rawTitle) {
+          rawTitle = rawText ? rawText.slice(0, 60) : 'Photo Post';
+        }
+      } else {
+        if (!rawText) {
+          showAlert('Please enter your discussion topic or idea.', 'error');
+          textInput?.focus();
+          return;
+        }
       }
 
       const categoryId = catSelect ? parseInt(catSelect.value, 10) : 1;
-
-      if (!rawText) {
-        showAlert('Please enter your idea or attach an image.', 'error');
-        textInput?.focus();
-        return;
-      }
 
       if (submitBtn) {
         submitBtn.disabled = true;
@@ -1715,9 +1854,11 @@
             'X-CSRF-Token': csrf
           },
           body: JSON.stringify({
+            title: rawTitle,
             content: rawText,
             category_id: categoryId,
-            content_type: (document.getElementById('composer-content-type-select')?.value || 'article')
+            content_type: activeComposerContentType,
+            cover_image_path: attachedComposerImageUrl
           })
         });
 
@@ -1727,7 +1868,7 @@
           toggleFeedComposer(false);
           setTimeout(() => {
             window.location.href = '/?published=1';
-          }, 800);
+          }, 600);
         } else {
           showAlert(data.error?.message || 'Failed to publish post.', 'error');
         }
@@ -1736,7 +1877,7 @@
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Publish Idea ✦';
+          submitBtn.textContent = activeComposerContentType === 'question' ? 'Publish Question' : (activeComposerContentType === 'photo' ? 'Publish Photo' : 'Publish Discussion');
         }
       }
     };
@@ -2372,10 +2513,10 @@
     initMentions();
   });
 
-  window.InfinityBlog = window.BlogCMS = {
+  window.InfinityBlog = window.BlogCMS = Object.assign(window.BlogCMS || window.InfinityBlog || {}, {
     getCsrfToken,
     ensureCsrfToken,
     showAlert,
     ThemeManager
-  };
+  });
 })();

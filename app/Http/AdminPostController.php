@@ -17,12 +17,22 @@ final class AdminPostController
     private AuthGuard $guard;
     private SessionManager $sessions;
     private ?\InfinityBlog\Storage\MediaService $media;
+    private ?\InfinityBlog\Summaries\SummaryService $summaries;
+    private ?\InfinityBlog\Audio\TtsService $tts;
 
-    public function __construct(PostRepository $posts, AuthGuard $guard, SessionManager $sessions, ?\InfinityBlog\Storage\MediaService $media = null)
-    {
+    public function __construct(
+        PostRepository $posts,
+        AuthGuard $guard,
+        SessionManager $sessions,
+        ?\InfinityBlog\Storage\MediaService $media = null,
+        ?\InfinityBlog\Summaries\SummaryService $summaries = null,
+        ?\InfinityBlog\Audio\TtsService $tts = null
+    ) {
         $this->posts = $posts;
         $this->guard = $guard;
         $this->sessions = $sessions;
+        $this->summaries = $summaries;
+        $this->tts = $tts;
         if ($media === null) {
             try {
                 $storageConfig = \InfinityBlog\Storage\SupabaseStorageConfig::fromEnvironment();
@@ -151,7 +161,16 @@ final class AdminPostController
             return $this->validationError($errors);
         }
         try {
+            $current = $this->posts->findForAdmin($postId);
             $post = $this->posts->updateForAdmin($postId, $admin->id, $fields);
+            if ($this->media !== null && is_array($current)) {
+                if (array_key_exists('cover_image_path', $fields) && !empty($current['cover_image_path']) && $current['cover_image_path'] !== $fields['cover_image_path']) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketArticles, $current['cover_image_path']);
+                }
+                if (array_key_exists('video_path', $fields) && !empty($current['video_path']) && $current['video_path'] !== $fields['video_path']) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketVideos, $current['video_path']);
+                }
+            }
             unset($post['summary_source_hash']);
             return ['status' => 200, 'body' => ['data' => ['post' => $post]]];
         } catch (PostNotFoundException) {
@@ -176,6 +195,28 @@ final class AdminPostController
             $post = $publish
                 ? $this->posts->publishForAdmin($postId, $admin->id)
                 : $this->posts->unpublishForAdmin($postId, $admin->id);
+            if ($publish && $this->summaries !== null && empty($post['summary'])) {
+                try {
+                    $summaryResult = $this->summaries->generate($postId, $admin, $request->sourceAddress);
+                    if (!empty($summaryResult['summary'])) {
+                        $post['summary'] = $summaryResult['summary'];
+                        $post['summary_status'] = $summaryResult['summary_status'] ?? 'ready';
+                    }
+                } catch (\Throwable) {
+                    // Non-blocking: post publication succeeds regardless of AI provider status
+                }
+            }
+            if ($publish && $this->tts !== null && empty($post['audio_path'])) {
+                try {
+                    $audioResult = $this->tts->generateArticleAudio($postId, $admin->id);
+                    if ($audioResult !== null && !empty($audioResult['audio_path'])) {
+                        $post['audio_path'] = $audioResult['audio_path'];
+                        $post['audio_status'] = $audioResult['audio_status'] ?? 'ready';
+                    }
+                } catch (\Throwable) {
+                    // Non-blocking: post publication succeeds regardless of TTS status
+                }
+            }
             unset($post['summary_source_hash']);
             return ['status' => 200, 'body' => ['data' => ['post' => $post]]];
         } catch (PostNotFoundException) {
@@ -207,6 +248,9 @@ final class AdminPostController
                 }
                 if (!empty($deleted['video_path'])) {
                     $this->media->safeDelete($this->media->getConfig()->bucketVideos, $deleted['video_path']);
+                }
+                if (!empty($deleted['audio_path'])) {
+                    $this->media->safeDelete($this->media->getConfig()->bucketAudio, $deleted['audio_path']);
                 }
             }
             return ['status' => 200, 'body' => ['data' => ['message' => 'Post deleted.']]];

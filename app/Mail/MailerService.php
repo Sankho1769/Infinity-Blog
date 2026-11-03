@@ -375,6 +375,69 @@ HTML;
     }
 
     /**
+     * Send password reset link to user.
+     *
+     * @return array{delivered: bool, status: string, reason?: string}
+     */
+    public function sendPasswordReset(string $to, string $displayName, string $resetUrl): array
+    {
+        $subject = 'Reset your Infinity Blog password';
+        $name = trim($displayName) !== '' ? trim($displayName) : 'User';
+
+        $bodyText = "Hello {$name},\n\n" .
+            "We received a request to reset your Infinity Blog account password.\n\n" .
+            "Click the link below to set a new password:\n" .
+            "{$resetUrl}\n\n" .
+            "This link will expire in 15 minutes and can only be used once.\n\n" .
+            "If you did not request a password reset, no action is required; your account is safe.\n\n" .
+            "— Infinity Blog Security";
+
+        $htmlEscapedName = htmlspecialchars($name, ENT_QUOTES, 'UTF-8');
+        $htmlEscapedUrl = htmlspecialchars($resetUrl, ENT_QUOTES, 'UTF-8');
+
+        $bodyHtml = <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Reset Your Infinity Blog Password</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">
+  <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; padding: 32px 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="display: inline-block; padding: 6px 14px; border-radius: 9999px; background: rgba(99, 102, 241, 0.12); color: #4f46e5; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+        Infinity Blog Security
+      </span>
+      <h2 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 14px 0 6px 0;">Password Reset Request</h2>
+      <p style="font-size: 14px; color: #64748b; margin: 0;">Hello {$htmlEscapedName}, you recently asked to reset your password.</p>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 24px;">
+      <a href="{$htmlEscapedUrl}" style="display: inline-block; padding: 12px 28px; background: #4f46e5; color: #ffffff; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px;">Reset My Password</a>
+      <div style="font-size: 12px; color: #64748b; margin-top: 10px;">Link valid for 15 minutes (single use)</div>
+    </div>
+
+    <div style="background: #f1f5f9; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; font-size: 12px; color: #64748b; word-break: break-all;">
+      Or copy and paste this URL into your browser:<br>
+      <a href="{$htmlEscapedUrl}" style="color: #4f46e5;">{$htmlEscapedUrl}</a>
+    </div>
+
+    <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; font-size: 13px; color: #92400e; line-height: 1.5;">
+      <strong>Note:</strong> If you did not make this request, you can safely ignore this email. Your password will not change until you access the link above.
+    </div>
+
+    <div style="border-top: 1px solid #e2e8f0; padding-top: 18px; text-align: center; font-size: 12px; color: #94a3b8;">
+      This is an automated security transmission from Infinity Blog.
+    </div>
+  </div>
+</body>
+</html>
+HTML;
+
+        return $this->send($to, $subject, $bodyText, $bodyHtml);
+    }
+
+    /**
      * Dispatch contact form submission notification to administrator.
      *
      * @param array{

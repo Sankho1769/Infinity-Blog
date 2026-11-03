@@ -9,12 +9,16 @@ final class ContentTypeHelper
     public const TYPE_BLOG = 'blog';
     public const TYPE_RESEARCH_PAPER = 'research_paper';
     public const TYPE_PHOTO = 'photo';
+    public const TYPE_DISCUSSION = 'discussion';
+    public const TYPE_QUESTION = 'question';
 
     public const ALL_TYPES = [
         self::TYPE_ARTICLE,
         self::TYPE_BLOG,
         self::TYPE_RESEARCH_PAPER,
         self::TYPE_PHOTO,
+        self::TYPE_DISCUSSION,
+        self::TYPE_QUESTION,
     ];
 
     public static function normalize(?string $type): string
@@ -32,6 +36,8 @@ final class ContentTypeHelper
             self::TYPE_BLOG => 'BLOG',
             self::TYPE_RESEARCH_PAPER => 'RESEARCH PAPER',
             self::TYPE_PHOTO => 'PHOTO',
+            self::TYPE_DISCUSSION => 'DISCUSSION',
+            self::TYPE_QUESTION => 'QUESTION',
             default => 'ARTICLE',
         };
     }
@@ -42,6 +48,8 @@ final class ContentTypeHelper
             self::TYPE_BLOG => '✍️',
             self::TYPE_RESEARCH_PAPER => '📄',
             self::TYPE_PHOTO => '📷',
+            self::TYPE_DISCUSSION => '💬',
+            self::TYPE_QUESTION => '❓',
             default => '📰',
         };
     }

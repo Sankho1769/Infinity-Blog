@@ -12,6 +12,8 @@ final class AppConfig
     public string $baseUrl;
     public bool $secureSessionCookie;
     public DatabaseConfig $database;
+    public bool $loginEmailChallenge;
+    public bool $registrationEmailVerification;
     private string $applicationKey;
 
     private function __construct(
@@ -20,7 +22,9 @@ final class AppConfig
         string $baseUrl,
         bool $secureSessionCookie,
         DatabaseConfig $database,
-        string $applicationKey
+        string $applicationKey,
+        bool $loginEmailChallenge = false,
+        bool $registrationEmailVerification = false
     ) {
         $this->environment = $environment;
         $this->debug = $debug;
@@ -28,6 +32,8 @@ final class AppConfig
         $this->secureSessionCookie = $secureSessionCookie;
         $this->database = $database;
         $this->applicationKey = $applicationKey;
+        $this->loginEmailChallenge = $loginEmailChallenge;
+        $this->registrationEmailVerification = $registrationEmailVerification;
     }
 
     /** @param array<string, string> $environment */
@@ -70,16 +76,38 @@ final class AppConfig
             }
         }
 
-        return new self($appEnvironment, $debug, $baseUrl, $secureCookie, $database, strtolower($applicationKey));
+        $loginEmailChallenge = self::optionalBooleanValue($environment['LOGIN_EMAIL_CHALLENGE'] ?? null, 'LOGIN_EMAIL_CHALLENGE', false);
+        $regChallenge = $environment['REGISTRATION_EMAIL_VERIFICATION']
+            ?? ($environment['REGISTRATION_PHONE_VERIFICATION'] ?? ($environment['REGISTRATION_OTP_VERIFICATION'] ?? null));
+        $registrationEmailVerification = self::optionalBooleanValue($regChallenge, 'REGISTRATION_EMAIL_VERIFICATION', false);
+
+        return new self(
+            $appEnvironment,
+            $debug,
+            $baseUrl,
+            $secureCookie,
+            $database,
+            strtolower($applicationKey),
+            $loginEmailChallenge,
+            $registrationEmailVerification
+        );
     }
 
     /** @param array<string, string|false>|null $environment */
     public static function fromEnvironment(?array $environment = null, ?string $envFile = null): self
     {
-        $environment = $environment ?? getenv();
-        $environment = EnvironmentLoader::loadFile($envFile ?? dirname(__DIR__, 2) . '/.env', $environment);
+        $rawEnv = $environment ?? getenv();
+        $loadedEnv = EnvironmentLoader::loadFile($envFile ?? dirname(__DIR__, 2) . '/.env', $rawEnv);
 
-        return self::fromArray($environment);
+        // Safely synchronize loaded environment into process environment so getenv() matches
+        foreach ($loadedEnv as $key => $value) {
+            if (getenv($key) === false || getenv($key) === '') {
+                putenv($key . '=' . $value);
+                $_ENV[$key] = $value;
+            }
+        }
+
+        return self::fromArray($loadedEnv);
     }
 
     private static function booleanValue(?string $value, string $name): bool
@@ -91,6 +119,20 @@ final class AppConfig
         $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if ($parsed === null) {
             throw new InvalidArgumentException($name . ' must be true or false.');
+        }
+
+        return $parsed;
+    }
+
+    public static function optionalBooleanValue(?string $value, string $name, bool $default = false): bool
+    {
+        if ($value === null || trim($value) === '') {
+            return $default;
+        }
+
+        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($parsed === null) {
+            throw new InvalidArgumentException($name . ' must be a valid boolean (true/false/1/0).');
         }
 
         return $parsed;

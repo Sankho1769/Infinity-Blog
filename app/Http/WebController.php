@@ -723,6 +723,28 @@ final class WebController
     }
 
     /** @return array{status: int, type: string, body: string} */
+    public function forgotPassword(Request $request): array
+    {
+        return $this->render('login', [
+            'pageTitle' => 'Forgot Password',
+            'activeNav' => 'login',
+            'initialAuthMode' => 'forgot',
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
+    public function passwordReset(Request $request): array
+    {
+        $token = (string) ($_GET['token'] ?? '');
+
+        return $this->render('password_reset', [
+            'pageTitle' => 'Reset Your Password',
+            'activeNav' => 'login',
+            'token' => $token,
+        ]);
+    }
+
+    /** @return array{status: int, type: string, body: string} */
     public function publicCategories(Request $request): array
     {
         $categories = $this->categories->listActiveWithCounts();

@@ -362,6 +362,8 @@ try {
             $request->path === '/video/signed-url' => $webController->signedVideoUrl($request),
             $request->path === '/login' => $webController->login($request),
             $request->path === '/register' => $webController->register($request),
+            $request->path === '/forgot-password' => $webController->forgotPassword($request),
+            $request->path === '/password/reset' => $webController->passwordReset($request),
             $request->path === '/profile' => $webController->profile($request),
             $request->path === '/profile/edit' => $webController->editProfile($request),
             $request->path === '/contact' => $webController->contact($request),
@@ -466,7 +468,19 @@ try {
             $sessions
         );
     } elseif ($request->path === '/admin/posts' || str_starts_with($request->path, '/admin/posts/')) {
-        $controller = new AdminPostController(new PostRepository($pdo), $guard, $sessions);
+        try {
+            $aiConfig = AiProviderConfig::fromEnvironment();
+        } catch (Throwable) {
+            $aiConfig = null;
+        }
+        $provider = $aiConfig === null ? null : new OpenAiResponsesProvider($aiConfig);
+        $limiter = new DatabaseSummaryRateLimiter(
+            $pdo,
+            $config->applicationKey(),
+            $aiConfig?->userRateLimit ?? 10
+        );
+        $summaryService = new SummaryService(new PostRepository($pdo), $limiter, $aiConfig, $provider);
+        $controller = new AdminPostController(new PostRepository($pdo), $guard, $sessions, $mediaService, $summaryService, $tts);
     } elseif ($request->path === '/admin/audit-logs') {
         $controller = new AdminAuditLogController(new AuditLogRepository($pdo), $guard);
     } elseif ($request->path === '/author/posts' || str_starts_with($request->path, '/author/posts/')) {
@@ -490,10 +504,9 @@ try {
     } elseif ($request->path === '/posts' || str_starts_with($request->path, '/posts/')) {
         $controller = new PublicPostController(new PostRepository($pdo));
     } else {
-        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $mailer, null, $users);
-        $loginEmailChallenge = getenv('LOGIN_EMAIL_CHALLENGE');
-        $loginChallengeService = ($loginEmailChallenge === '1' || $loginEmailChallenge === 'true')
-            ? new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer)
+        $regChallengeService = new \InfinityBlog\Security\RegistrationChallengeService($pdo, $mailer, null, $users, $config->applicationKey());
+        $loginChallengeService = $config->loginEmailChallenge
+            ? new \InfinityBlog\Auth\LoginChallengeService($pdo, $mailer, $config->applicationKey())
             : null;
         $controller = new AuthController(
             new AuthenticationService($users, new DatabaseLoginAttemptLimiter($pdo, $config->applicationKey())),
@@ -508,8 +521,17 @@ try {
     $result = $controller->handle($request);
     $isBrowserForm = !str_contains((string) $request->header('Accept'), 'application/json') && !$request->isJson();
     if ($isBrowserForm) {
+        $basePath = Request::detectBasePath($config->baseUrl);
         if ($result['status'] === 201 && in_array($request->path, ['/register', '/auth/register', '/register/verify', '/auth/register/verify'], true)) {
-            header('Location: /login?registered=1');
+            header('Location: ' . $basePath . '/login?registered=1');
+            return;
+        }
+        if ($result['status'] === 200 && in_array($request->path, ['/auth/password/reset', '/password/reset'], true)) {
+            header('Location: ' . $basePath . '/login?reset=1');
+            return;
+        }
+        if ($result['status'] === 200 && in_array($request->path, ['/auth/password/forgot', '/password/forgot'], true)) {
+            header('Location: ' . $basePath . '/login?forgot=1');
             return;
         }
         if ($result['status'] === 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
@@ -518,12 +540,12 @@ try {
                 header('Location: ' . $redirectParam);
                 return;
             }
-            header('Location: /dashboard');
+            header('Location: ' . $basePath . '/dashboard');
             return;
         }
         if ($result['status'] === 200 && ($request->path === '/register' || $request->path === '/auth/register') && !empty($result['body']['data']['challenge_required'])) {
             $token = urlencode((string) ($result['body']['data']['challenge_token'] ?? ''));
-            header('Location: /register?step=verify&token=' . $token);
+            header('Location: ' . $basePath . '/register?step=verify&token=' . $token);
             return;
         }
         if ($result['status'] !== 200 && ($request->path === '/login' || $request->path === '/auth/login')) {
@@ -533,7 +555,7 @@ try {
                 'RATE_LIMITED' => 'rate_limited',
                 default => 'invalid',
             };
-            header('Location: /login?error=' . $errType);
+            header('Location: ' . $basePath . '/login?error=' . $errType);
             return;
         }
         if ($result['status'] !== 201 && ($request->path === '/register' || $request->path === '/auth/register')) {

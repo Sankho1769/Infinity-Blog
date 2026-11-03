@@ -36,6 +36,7 @@ $oldInterests = $regOldInput['interests'] ?? ($_POST['interests'] ?? '');
 $oldWebsite = $regOldInput['website'] ?? ($_POST['website'] ?? '');
 
 $isSignUpActive = ($authMode === 'signup');
+$isForgotActive = ($authMode === 'forgot');
 ?>
 
 <div class="auth-wrapper">
@@ -79,6 +80,18 @@ $isSignUpActive = ($authMode === 'signup');
           </div>
         <?php endif; ?>
 
+        <?php if (!empty($_GET['reset'])): ?>
+          <div class="alert-banner alert-success" style="display: flex; margin-bottom: 16px; font-size: 0.85rem;">
+            <span>Password updated successfully! Please sign in with your new password.</span>
+          </div>
+        <?php endif; ?>
+
+        <?php if (!empty($_GET['forgot'])): ?>
+          <div class="alert-banner alert-success" style="display: flex; margin-bottom: 16px; font-size: 0.85rem;">
+            <span>If an account matches that email address, a password reset link has been sent.</span>
+          </div>
+        <?php endif; ?>
+
         <?php if (!empty($_GET['error']) && !$isSignUpActive): ?>
           <div class="alert-banner alert-error" style="display: flex; margin-bottom: 16px; font-size: 0.85rem;">
             <span><?= htmlspecialchars($_GET['error'] === 'csrf' ? 'Security check or session expired. Please try again.' : ($_GET['error'] === 'rate_limited' ? 'Too many failed login attempts. Please try again later.' : 'The login identifier or password is invalid.'), ENT_QUOTES, 'UTF-8') ?></span>
@@ -88,7 +101,7 @@ $isSignUpActive = ($authMode === 'signup');
         <div id="login-error-alert" class="alert-banner alert-error" style="display: none; margin-bottom: 16px; font-size: 0.85rem;"></div>
 
         <!-- Credentials Form -->
-        <form id="login-form" class="auth-inner-form" method="POST" action="/auth/login<?= !empty($effectiveRedirect) ? '?redirect=' . urlencode($effectiveRedirect) : '' ?>" novalidate>
+        <form id="login-form" class="auth-inner-form" method="POST" action="<?= htmlspecialchars(($basePath ?? '') . '/auth/login' . (!empty($effectiveRedirect) ? '?redirect=' . urlencode($effectiveRedirect) : ''), ENT_QUOTES, 'UTF-8') ?>" style="<?= $isForgotActive ? 'display: none;' : '' ?>" novalidate>
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
           <?php if (!empty($effectiveRedirect)): ?>
             <input type="hidden" name="redirect" value="<?= htmlspecialchars($effectiveRedirect, ENT_QUOTES, 'UTF-8') ?>">
@@ -131,12 +144,51 @@ $isSignUpActive = ($authMode === 'signup');
           </p>
 
           <p class="auth-return-link">
-            <a href="/">← Return to Home</a>
+            <a href="<?= htmlspecialchars(($basePath ?? '') . '/', ENT_QUOTES, 'UTF-8') ?>">← Return to Home</a>
+          </p>
+        </form>
+
+        <!-- Forgot Password Form -->
+        <form id="forgot-form" class="auth-inner-form" method="POST" action="<?= htmlspecialchars(($basePath ?? '') . '/auth/password/forgot', ENT_QUOTES, 'UTF-8') ?>" style="<?= $isForgotActive ? 'display: block;' : 'display: none;' ?>" novalidate>
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
+
+          <div style="text-align: center; margin-bottom: 16px;">
+            <div style="font-size: 2rem; margin-bottom: 6px;">🔑</div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-heading); margin-bottom: 4px;">
+              Reset Password
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.86rem; line-height: 1.4;">
+              Enter your email or username and we will send you a link to reset your password.
+            </p>
+          </div>
+
+          <div id="forgot-status-alert" class="alert-banner" style="display: none; margin-bottom: 14px; font-size: 0.85rem; text-align: left;">
+            <span id="forgot-status-text"></span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 16px;">
+            <div class="input-with-icon">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                <polyline points="22,6 12,13 2,6"></polyline>
+              </svg>
+              <input type="text" id="forgot-identifier" name="identifier" class="form-input" placeholder="Your Email or Username" required autocomplete="email">
+            </div>
+          </div>
+
+          <button type="submit" id="forgot-submit-btn" class="btn auth-btn-primary">
+            SEND RESET LINK
+          </button>
+
+          <p style="text-align: center; margin-top: 14px; font-size: 0.82rem; width: 100%;">
+            <button type="button" id="forgot-back-btn" style="background: none; border: none; color: var(--text-muted); cursor: pointer; text-decoration: underline; padding: 0;">
+              ← Back to Sign In
+            </button>
           </p>
         </form>
 
         <!-- Two-Step Challenge Form (Login 2FA) -->
-        <form id="challenge-form" class="auth-inner-form" method="POST" action="/auth/challenge/verify<?= !empty($effectiveRedirect) ? '?redirect=' . urlencode($effectiveRedirect) : '' ?>" style="display: none;" novalidate>
+        <form id="challenge-form" class="auth-inner-form" method="POST" action="<?= htmlspecialchars(($basePath ?? '') . '/auth/challenge/verify' . (!empty($effectiveRedirect) ? '?redirect=' . urlencode($effectiveRedirect) : ''), ENT_QUOTES, 'UTF-8') ?>" style="display: none;" novalidate>
           <input type="hidden" name="csrf_token" id="challenge-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
           <input type="hidden" id="challenge_token" name="challenge_token" value="">
           <?php if (!empty($effectiveRedirect)): ?>
@@ -184,7 +236,7 @@ $isSignUpActive = ($authMode === 'signup');
     <div class="auth-form-container auth-signup-panel" id="auth-signup-panel" role="tabpanel" aria-labelledby="mobile-toggle-signup">
       <div class="auth-panel-inner">
         <div class="auth-brand-logo-wrap">
-          <a href="/" aria-label="Infinity Blog Home">
+          <a href="<?= htmlspecialchars(($basePath ?? '') . '/', ENT_QUOTES, 'UTF-8') ?>" aria-label="Infinity Blog Home">
             <img src="/assets/images/infinity-blog-logo-horizontal.png" alt="Infinity Blog" class="auth-card-logo-img" width="160" height="32" loading="eager">
           </a>
         </div>
@@ -197,7 +249,7 @@ $isSignUpActive = ($authMode === 'signup');
         </div>
 
         <!-- Registration Step 1 Form -->
-        <form id="register-form" class="auth-inner-form" method="POST" action="/register" style="<?= $isVerifyStep ? 'display: none;' : '' ?>" novalidate>
+        <form id="register-form" class="auth-inner-form" method="POST" action="<?= htmlspecialchars(($basePath ?? '') . '/register', ENT_QUOTES, 'UTF-8') ?>" style="<?= $isVerifyStep ? 'display: none;' : '' ?>" novalidate>
           <input type="hidden" name="csrf_token" id="reg-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
 
           <div class="form-group" id="group-display_name">
@@ -306,12 +358,12 @@ $isSignUpActive = ($authMode === 'signup');
           </p>
 
           <p class="auth-return-link">
-            <a href="/">← Return to Home</a>
+            <a href="<?= htmlspecialchars(($basePath ?? '') . '/', ENT_QUOTES, 'UTF-8') ?>">← Return to Home</a>
           </p>
         </form>
 
         <!-- Step 2: Email Verification Challenge Form -->
-        <form id="register-challenge-form" class="auth-inner-form" method="POST" action="/auth/register/verify" style="<?= $isVerifyStep ? 'display: block;' : 'display: none;' ?>" novalidate>
+        <form id="register-challenge-form" class="auth-inner-form" method="POST" action="<?= htmlspecialchars(($basePath ?? '') . '/auth/register/verify', ENT_QUOTES, 'UTF-8') ?>" style="<?= $isVerifyStep ? 'display: block;' : 'display: none;' ?>" novalidate>
           <input type="hidden" name="csrf_token" id="reg-challenge-csrf-token" value="<?= htmlspecialchars($csrfToken ?? '', ENT_QUOTES, 'UTF-8') ?>">
           <input type="hidden" id="reg_challenge_token" name="challenge_token" value="<?= htmlspecialchars((string)$tokenParam, ENT_QUOTES, 'UTF-8') ?>">
 
@@ -478,12 +530,86 @@ $isSignUpActive = ($authMode === 'signup');
       });
     });
 
-    // Forgot password prompt
+    // Forgot password prompt & form toggle
+    const forgotForm = document.getElementById('forgot-form');
+    const forgotIdentifier = document.getElementById('forgot-identifier');
+    const forgotStatusAlert = document.getElementById('forgot-status-alert');
+    const forgotStatusText = document.getElementById('forgot-status-text');
+    const forgotSubmitBtn = document.getElementById('forgot-submit-btn');
+    const forgotBackBtn = document.getElementById('forgot-back-btn');
+
     if (forgotPwdBtn) {
       forgotPwdBtn.addEventListener('click', () => {
         const email = document.getElementById('identifier')?.value.trim();
-        const mailto = 'mailto:support@infinityblog.local?subject=' + encodeURIComponent('Password Reset Request') + '&body=' + encodeURIComponent('Hello Infinity Blog Support,\n\nI need to reset the password for my account: ' + (email || '[Enter your email/username]') + '\n\nThank you!');
-        window.location.href = mailto;
+        if (email && forgotIdentifier) forgotIdentifier.value = email;
+        if (loginForm) loginForm.style.display = 'none';
+        if (forgotForm) forgotForm.style.display = 'block';
+        if (loginErrorBox) loginErrorBox.style.display = 'none';
+        if (forgotStatusAlert) forgotStatusAlert.style.display = 'none';
+        setTimeout(() => forgotIdentifier?.focus(), 150);
+      });
+    }
+
+    if (forgotBackBtn) {
+      forgotBackBtn.addEventListener('click', () => {
+        if (forgotForm) forgotForm.style.display = 'none';
+        if (loginForm) loginForm.style.display = 'block';
+        if (forgotStatusAlert) forgotStatusAlert.style.display = 'none';
+      });
+    }
+
+    if (forgotForm) {
+      forgotForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const ident = forgotIdentifier?.value.trim();
+        if (!ident) {
+          forgotStatusAlert.className = 'alert-banner alert-error';
+          forgotStatusText.textContent = 'Please enter your email or username.';
+          forgotStatusAlert.style.display = 'flex';
+          return;
+        }
+
+        forgotSubmitBtn.disabled = true;
+        forgotSubmitBtn.textContent = 'SENDING LINK...';
+
+        try {
+          const csrf = await getCsrfToken();
+          const basePath = window.APP_BASE_PATH || '';
+          const res = await fetch(basePath + '/auth/password/forgot', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-CSRF-Token': csrf
+            },
+            body: JSON.stringify({ identifier: ident, csrf_token: csrf })
+          });
+
+          const contentType = res.headers.get('content-type') || '';
+          let data = null;
+          if (contentType.includes('application/json')) {
+            try { data = await res.json(); } catch {}
+          }
+
+          if (res.ok) {
+            forgotStatusAlert.className = 'alert-banner alert-success';
+            forgotStatusText.textContent = data?.data?.message || 'If an account matches that email address, a password reset link has been sent.';
+            forgotStatusAlert.style.display = 'flex';
+            forgotSubmitBtn.textContent = 'LINK SENT';
+          } else {
+            forgotStatusAlert.className = 'alert-banner alert-error';
+            forgotStatusText.textContent = data?.error?.message || 'Unable to request password reset. Please try again.';
+            forgotStatusAlert.style.display = 'flex';
+            forgotSubmitBtn.disabled = false;
+            forgotSubmitBtn.textContent = 'SEND RESET LINK';
+          }
+        } catch {
+          forgotStatusAlert.className = 'alert-banner alert-error';
+          forgotStatusText.textContent = 'Connection error. Please check your network connection and try again.';
+          forgotStatusAlert.style.display = 'flex';
+          forgotSubmitBtn.disabled = false;
+          forgotSubmitBtn.textContent = 'SEND RESET LINK';
+        }
       });
     }
 
@@ -496,7 +622,8 @@ $isSignUpActive = ($authMode === 'signup');
       }
       if (!csrf) {
         try {
-          const res = await fetch('/auth/csrf', { headers: { 'Accept': 'application/json' } });
+          const basePath = window.APP_BASE_PATH || '';
+          const res = await fetch(basePath + '/auth/csrf', { headers: { 'Accept': 'application/json' } });
           if (res.ok) {
             const d = await res.json();
             csrf = d.data?.csrf_token || '';
@@ -514,11 +641,13 @@ $isSignUpActive = ($authMode === 'signup');
     }
 
     const getTargetUrl = () => {
+      const basePath = window.APP_BASE_PATH || '';
       const urlParams = new URLSearchParams(window.location.search);
       const redirectParam = urlParams.get('redirect') || document.querySelector('input[name="redirect"]')?.value;
-      return (redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//'))
-        ? redirectParam
-        : '/dashboard';
+      if (redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//') && !redirectParam.startsWith('/\\') && !redirectParam.includes('://')) {
+        return redirectParam;
+      }
+      return basePath + '/dashboard';
     };
 
     // =========================================================================
@@ -537,9 +666,13 @@ $isSignUpActive = ($authMode === 'signup');
     const challengeBackBtn = document.getElementById('challenge-back-btn');
     const challengeResendBtn = document.getElementById('challenge-resend-btn');
 
+    let isLoginSubmitting = false;
+
     if (loginForm) {
       loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isLoginSubmitting) return;
+
         loginErrorBox.style.display = 'none';
 
         const identifier = document.getElementById('identifier')?.value.trim();
@@ -551,12 +684,14 @@ $isSignUpActive = ($authMode === 'signup');
           return;
         }
 
+        isLoginSubmitting = true;
         loginSubmitBtn.disabled = true;
         loginSubmitBtn.textContent = 'VERIFYING...';
 
         try {
           const csrf = await getCsrfToken();
-          const res = await fetch('/auth/login', {
+          const basePath = window.APP_BASE_PATH || '';
+          const res = await fetch(basePath + '/auth/login', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -566,8 +701,13 @@ $isSignUpActive = ($authMode === 'signup');
             body: JSON.stringify({ identifier, password })
           });
 
-          const data = await res.json();
-          if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          let data = null;
+          if (contentType.includes('application/json')) {
+            try { data = await res.json(); } catch {}
+          }
+
+          if (res.ok && data) {
             if (data.data?.challenge_required) {
               challengeTokenInput.value = data.data.challenge_token;
               challengeMaskedEmail.textContent = data.data.masked_email;
@@ -576,7 +716,7 @@ $isSignUpActive = ($authMode === 'signup');
               if (data.data.delivery_status === 'BLOCKED') {
                 challengeDeliveryNotice.style.display = 'block';
                 if (data.data.dev_code) {
-                  challengeDeliveryText.innerHTML = '⚡ Local Dev Mode: Email is unconfigured. Verification code is: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
+                  challengeDeliveryText.textContent = 'Notice: Email delivery is unconfigured. Development code: ' + data.data.dev_code;
                   challengeCodeInput.value = data.data.dev_code;
                 } else {
                   challengeDeliveryText.textContent = 'Notice: Email delivery is simulated in this environment.';
@@ -591,25 +731,48 @@ $isSignUpActive = ($authMode === 'signup');
             } else {
               loginSubmitBtn.textContent = 'SIGNED IN! REDIRECTING...';
               window.location.href = getTargetUrl();
+              return;
             }
-          } else {
-            loginErrorBox.textContent = data.error?.message || 'The login identifier or password is invalid.';
+          } else if (res.status === 401) {
+            loginErrorBox.textContent = data?.error?.message || 'The login identifier or password is invalid.';
             loginErrorBox.style.display = 'flex';
-            loginSubmitBtn.disabled = false;
-            loginSubmitBtn.textContent = 'SIGN IN';
+          } else if (res.status === 403) {
+            loginErrorBox.textContent = data?.error?.message || 'Security check or session expired. Please refresh the page and try again.';
+            loginErrorBox.style.display = 'flex';
+            getCsrfToken().then(syncAllCsrfTokens);
+          } else if (res.status === 422) {
+            loginErrorBox.textContent = data?.error?.message || 'Please check your login credentials and try again.';
+            loginErrorBox.style.display = 'flex';
+          } else if (res.status === 429) {
+            loginErrorBox.textContent = data?.error?.message || 'Too many failed login attempts. Please try again later.';
+            loginErrorBox.style.display = 'flex';
+          } else if (res.status >= 500) {
+            loginErrorBox.textContent = data?.error?.message || 'A server error occurred. Please try again later.';
+            loginErrorBox.style.display = 'flex';
+          } else {
+            loginErrorBox.textContent = data?.error?.message || 'Unable to sign in. Please try again.';
+            loginErrorBox.style.display = 'flex';
           }
         } catch (err) {
-          loginErrorBox.textContent = 'Connection error. Please try again.';
+          loginErrorBox.textContent = 'Connection error. Please check your network connection and try again.';
           loginErrorBox.style.display = 'flex';
-          loginSubmitBtn.disabled = false;
-          loginSubmitBtn.textContent = 'SIGN IN';
+        } finally {
+          if (loginSubmitBtn.textContent !== 'SIGNED IN! REDIRECTING...') {
+            loginSubmitBtn.disabled = false;
+            loginSubmitBtn.textContent = 'SIGN IN';
+            isLoginSubmitting = false;
+          }
         }
       });
     }
 
+    let isChallengeSubmitting = false;
+
     if (challengeForm) {
       challengeForm.addEventListener('submit', async (e) => {
         if (e) e.preventDefault();
+        if (isChallengeSubmitting) return;
+
         loginErrorBox.style.display = 'none';
 
         const challenge_token = challengeTokenInput.value.trim();
@@ -621,13 +784,15 @@ $isSignUpActive = ($authMode === 'signup');
           return;
         }
 
+        isChallengeSubmitting = true;
         challengeSubmitBtn.disabled = true;
         challengeSubmitBtn.textContent = 'VERIFYING CODE...';
 
         let csrf = '';
         try {
           csrf = await getCsrfToken();
-          const res = await fetch('/auth/challenge/verify', {
+          const basePath = window.APP_BASE_PATH || '';
+          const res = await fetch(basePath + '/auth/challenge/verify', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -637,19 +802,42 @@ $isSignUpActive = ($authMode === 'signup');
             body: JSON.stringify({ challenge_token, code, csrf_token: csrf })
           });
 
-          const data = await res.json();
-          if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          let data = null;
+          if (contentType.includes('application/json')) {
+            try { data = await res.json(); } catch {}
+          }
+
+          if (res.ok && data) {
             challengeSubmitBtn.textContent = 'VERIFIED! REDIRECTING...';
             window.location.href = getTargetUrl();
-          } else {
-            loginErrorBox.textContent = data.error?.message || 'The verification code is incorrect or has expired.';
+            return;
+          } else if (res.status === 401) {
+            loginErrorBox.textContent = data?.error?.message || 'The verification code is incorrect.';
             loginErrorBox.style.display = 'flex';
-            challengeSubmitBtn.disabled = false;
-            challengeSubmitBtn.textContent = 'VERIFY & SIGN IN';
             challengeCodeInput.select();
+          } else if (res.status === 403) {
+            loginErrorBox.textContent = data?.error?.message || 'Security check expired. Please try again.';
+            loginErrorBox.style.display = 'flex';
+          } else if (res.status === 429) {
+            loginErrorBox.textContent = data?.error?.message || 'Too many failed verification attempts. Please sign in again.';
+            loginErrorBox.style.display = 'flex';
+          } else if (res.status >= 500) {
+            loginErrorBox.textContent = data?.error?.message || 'A server error occurred. Please try again.';
+            loginErrorBox.style.display = 'flex';
+          } else {
+            loginErrorBox.textContent = data?.error?.message || 'Verification failed. Please try again.';
+            loginErrorBox.style.display = 'flex';
           }
         } catch (err) {
-          challengeForm.submit();
+          loginErrorBox.textContent = 'Connection error. Please try again.';
+          loginErrorBox.style.display = 'flex';
+        } finally {
+          if (challengeSubmitBtn.textContent !== 'VERIFIED! REDIRECTING...') {
+            challengeSubmitBtn.disabled = false;
+            challengeSubmitBtn.textContent = 'VERIFY & SIGN IN';
+            isChallengeSubmitting = false;
+          }
         }
       });
 
@@ -663,7 +851,8 @@ $isSignUpActive = ($authMode === 'signup');
 
           try {
             const csrf = await getCsrfToken();
-            const res = await fetch('/auth/challenge/resend', {
+            const basePath = window.APP_BASE_PATH || '';
+            const res = await fetch(basePath + '/auth/challenge/resend', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -673,11 +862,16 @@ $isSignUpActive = ($authMode === 'signup');
               body: JSON.stringify({ challenge_token })
             });
 
-            const data = await res.json();
-            if (res.ok && data.data?.challenge_token) {
+            const contentType = res.headers.get('content-type') || '';
+            let data = null;
+            if (contentType.includes('application/json')) {
+              try { data = await res.json(); } catch {}
+            }
+
+            if (res.ok && data?.data?.challenge_token) {
               challengeTokenInput.value = data.data.challenge_token;
               if (data.data.dev_code) {
-                challengeDeliveryText.innerHTML = '⚡ New code generated: <strong style="font-size: 1.05rem; color: var(--primary-color); font-family: monospace;">' + data.data.dev_code + '</strong>';
+                challengeDeliveryText.textContent = 'Notice: New verification code generated: ' + data.data.dev_code;
                 challengeCodeInput.value = data.data.dev_code;
               }
               let countdown = 60;
@@ -695,7 +889,7 @@ $isSignUpActive = ($authMode === 'signup');
             } else {
               challengeResendBtn.disabled = false;
               challengeResendBtn.textContent = 'Resend Code';
-              loginErrorBox.textContent = data.error?.message || 'Failed to resend code.';
+              loginErrorBox.textContent = data?.error?.message || 'Failed to resend code.';
               loginErrorBox.style.display = 'flex';
             }
           } catch {

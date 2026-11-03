@@ -24,17 +24,37 @@ final class UserRepository
     public function findByIdentifier(string $identifier): ?UserAccount
     {
         $normalized = self::normalizeIdentifier($identifier);
+        if ($normalized === '') {
+            return null;
+        }
+
+        // 1. Canonical unique identifiers: username or email take precedence
         $statement = $this->pdo->prepare(
-            'SELECT * FROM users WHERE username = :identifier OR email = :identifier_email OR LOWER(display_name) = :identifier_name LIMIT 1'
+            'SELECT * FROM users WHERE LOWER(username) = :identifier OR LOWER(email) = :identifier_email LIMIT 1'
         );
         $statement->execute([
             'identifier' => $normalized,
             'identifier_email' => $normalized,
-            'identifier_name' => $normalized,
         ]);
         $row = $statement->fetch(PDO::FETCH_ASSOC);
+        if (is_array($row)) {
+            return self::accountFromRow($row);
+        }
 
-        return is_array($row) ? self::accountFromRow($row) : null;
+        // 2. Full-name / display_name lookup: permitted only when there is exactly one matching account
+        $nameStatement = $this->pdo->prepare(
+            'SELECT * FROM users WHERE LOWER(display_name) = :identifier_name LIMIT 2'
+        );
+        $nameStatement->execute([
+            'identifier_name' => $normalized,
+        ]);
+        $matches = $nameStatement->fetchAll(PDO::FETCH_ASSOC);
+        if (count($matches) === 1) {
+            return self::accountFromRow($matches[0]);
+        }
+
+        // 0 matches or ambiguous duplicate display names (>1 match)
+        return null;
     }
 
     public function findById(int $id): ?UserAccount

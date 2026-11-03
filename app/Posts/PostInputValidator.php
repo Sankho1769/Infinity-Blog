@@ -30,7 +30,7 @@ final class PostInputValidator
         if (array_key_exists('content_type', $input)) {
             $ct = $input['content_type'];
             if (!is_string($ct) || !in_array(strtolower(trim($ct)), ContentTypeHelper::ALL_TYPES, true)) {
-                $errors['content_type'] = 'Enter a valid content type (article, blog, research_paper, photo).';
+                $errors['content_type'] = 'Enter a valid content type (article, blog, research_paper, photo, discussion, question).';
             } else {
                 $effectiveContentType = strtolower(trim($ct));
                 $fields['content_type'] = $effectiveContentType;
